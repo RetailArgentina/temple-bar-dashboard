@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Informe Gerencial – Abril 2026</title>
+<style>
+  @page { size: A4; margin: 18mm 18mm 18mm 18mm; }
+  @media print {
+    .pagebreak { page-break-before: always; }
+    body { font-size: 10pt; }
+    .no-print { display: none; }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1a1a2e; background: #fff; font-size: 10.5pt; line-height: 1.5; }
+
+  /* ── PORTADA ── */
+  .cover {
+    min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 60%, #0f3460 100%);
+    color: #fff; padding: 60px 60px; position: relative; overflow: hidden;
+  }
+  .cover::before {
+    content: ''; position: absolute; top: -80px; right: -80px; width: 400px; height: 400px;
+    border-radius: 50%; background: rgba(56,189,248,0.08); pointer-events: none;
+  }
+  .cover::after {
+    content: ''; position: absolute; bottom: -100px; left: 40%; width: 300px; height: 300px;
+    border-radius: 50%; background: rgba(110,231,183,0.06); pointer-events: none;
+  }
+  .cover-kicker { font-size: 9pt; letter-spacing: 3px; text-transform: uppercase; color: #38bdf8; margin-bottom: 20px; font-weight: 600; }
+  .cover-title { font-size: 34pt; font-weight: 800; line-height: 1.1; margin-bottom: 18px; }
+  .cover-sub { font-size: 13pt; color: #94a3b8; margin-bottom: 40px; }
+  .cover-meta { border-top: 1px solid rgba(255,255,255,0.15); padding-top: 28px; display: flex; gap: 48px; flex-wrap: wrap; }
+  .cover-meta-item label { font-size: 8pt; color: #64748b; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px; }
+  .cover-meta-item span { font-size: 11pt; font-weight: 600; color: #e2e8f0; }
+  .cover-brands { display: flex; gap: 12px; margin-top: 36px; }
+  .brand-pill { padding: 6px 16px; border-radius: 20px; font-size: 9pt; font-weight: 700; letter-spacing: .5px; }
+  .brand-pat { background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3); }
+  .brand-tem { background: rgba(167,139,250,0.15); color: #a78bfa; border: 1px solid rgba(167,139,250,0.3); }
+  .brand-fer { background: rgba(110,231,183,0.15); color: #6ee7b7; border: 1px solid rgba(110,231,183,0.3); }
+  .conf-pill { background: rgba(251,191,36,0.15); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+
+  /* ── SECCIONES ── */
+  .section { padding: 36px 0 20px; }
+  .section + .section { border-top: 1px solid #e2e8f0; }
+  .sec-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .sec-num { width: 32px; height: 32px; border-radius: 8px; background: #0f172a; color: #38bdf8; font-size: 9pt; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sec-title { font-size: 14pt; font-weight: 700; color: #0f172a; }
+  .sec-sub { font-size: 9pt; color: #64748b; margin-top: 2px; }
+
+  /* ── TABLAS ── */
+  table { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin-bottom: 14px; }
+  th { background: #0f172a; color: #94a3b8; font-size: 7.5pt; letter-spacing: .8px; text-transform: uppercase; padding: 9px 10px; font-weight: 600; text-align: left; }
+  th.r, td.r { text-align: right; }
+  th.c, td.c { text-align: center; }
+  td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; color: #1e293b; vertical-align: middle; }
+  tr:hover td { background: #f8fafc; }
+  tr.total-row td { background: #0f172a; color: #e2e8f0; font-weight: 700; border: none; }
+  tr.total-row td.r, tr.total-row td.c { color: #38bdf8; }
+
+  .badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 5px; font-size: 8pt; font-weight: 700; white-space: nowrap; }
+  .badge-up { background: #052e16; color: #6ee7b7; }
+  .badge-dn { background: #450a0a; color: #fca5a5; }
+  .badge-warn { background: #3d2c00; color: #fbbf24; }
+  .badge-ok { background: #052e16; color: #6ee7b7; }
+  .badge-neutral { background: #1e293b; color: #94a3b8; }
+
+  /* ── KPI CARDS ── */
+  .kpi-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; border-top: 3px solid #e2e8f0; }
+  .kpi-card.pat { border-top-color: #38bdf8; }
+  .kpi-card.tem { border-top-color: #a78bfa; }
+  .kpi-card.fer { border-top-color: #6ee7b7; }
+  .kpi-card.total { border-top-color: #f59e0b; }
+  .kpi-label { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .8px; color: #64748b; margin-bottom: 4px; font-weight: 600; }
+  .kpi-value { font-size: 18pt; font-weight: 800; color: #0f172a; line-height: 1; margin-bottom: 6px; }
+  .kpi-sub { font-size: 8pt; color: #64748b; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+  /* ── BRAND HEADERS ── */
+  .brand-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; border-radius: 10px; }
+  .brand-header.pat { background: #f0f9ff; border-left: 4px solid #38bdf8; }
+  .brand-header.tem { background: #f5f3ff; border-left: 4px solid #a78bfa; }
+  .brand-header.fer { background: #ecfdf5; border-left: 4px solid #6ee7b7; }
+  .bh-name { font-size: 13pt; font-weight: 800; color: #0f172a; }
+  .bh-sub { font-size: 8.5pt; color: #475569; margin-top: 2px; }
+
+  /* ── PUNTOS CRÍTICOS ── */
+  .critico-list { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+  .critico-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 8px; font-size: 9.5pt; line-height: 1.4; }
+  .ci-alert { background: #fff5f5; border: 1px solid #fecaca; }
+  .ci-warn  { background: #fffbeb; border: 1px solid #fde68a; }
+  .ci-info  { background: #f0f9ff; border: 1px solid #bae6fd; }
+  .ci-ok    { background: #f0fdf4; border: 1px solid #bbf7d0; }
+  .ci-icon  { font-size: 14pt; flex-shrink: 0; margin-top: 1px; }
+  .ci-text strong { display: block; font-weight: 700; color: #0f172a; margin-bottom: 2px; }
+  .ci-text span { color: #475569; }
+
+  /* ── PLAN DE ACCIÓN ── */
+  .accion-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+  .accion-item { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; }
+  .accion-num { width: 22px; height: 22px; border-radius: 50%; background: #0f172a; color: #38bdf8; font-size: 8pt; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+  .accion-num.pat { background: #0c4a6e; color: #38bdf8; }
+  .accion-num.tem { background: #2e1065; color: #a78bfa; }
+  .accion-num.fer { background: #064e3b; color: #6ee7b7; }
+  .accion-text strong { display: block; font-weight: 700; color: #0f172a; margin-bottom: 2px; font-size: 9.5pt; }
+  .accion-text span { color: #475569; font-size: 9pt; }
+  .prioridad { display: inline-block; font-size: 7pt; font-weight: 700; padding: 1px 5px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
+  .prio-alta { background: #fee2e2; color: #b91c1c; }
+  .prio-media { background: #fef3c7; color: #b45309; }
+  .prio-baja { background: #dcfce7; color: #15803d; }
+
+  /* ── CONTEXTO ── */
+  .context-box { background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; }
+  .context-box h4 { font-size: 9pt; color: #38bdf8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; font-weight: 700; }
+  .context-box p { font-size: 9pt; line-height: 1.6; color: #94a3b8; }
+  .context-box strong { color: #e2e8f0; }
+
+  .ipc-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .ipc-item { background: #1e293b; border-radius: 6px; padding: 6px 10px; text-align: center; }
+  .ipc-item .mes { font-size: 7.5pt; color: #64748b; }
+  .ipc-item .val { font-size: 10pt; font-weight: 700; color: #38bdf8; }
+
+  .summary-box { background: #1e3a5f; border-radius: 10px; padding: 18px 20px; color: #e2e8f0; margin-bottom: 20px; }
+  .summary-box p { font-size: 10pt; line-height: 1.65; }
+  .summary-box strong { color: #38bdf8; }
+  .summary-box .highlight { color: #6ee7b7; font-weight: 700; }
+  .summary-box .warning { color: #fbbf24; font-weight: 700; }
+  .summary-box .danger { color: #f87171; font-weight: 700; }
+
+  .divider { border: none; border-top: 1px solid #e2e8f0; margin: 24px 0; }
+
+  .footer { margin-top: 32px; padding: 16px 0; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; font-size: 8pt; color: #94a3b8; }
+  .footer strong { color: #475569; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+  .content-page { max-width: 210mm; margin: 0 auto; padding: 36px 40px; }
+
+  .ritmo-bar-wrap { background: #e2e8f0; border-radius: 4px; height: 8px; position: relative; overflow: hidden; width: 100%; }
+  .ritmo-bar-fill { height: 100%; border-radius: 4px; }
+  .ritmo-marker { position: absolute; top: -2px; height: 12px; width: 2px; background: #0f172a; }
+
+  .print-btn {
+    position: fixed; bottom: 24px; right: 24px; background: #0f172a; color: #38bdf8; border: 1px solid #38bdf8;
+    padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 10pt; font-weight: 700;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 999;
+  }
+  .print-btn:hover { background: #1e3a5f; }
+</style>
+</head>
+<body>
+
+<button class="print-btn no-print" onclick="window.print()">⬇ Guardar como PDF</button>
+
+<!-- ══════════════════════════════════════════════════════════
+     PORTADA
+══════════════════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-kicker">Corporativo · Retail Gastronómico</div>
+  <div class="cover-title">Informe Gerencial<br>de Ventas</div>
+  <div class="cover-sub">Resultados, Puntos Críticos y Plan de Acción por Marca</div>
+
+  <div class="cover-brands">
+    <span class="brand-pill brand-pat">Patagonia</span>
+    <span class="brand-pill brand-tem">Temple</span>
+    <span class="brand-pill brand-fer">Feriado</span>
+    <span class="brand-pill conf-pill">🔒 Confidencial</span>
+  </div>
+
+  <div class="cover-meta">
+    <div class="cover-meta-item">
+      <label>Período</label>
+      <span>Enero – 20 Abril 2026</span>
+    </div>
+    <div class="cover-meta-item">
+      <label>Datos al</label>
+      <span>19 Abril 2026</span>
+    </div>
+    <div class="cover-meta-item">
+      <label>Emitido</label>
+      <span>20 Abril 2026</span>
+    </div>
+    <div class="cover-meta-item">
+      <label>Preparado por</label>
+      <span>Darwin Salinas · Corporativo</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     CONTENIDO PRINCIPAL
+══════════════════════════════════════════════════════════ -->
+<div class="content-page">
+
+  <!-- ── 1. RESUMEN EJECUTIVO ── -->
+  <div class="section">
+    <div class="sec-header">
+      <div class="sec-num">1</div>
+      <div>
+        <div class="sec-title">Resumen Ejecutivo</div>
+        <div class="sec-sub">Síntesis gerencial · Red Corporativa · YTD 2026</div>
+      </div>
+    </div>
+
+    <div class="summary-box">
+      <p>
+        La red corporativa acumula <strong>$19,266.7M de facturación</strong> y
+        <strong>408,048 órdenes</strong> en lo que va de 2026 (al 19/04).
+        El crecimiento interanual consolidado es <strong>+48% en Patagonia</strong> —
+        la marca que más aporta y la única que crece en volumen real —,
+        mientras que <span class="warning">Temple crece solo +10% nominal con órdenes prácticamente estancadas</span>
+        y <span class="danger">Feriado cae -26% en órdenes y -3% en facturación</span>, muy por debajo de la inflación acumulada.
+        <br><br>
+        Los meses cerrados (enero–marzo) muestran a <strong class="highlight">Temple y Feriado sobre objetivo</strong>
+        (+5.3% y +11.2% respectivamente), mientras que
+        <span class="warning">Patagonia cerró Q1 un 3.1% por debajo de su objetivo</span>,
+        brecha que se mantiene en abril a ritmo muy ajustado (64.6% acumulado vs 66.7% esperado).
+        El contexto macro muestra desaceleración inflacionaria (IPC Q1 2026: +8.7%)
+        con señales de recuperación del consumo premium, lo que abre oportunidades de activación en Q2.
+      </p>
+    </div>
+
+    <!-- KPIs consolidados -->
+    <div class="kpi-grid">
+      <div class="kpi-card total">
+        <div class="kpi-label">Facturación YTD Total</div>
+        <div class="kpi-value">$19,267M</div>
+        <div class="kpi-sub"><span class="badge badge-up">▲ +37.8% YoY</span></div>
+      </div>
+      <div class="kpi-card total">
+        <div class="kpi-label">Órdenes YTD Total</div>
+        <div class="kpi-value">408,048</div>
+        <div class="kpi-sub"><span class="badge badge-up">▲ +30.3% YoY</span></div>
+      </div>
+      <div class="kpi-card total">
+        <div class="kpi-label">Ticket Promedio Red</div>
+        <div class="kpi-value">$47,210</div>
+        <div class="kpi-sub"><span class="badge badge-up">▲ +5.8% YoY</span></div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Marca</th>
+          <th class="r">Fac. YTD 2026</th>
+          <th class="r">Fac. YTD 2025</th>
+          <th class="r">Var. YoY</th>
+          <th class="r">Órdenes 2026</th>
+          <th class="r">Var. Ord. YoY</th>
+          <th class="r">Ticket Prom.</th>
+          <th class="c">Benchm. Real</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong style="color:#0369a1">● Patagonia</strong></td>
+          <td class="r"><strong>$13,691.8M</strong></td>
+          <td class="r">$9,251.6M</td>
+          <td class="r"><span class="badge badge-up">▲ +48.0%</span></td>
+          <td class="r">253,148</td>
+          <td class="r"><span class="badge badge-up">▲ +42.4%</span></td>
+          <td class="r">$54,240</td>
+          <td class="c"><span class="badge badge-ok">✓ Crece real</span></td>
+        </tr>
+        <tr>
+          <td><strong style="color:#7c3aed">● Temple</strong></td>
+          <td class="r"><strong>$5,347.1M</strong></td>
+          <td class="r">$4,858.7M</td>
+          <td class="r"><span class="badge badge-warn">▲ +10.1%</span></td>
+          <td class="r">149,441</td>
+          <td class="r"><span class="badge badge-warn">▲ +1.7%</span></td>
+          <td class="r">$36,805</td>
+          <td class="c"><span class="badge badge-warn">≈ Plano real</span></td>
+        </tr>
+        <tr>
+          <td><strong style="color:#047857">● Feriado</strong></td>
+          <td class="r"><strong>$227.8M</strong></td>
+          <td class="r">$235.2M</td>
+          <td class="r"><span class="badge badge-dn">▼ -3.1%</span></td>
+          <td class="r">5,459</td>
+          <td class="r"><span class="badge badge-dn">▼ -26.2%</span></td>
+          <td class="r">$41,723</td>
+          <td class="c"><span class="badge badge-dn">✗ Cae real</span></td>
+        </tr>
+        <tr class="total-row">
+          <td><strong>TOTAL RED</strong></td>
+          <td class="r">$19,266.7M</td>
+          <td class="r">$14,345.5M</td>
+          <td class="r">▲ +34.3%</td>
+          <td class="r">408,048</td>
+          <td class="r">▲ +28.9%</td>
+          <td class="r">$47,210</td>
+          <td class="c">—</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p style="font-size:8pt;color:#94a3b8;margin-top:-8px">
+      * YTD = Enero–19 Abril 2026 vs misma ventana 2025. Benchmark real: inflación acumulada Q1+Q2 inicio 2026 ≈ 8.7% (IPC INDEC). Para crecer en términos reales se requiere superar ese umbral.
+    </p>
+  </div>
+
+  <!-- ── 2. PERFORMANCE ABRIL (MES EN CURSO) ── -->
+  <div class="section">
+    <div class="sec-header">
+      <div class="sec-num">2</div>
+      <div>
+        <div class="sec-title">Performance Abril 2026 (mes en curso)</div>
+        <div class="sec-sub">20 días transcurridos de 30 · ritmo esperado: 66.7%</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Marca</th>
+          <th class="r">Real Abr (20d)</th>
+          <th class="r">Objetivo Abr</th>
+          <th class="r">Cumpl. vs Obj.</th>
+          <th class="r">Ritmo esp.</th>
+          <th class="c">Semáforo</th>
+          <th class="r">Faltan / Sobran</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong style="color:#0369a1">Patagonia</strong></td>
+          <td class="r">$1,988.6M</td>
+          <td class="r">$3,078.2M</td>
+          <td class="r">64.6%</td>
+          <td class="r">66.7%</td>
+          <td class="c"><span class="badge badge-warn">⚠ -2.1pp</span></td>
+          <td class="r" style="color:#fbbf24">Faltan $64M</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#7c3aed">Temple</strong></td>
+          <td class="r">$932.9M</td>
+          <td class="r">$1,405.8M</td>
+          <td class="r">66.3%</td>
+          <td class="r">66.7%</td>
+          <td class="c"><span class="badge badge-ok">✓ En ritmo</span></td>
+          <td class="r" style="color:#94a3b8">−$5M (mín.)</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#047857">Feriado</strong></td>
+          <td class="r">$37.7M</td>
+          <td class="r">$46.0M</td>
+          <td class="r">81.9%</td>
+          <td class="r">66.7%</td>
+          <td class="c"><span class="badge badge-ok">✓ Sobre ritmo</span></td>
+          <td class="r" style="color:#6ee7b7">+$6.6M</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Barras de ritmo -->
+    <div style="margin-top:4px;">
+      <div style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;font-size:8.5pt;color:#475569;margin-bottom:4px;">
+          <span><strong style="color:#0369a1">Patagonia</strong> — $1,988.6M de $3,078.2M</span>
+          <span style="color:#fbbf24">64.6%</span>
+        </div>
+        <div class="ritmo-bar-wrap">
+          <div class="ritmo-bar-fill" style="width:64.6%;background:#38bdf8;"></div>
+          <div class="ritmo-marker" style="left:66.7%;"></div>
+        </div>
+      </div>
+      <div style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;font-size:8.5pt;color:#475569;margin-bottom:4px;">
+          <span><strong style="color:#7c3aed">Temple</strong> — $932.9M de $1,405.8M</span>
+          <span style="color:#6ee7b7">66.3%</span>
+        </div>
+        <div class="ritmo-bar-wrap">
+          <div class="ritmo-bar-fill" style="width:66.3%;background:#a78bfa;"></div>
+          <div class="ritmo-marker" style="left:66.7%;"></div>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:8.5pt;color:#475569;margin-bottom:4px;">
+          <span><strong style="color:#047857">Feriado</strong> — $37.7M de $46.0M</span>
+          <span style="color:#6ee7b7">81.9%</span>
+        </div>
+        <div class="ritmo-bar-wrap">
+          <div class="ritmo-bar-fill" style="width:81.9%;background:#6ee7b7;"></div>
+          <div class="ritmo-marker" style="left:66.7%;"></div>
+        </div>
+      </div>
+      <p style="font-size:7.5pt;color:#94a3b8;margin-top:6px">La línea vertical negra representa el ritmo esperado al día de hoy (66.7% del mes). Barras a la derecha de la línea = sobre ritmo.</p>
+    </div>
+  </div>
+
+  <!-- ── 3. PERFORMANCE Q1 (MESES CERRADOS) ── -->
+  <div class="section">
+    <div class="sec-header">
+      <div class="sec-num">3</div>
+      <div>
+        <div class="sec-title">Cumplimiento Q1 2026 — Meses Cerrados</div>
+        <div class="sec-sub">Enero, Febrero y Marzo · comparación real vs objetivo</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Marca</th>
+          <th class="r">Real Q1</th>
+          <th class="r">Objetivo Q1</th>
+          <th class="r">Cumplimiento</th>
+          <th class="r">Brecha</th>
+          <th class="c">Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong style="color:#0369a1">Patagonia</strong></td>
+          <td class="r">$11,703.2M</td>
+          <td class="r">$12,079.1M</td>
+          <td class="r"><strong>96.9%</strong></td>
+          <td class="r" style="color:#fbbf24">−$375.9M</td>
+          <td class="c"><span class="badge badge-warn">▼ −3.1%</span></td>
+        </tr>
+        <tr>
+          <td><strong style="color:#7c3aed">Temple</strong></td>
+          <td class="r">$4,414.2M</td>
+          <td class="r">$4,192.8M</td>
+          <td class="r"><strong>105.3%</strong></td>
+          <td class="r" style="color:#6ee7b7">+$221.4M</td>
+          <td class="c"><span class="badge badge-ok">▲ +5.3%</span></td>
+        </tr>
+        <tr>
+          <td><strong style="color:#047857">Feriado</strong></td>
+          <td class="r">$190.1M</td>
+          <td class="r">$171.0M</td>
+          <td class="r"><strong>111.2%</strong></td>
+          <td class="r" style="color:#6ee7b7">+$19.1M</td>
+          <td class="c"><span class="badge badge-ok">▲ +11.2%</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Canal mix -->
+    <h4 style="font-size:9pt;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:14px 0 10px">Mix de Canal YTD 2026</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>Marca</th>
+          <th>Canal</th>
+          <th class="r">Facturación</th>
+          <th class="r">Participación</th>
+          <th class="r">Órdenes</th>
+          <th>Nota</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td rowspan="2" style="vertical-align:middle;"><strong style="color:#0369a1">Patagonia</strong></td>
+          <td>Canal Propio (App)</td>
+          <td class="r">$13,518.5M</td>
+          <td class="r"><strong>98.7%</strong></td>
+          <td class="r">248,826</td>
+          <td><span class="badge badge-ok">Margen pleno</span></td>
+        </tr>
+        <tr>
+          <td>PedidosYa</td>
+          <td class="r">$171.4M</td>
+          <td class="r">1.3%</td>
+          <td class="r">8,948 / 80 Rappi</td>
+          <td><span class="badge badge-neutral">Comis. 25–32%</span></td>
+        </tr>
+        <tr>
+          <td rowspan="2" style="vertical-align:middle;"><strong style="color:#7c3aed">Temple</strong></td>
+          <td>Canal Propio (App)</td>
+          <td class="r">$4,975.0M</td>
+          <td class="r"><strong>93.0%</strong></td>
+          <td class="r">133,334</td>
+          <td><span class="badge badge-ok">Margen pleno</span></td>
+        </tr>
+        <tr>
+          <td>PedidosYa + otros</td>
+          <td class="r">$372.1M</td>
+          <td class="r">7.0%</td>
+          <td class="r">19,909</td>
+          <td><span class="badge badge-warn">Comis. ~$93-119M</span></td>
+        </tr>
+        <tr>
+          <td><strong style="color:#047857">Feriado</strong></td>
+          <td>—</td>
+          <td class="r">—</td>
+          <td class="r">—</td>
+          <td class="r">—</td>
+          <td><span class="badge badge-neutral">Sin datos de canal</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size:8pt;color:#94a3b8;margin-top:-6px">Estimación de comisión delivery Temple: $372.1M × 25-32% ≈ $93-119M anualizados de costo de canal.</p>
+  </div>
+
+  <!-- ══ PAGE BREAK ══ -->
+  <div class="pagebreak"></div>
+
+  <!-- ── 4. ANÁLISIS POR MARCA ── -->
+  <div class="section">
+    <div class="sec-header">
+      <div class="sec-num">4</div>
+      <div>
+        <div class="sec-title">Análisis y Puntos Críticos por Marca</div>
+        <div class="sec-sub">Fortalezas, riesgos y señales de alerta</div>
+      </div>
+    </div>
+
+    <!-- PATAGONIA -->
+    <div class="brand-header pat">
+      <div>
+        <div class="bh-name" style="color:#0369a1">Patagonia</div>
+        <div class="bh-sub">Motor de crecimiento de la red · 71% de la facturación total · Ticket promedio $54,240</div>
+      </div>
+    </div>
+
+    <ul class="critico-list">
+      <li class="critico-item ci-warn">
+        <span class="ci-icon">⚠️</span>
+        <div class="ci-text">
+          <strong>Q1 cerrado -3.1% vs objetivo ($376M de brecha)</strong>
+          <span>Aunque el crecimiento YoY +48% es excepcional, no se alcanzó el objetivo presupuestado en ninguno de los 3 meses del trimestre. La brecha acumulada es significativa y puede amplificarse si Q2 no se activa.</span>
+        </div>
+      </li>
+      <li class="critico-item ci-warn">
+        <span class="ci-icon">📉</span>
+        <div class="ci-text">
+          <strong>Abril ligeramente por debajo del ritmo esperado (−$64M al día 20)</strong>
+          <span>Actualmente en 64.6% de cumplimiento vs 66.7% esperado. Para cerrar el mes en objetivo se requieren $109.6M/día en los 10 días restantes. Hoy el ritmo diario implícito es $99.4M/día.</span>
+        </div>
+      </li>
+      <li class="critico-item ci-info">
+        <span class="ci-icon">🔵</span>
+        <div class="ci-text">
+          <strong>Concentración geográfica en top 5 locales (turísticos)</strong>
+          <span>Chalten ($152M), Ushuaia ($150M), Puerto Iguazú ($145M), Puerto Madero ($121M) y Resistencia ($101M) concentran el 29% de la facturación de abril. Dependencia de destinos turísticos con estacionalidad Q2 negativa.</span>
+        </div>
+      </li>
+      <li class="critico-item ci-alert">
+        <span class="ci-icon">🔴</span>
+        <div class="ci-text">
+          <strong>Resistencia: ticket anómalamente bajo ($13,900 vs promedio $40,681)</strong>
+          <span>Con 7,299 órdenes en abril es el local de mayor volumen pero con ticket 66% por debajo del promedio de la marca. Puede indicar un mix de producto diferente, errores de datos o una operación de tipo diferente (e.g., autoservicio). Requiere revisión.</span>
+        </div>
+      </li>
+      <li class="critico-item ci-ok">
+        <span class="ci-icon">✅</span>
+        <div class="ci-text">
+          <strong>Canal propio al 98.7% — excelente posición de margen</strong>
+          <span>Prácticamente sin exposición a comisiones de delivery. Ventaja competitiva estructural que protege la rentabilidad operativa.</span>
+        </div>
+      </li>
+      <li class="critico-item ci-ok">
+        <span class="ci-icon">✅</span>
+        <div class="ci-text">
+          <strong>Crecimiento real positivo: +48% supera benchmark del 40% anual</strong>
+          <span>Es la única marca que crece en términos reales y en volumen de órdenes (+42.4% YoY). El crecimiento no es solo inflacionario.</span>
+        </div>
+      </li>
+    </ul>
+
+    <!-- Top Locales Patagonia -->
+    <h4 style="font-size:9pt;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px;margin:0 0 8px">Top 10 Locales Patagonia · Abril 2026</h4>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Local</th><th class="r">Facturación</th><th class="r">Órdenes</th><th class="r">Ticket Prom.</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1</td><td>Chalten</td><td class="r">$152.4M</td><td class="r">2,789</td><td class="r">$54,639</td></tr>
+        <tr><td>2</td><td>Ushuaia</td><td class="r">$150.4M</td><td class="r">2,616</td><td class="r">$57,494</td></tr>
+        <tr><td>3</td><td>Puerto Iguazú</td><td class="r">$145.1M</td><td class="r">2,746</td><td class="r">$52,840</td></tr>
+        <tr><td>4</td><td>Puerto Madero</td><td class="r">$121.2M</td><td class="r">2,460</td><td class="r">$49,268</td></tr>
+        <tr><td>5</td><td>Resistencia</td><td class="r">$101.4M</td><td class="r">7,299</td><td class="r" style="color:#f87171">$13,892 ⚠</td></tr>
+        <tr><td>6</td><td>Río Gallegos</td><td class="r">$99.9M</td><td class="r">3,301</td><td class="r">$30,263</td></tr>
+        <tr><td>7</td><td>Neuquén</td><td class="r">$92.1M</td><td class="r">1,287</td><td class="r">$71,561</td></tr>
+        <tr><td>8</td><td>Corrientes</td><td class="r">$80.4M</td><td class="r">2,540</td><td class="r">$31,654</td></tr>
+        <tr><td>9</td><td>Calafate</td><td class="r">$75.8M</td><td class="r">1,616</td><td class="r">$46,906</td></tr>
+        <tr><td>10</td><td>Puerto Iguazú 2</td><td class="r">$73.8M</td><td class="r">1,445</td><td class="r">$51,073</td></tr>
+      </tbody>
+    </table>
+
+    <hr class="divider">
+
+    <!-- TEMPLE -->
+    <div class="brand-header tem">
+      <div>
+        <div class="bh-name" style="color:#7c3aed">Temple</div>
+        <div class="bh-sub">Segunda marca en facturación · 27.8% del total · Ticket promedio $36,805</div>
+      </div>
+    </div>
+
+    <ul class="critico-list">
+      <li class="critico-item ci-alert">
+        <span class="ci-icon">🔴</span>
+        <div class="ci-text">
+          <strong>Volumen de órdenes prácticamente estancado: solo +1.7% YoY</strong>
+          <span>Con inflación acumulada del 8.7%, un crecimiento de solo +1.7% en órdenes implica una caída real del volumen de clientes. El crecimiento de facturación (+10.1%) se explica por el aumento del ticket, no por más tráfico.</span>
+        </div>
+      </li>
+      <li class="critico-item ci-warn">
+        <span class="ci-icon">⚠️</span>
+        <div class="ci-text">
+          <strong>Ticket promedio en zona de resistencia del consumidor ($36,805)</strong>
+          <span>El umbral de resistencia premium bajo está en $35,000. El ticket de Temple está apenas por encima. Con inflación sostenida, cualquier aumento de precios puede erosionar la frecuencia de visita ya debilitada.</span>
+        </div>
+      </li>
+      <li class="critico-item ci-warn">
+        <span class="ci-icon">💸</span>
+        <div class="ci-text">
+          <strong>7% del canal via PedidosYa con comisiones 25–32% ($93–119M estimados)</strong>
+          <span>Aunque el porcentaje es bajo, el costo de canal genera una pérdida de margen anualizada significativa. A diferencia de Patagonia (1.3% delivery), Temple tiene exposición 5x mayor. Cada punto porcentual migrado al canal propio equivale a ~$7.4M/año recuperados.</span>
+        </div>
+      </li>
+      <li class="critico-item ci-ok">
+        <span class="ci-icon">✅</span>
+        <div class="ci-text">
+          <strong>Q1 cerrado +5.3% sobre objetivo (+$221M)</strong>
+          <span>La marca cumplió y superó sus metas mensuales en los tres meses cerrados. Abril también está prácticamente en ritmo (66.3% vs 66.7% esperado). Ejecución operativa consistente.</span>
+        </div>
+      </li>
+      <li class="critico-item ci-ok">
+        <span class="ci-icon">✅</span>
+        <div class="ci-text">
+          <strong>Abril en ritmo perfecto — sin necesidad de aceleración</strong>
+          <span>Con solo $5M de brecha negativa al día 20, Temple está en posición de cerrar el mes sobre o en objetivo manteniendo el ritmo actual.</span>
+        </div>
+      </li>
+    </ul>
+
+    <hr class="divider">
+
+    <!-- FERIADO -->
+    <div class="brand-header fer">
+      <div>
+        <div class="bh-name" style="color:#047857">Feriado</div>
+        <div class="bh-sub">Marca boutique · 1.2% de la facturación total · 1 local activo en BQ</div>
+      </div>
+    </div>
+
+    <ul class="critico-list">
+      <li class="critico-item ci-alert">
+        <span class="ci-icon">🔴</span>
+        <div class="ci-text">
+          <strong>Caída crítica de órdenes: -26.2% YoY (7,401 → 5,459)</strong>
+          <span>La pérdida de casi 2,000 órdenes anualizadas es una señal estructural grave. En contexto de inflación +8.7%, la marca no solo no crece en volumen sino que pierde participación activa de clientes. La causa más probable es la reducción de locales operativos.</span>
+        </div>
+      </li>
+      <li class="critico-item ci-alert">
+        <span class="ci-icon">🏪</span>
+        <div class="ci-text">
+          <strong>Solo 1 local visible en la fuente de datos (Coghlan)</strong>
+          <span>En 2025, la marca tenía suficiente volumen para sumar 7,401 órdenes en el mismo período. Hoy aparece exclusivamente Coghlan con 5,459 órdenes YTD. Urge verificar el estado operativo de todos los locales de la marca.</span>
+        </div>
+      </li>
+      <li class="critico-item ci-warn">
+        <span class="ci-icon">⚠️</span>
+        <div class="ci-text">
+          <strong>Ticket +31% YoY ($31,780 → $41,723) — señal de alerta doble</strong>
+          <span>El aumento de ticket está compensando parcialmente la caída de volumen, pero no es sostenible como estrategia de largo plazo. Puede reflejar una estrategia de pricing agresiva que inhibe la frecuencia, o simplemente el efecto del cierre de locales de menor ticket.</span>
+        </div>
+      </li>
+      <li class="critico-item ci-ok">
+        <span class="ci-icon">✅</span>
+        <div class="ci-text">
+          <strong>Abril sobre ritmo: 81.9% acumulado vs 66.7% esperado (+$6.6M)</strong>
+          <span>Coghlan está funcionando bien en lo que va de abril. El local donde opera hay demanda activa. Esto refuerza la hipótesis de que el problema es de red de locales, no de propuesta de valor.</span>
+        </div>
+      </li>
+      <li class="critico-item ci-ok">
+        <span class="ci-icon">✅</span>
+        <div class="ci-text">
+          <strong>Q1 sobre objetivo (+11.2% / +$19.1M)</strong>
+          <span>Considerando solo los locales activos, la marca superó sus objetivos (que también pueden estar calibrados a la red reducida). Buen desempeño relativo.</span>
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <!-- ══ PAGE BREAK ══ -->
+  <div class="pagebreak"></div>
+
+  <!-- ── 5. PLAN DE ACCIÓN ── -->
+  <div class="section">
+    <div class="sec-header">
+      <div class="sec-num">5</div>
+      <div>
+        <div class="sec-title">Plan de Acción por Marca</div>
+        <div class="sec-sub">Acciones concretas · ordenadas por prioridad · horizonte 30–90 días</div>
+      </div>
+    </div>
+
+    <!-- PATAGONIA -->
+    <div class="brand-header pat" style="margin-bottom:12px;">
+      <div>
+        <div class="bh-name" style="color:#0369a1">Patagonia — Plan de Acción</div>
+        <div class="bh-sub">Objetivo: cerrar brecha Q1+Q2, proteger ticket, resolver anomalía Resistencia</div>
+      </div>
+    </div>
+
+    <div class="accion-list">
+      <div class="accion-item">
+        <div class="accion-num pat">1</div>
+        <div class="accion-text">
+          <strong>Cierre de mes: activar upselling en top 4 locales turísticos <span class="prioridad prio-alta">URGENTE · 10 días</span></strong>
+          <span>Chalten, Ushuaia, Puerto Iguazú y Puerto Madero necesitan generar $109.6M/día en los próximos 10 días (vs ritmo actual de $99.4M/día). Activar combos, sugerencia de adicionales y propinas digitales en estos locales para cerrar los $64M de brecha de abril.</span>
+        </div>
+      </div>
+      <div class="accion-item">
+        <div class="accion-num pat">2</div>
+        <div class="accion-text">
+          <strong>Auditoría urgente del local Resistencia <span class="prioridad prio-alta">URGENTE · 5 días</span></strong>
+          <span>Investigar por qué el ticket promedio es $13,892 cuando el promedio de la marca es $40,681. Determinar si es un error de data, un formato de negocio diferente, o un problema de mix de producto. Decisión sobre ajuste de objetivos o corrección de datos.</span>
+        </div>
+      </div>
+      <div class="accion-item">
+        <div class="accion-num pat">3</div>
+        <div class="accion-text">
+          <strong>Plan Q2: activación de consumo local en locales no turísticos <span class="prioridad prio-media">30 días</span></strong>
+          <span>Q2 (mayo–junio) históricamente débil por baja de turismo interno. Los locales urbanos (Neuquén, Bahía Blanca, Rosario, Córdoba) deben compensar la caída estacional de destinos turísticos. Diseñar campaña de frecuencia para consumidores locales.</span>
+        </div>
+      </div>
+      <div class="accion-item">
+        <div class="accion-num pat">4</div>
+        <div class="accion-text">
+          <strong>Proteger el ticket promedio frente a la estacionalidad <span class="prioridad prio-media">30 días</span></strong>
+          <span>El ticket actual ($40,681 en abril) está dentro del rango premium ($35k–$65k). Diseñar menú/combos para Q2 que anclen el ticket por encima de $42,000 sin incrementar precios nominales. Opciones: formatos maridaje, menús degustación, propuestas de grupo.</span>
+        </div>
+      </div>
+      <div class="accion-item">
+        <div class="accion-num pat">5</div>
+        <div class="accion-text">
+          <strong>Mantener y monitorear dominio del canal propio <span class="prioridad prio-baja">Continuo</span></strong>
+          <span>El 98.7% de canal propio es una ventaja competitiva clave. Monitorear mensualmente que la participación de delivery no supere el 2%. Cualquier presión comercial de PedidosYa o Rappi para aumentar descuentos debe evaluarse contra el impacto en margen neto.</span>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- TEMPLE -->
+    <div class="brand-header tem" style="margin-bottom:12px;">
+      <div>
+        <div class="bh-name" style="color:#7c3aed">Temple — Plan de Acción</div>
+        <div class="bh-sub">Objetivo: reactivar volumen de órdenes, reducir dependencia delivery, sostener ritmo</div>
+      </div>
+    </div>
+
+    <div class="accion-list">
+      <div class="accion-item">
+        <div class="accion-num tem">1</div>
+        <div class="accion-text">
+          <strong>Programa de fidelización para incrementar frecuencia <span class="prioridad prio-alta">30 días</span></strong>
+          <span>Con órdenes estancadas (+1.7% YoY), el foco debe ser aumentar la frecuencia de los clientes actuales. Diseñar un programa de puntos o beneficios progresivos para clientes con 2+ visitas/mes. Objetivo: pasar de ~26,500 órdenes/mes a 28,500 en Q3 (+7.5%).</span>
+        </div>
+      </div>
+      <div class="accion-item">
+        <div class="accion-num tem">2</div>
+        <div class="accion-text">
+          <strong>Plan de migración PedidosYa → Canal Propio <span class="prioridad prio-alta">60 días</span></strong>
+          <span>Temple pierde $93–119M/año en comisiones de delivery. Con una estrategia de incentivo (descuento del 5–8% en la app propia vs PedidosYa), se puede migrar el 40% del volumen delivery. ROI estimado: recuperar $37–48M/año neto. Diseñar la campaña con el equipo de marketing digital.</span>
+        </div>
+      </div>
+      <div class="accion-item">
+        <div class="accion-num tem">3</div>
+        <div class="accion-text">
+          <strong>Estrategia de mix de producto para elevar ticket sin presionar precio <span class="prioridad prio-media">30 días</span></strong>
+          <span>El ticket en $36,805 está en zona de resistencia. En lugar de aumentar precios, diseñar sugerencias inteligentes de adicionales (bebida premium, postre, entrada) que eleven el ticket promedio a $40,000+ sin incremento de precios base.</span>
+        </div>
+      </div>
+      <div class="accion-item">
+        <div class="accion-num tem">4</div>
+        <div class="accion-text">
+          <strong>Mantener ritmo para cerrar abril sobre objetivo <span class="prioridad prio-baja">10 días</span></strong>
+          <span>Con solo $5M de brecha negativa al día 20, Temple está muy cerca del objetivo. No requiere acción especial: sostener el ritmo operativo actual garantiza el cierre positivo del mes.</span>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- FERIADO -->
+    <div class="brand-header fer" style="margin-bottom:12px;">
+      <div>
+        <div class="bh-name" style="color:#047857">Feriado — Plan de Acción</div>
+        <div class="bh-sub">Objetivo: diagnóstico urgente de red de locales, plan de recuperación de volumen</div>
+      </div>
+    </div>
+
+    <div class="accion-list">
+      <div class="accion-item">
+        <div class="accion-num fer">1</div>
+        <div class="accion-text">
+          <strong>Diagnóstico urgente de la red de locales <span class="prioridad prio-alta">URGENTE · 5 días</span></strong>
+          <span>Determinar cuántos locales Feriado están operativos hoy. En 2025 la marca generó 7,401 órdenes en el mismo período; hoy solo se registran 5,459 órdenes desde 1 local (Coghlan). ¿Hubo cierres? ¿Problemas de integración con el sistema de datos? Esta pregunta debe responderse antes de cualquier otra acción.</span>
+        </div>
+      </div>
+      <div class="accion-item">
+        <div class="accion-num fer">2</div>
+        <div class="accion-text">
+          <strong>Si hay locales cerrados: plan de reapertura o relanzamiento <span class="prioridad prio-alta">60 días</span></strong>
+          <span>Si la caída de órdenes se debe al cierre de locales, evaluar la viabilidad de reapertura. El desempeño de Coghlan (81.9% de cumplimiento en abril, +11.2% sobre objetivo en Q1) demuestra que donde Feriado opera hay demanda activa. El modelo de negocio funciona.</span>
+        </div>
+      </div>
+      <div class="accion-item">
+        <div class="accion-num fer">3</div>
+        <div class="accion-text">
+          <strong>Si el problema es frecuencia: revisar estrategia de pricing <span class="prioridad prio-media">30 días</span></strong>
+          <span>Un aumento del 31% en ticket (de $31,780 a $41,723) puede estar inhibiendo la frecuencia de visita. Si la red está completa pero las órdenes cayeron, revisar si el nivel de precios actual es el correcto para el segmento objetivo de la marca.</span>
+        </div>
+      </div>
+      <div class="accion-item">
+        <div class="accion-num fer">4</div>
+        <div class="accion-text">
+          <strong>Plan de expansión geográfica basado en el éxito de Coghlan <span class="prioridad prio-media">90 días</span></strong>
+          <span>El local Coghlan demuestra que el formato funciona en barrios residenciales de CABA. Identificar 2–3 barrios con perfil similar (Palermo, Villa Crespo, Chacarita) para apertura de nuevos puntos y multiplicar el volumen de la marca.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 6. CONTEXTO MACROECONÓMICO ── -->
+  <div class="section">
+    <div class="sec-header">
+      <div class="sec-num">6</div>
+      <div>
+        <div class="sec-title">Contexto Macroeconómico Argentina</div>
+        <div class="sec-sub">Variables relevantes para el sector gastronómico premium · Q2 2026</div>
+      </div>
+    </div>
+
+    <div class="context-box">
+      <h4>Situación del Sector (Fuente: datos propios + benchmarks FEHGRA)</h4>
+      <p>Recuperación gradual en el segmento gastronómico premium post-recesión 2024. El consumidor ajustó <strong>frecuencia de visita antes que el gasto por salida</strong>. Q1 2026 muestra señales de rebote real en el segmento medio-alto, impulsado por mejora del salario real y desaceleración inflacionaria. Turismo interno fuerte en enero–febrero 2026 por competitividad cambiaria. <strong>Q2 es históricamente débil</strong>: necesita activación de consumo local para sostener el ingreso.</p>
+      <div class="ipc-row">
+        <div class="ipc-item"><div class="mes">Ene 26</div><div class="val">2.3%</div></div>
+        <div class="ipc-item"><div class="mes">Feb 26</div><div class="val">2.4%</div></div>
+        <div class="ipc-item"><div class="mes">Mar 26</div><div class="val">3.7%</div></div>
+        <div class="ipc-item" style="background:#1a3040;border:1px solid rgba(56,189,248,.3)"><div class="mes">Q1 Acum.</div><div class="val" style="color:#38bdf8">+8.7%</div></div>
+        <div class="ipc-item" style="background:#1a3040;border:1px solid rgba(56,189,248,.3)"><div class="mes">Bench. Real</div><div class="val" style="color:#38bdf8">+40% anual</div></div>
+      </div>
+    </div>
+
+    <div class="three-col">
+      <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:14px;">
+        <div style="font-size:8pt;color:#0369a1;font-weight:700;text-transform:uppercase;margin-bottom:6px">Umbral Ticket Premium</div>
+        <div style="font-size:16pt;font-weight:800;color:#0f172a">$35k–$65k</div>
+        <div style="font-size:8.5pt;color:#475569;margin-top:4px">Rango de resistencia del consumidor premium. Temple está en el límite inferior.</div>
+      </div>
+      <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;">
+        <div style="font-size:8pt;color:#b45309;font-weight:700;text-transform:uppercase;margin-bottom:6px">Comisión Delivery</div>
+        <div style="font-size:16pt;font-weight:800;color:#0f172a">25–32%</div>
+        <div style="font-size:8.5pt;color:#475569;margin-top:4px">PedidosYa / Rappi. Temple expone ~7% de su GMV a este costo.</div>
+      </div>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px;">
+        <div style="font-size:8pt;color:#047857;font-weight:700;text-transform:uppercase;margin-bottom:6px">Señal Q2</div>
+        <div style="font-size:12pt;font-weight:800;color:#0f172a">Activar local</div>
+        <div style="font-size:8.5pt;color:#475569;margin-top:4px">Sin turismo internacional Q2, la activación de consumo barrial es clave para sostener el ingreso.</div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;background:#fff8f0;border:1px solid #fed7aa;border-radius:8px;padding:14px;">
+      <div style="font-size:8.5pt;font-weight:700;color:#c2410c;margin-bottom:6px">⚡ Oportunidad Q2 2026</div>
+      <p style="font-size:9pt;color:#431407;line-height:1.6">La desaceleración inflacionaria (de 20.6%/mes en enero 2024 a 2.3–3.7%/mes en Q1 2026) mejora el poder adquisitivo real del segmento premium. <strong>Esto es una ventana para ganar frecuencia</strong>: los consumidores que redujeron visitas por inflación pueden ser reactivados antes de que la competencia lo haga. El contexto favorece estrategias de fidelización sobre estrategias de precio.</p>
+    </div>
+  </div>
+
+  <!-- ── 7. RESUMEN EJECUTIVO DE ACCIONES ── -->
+  <div class="section pagebreak">
+    <div class="sec-header">
+      <div class="sec-num">7</div>
+      <div>
+        <div class="sec-title">Resumen de Acciones Prioritarias</div>
+        <div class="sec-sub">Consolidado para presentación gerencial · ordenado por urgencia</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Marca</th>
+          <th>Acción</th>
+          <th class="c">Prioridad</th>
+          <th class="c">Plazo</th>
+          <th>Impacto Esperado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong style="color:#047857">Feriado</strong></td>
+          <td>Diagnóstico de red de locales activos</td>
+          <td class="c"><span class="badge badge-dn">🔴 URGENTE</span></td>
+          <td class="c">5 días</td>
+          <td>Define toda la estrategia de recuperación</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#0369a1">Patagonia</strong></td>
+          <td>Auditoría ticket Resistencia</td>
+          <td class="c"><span class="badge badge-dn">🔴 URGENTE</span></td>
+          <td class="c">5 días</td>
+          <td>Datos confiables + posible corrección de mix</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#0369a1">Patagonia</strong></td>
+          <td>Upselling en top 4 locales para cerrar abril</td>
+          <td class="c"><span class="badge badge-dn">🔴 URGENTE</span></td>
+          <td class="c">10 días</td>
+          <td>Cerrar los $64M de brecha de abril</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#7c3aed">Temple</strong></td>
+          <td>Programa de fidelización (frecuencia)</td>
+          <td class="c"><span class="badge badge-warn">🟡 ALTA</span></td>
+          <td class="c">30 días</td>
+          <td>Reactivar crecimiento real de órdenes</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#7c3aed">Temple</strong></td>
+          <td>Plan migración PedidosYa → canal propio</td>
+          <td class="c"><span class="badge badge-warn">🟡 ALTA</span></td>
+          <td class="c">60 días</td>
+          <td>Recuperar $37–48M/año en margen</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#047857">Feriado</strong></td>
+          <td>Plan reapertura / nuevos locales</td>
+          <td class="c"><span class="badge badge-warn">🟡 ALTA</span></td>
+          <td class="c">60 días</td>
+          <td>Duplicar volumen desde base actual</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#0369a1">Patagonia</strong></td>
+          <td>Plan Q2: activación consumo local</td>
+          <td class="c"><span class="badge badge-neutral">🔵 MEDIA</span></td>
+          <td class="c">30 días</td>
+          <td>Compensar caída estacional de turismo</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#7c3aed">Temple</strong></td>
+          <td>Estrategia de mix para ticket $40k+</td>
+          <td class="c"><span class="badge badge-neutral">🔵 MEDIA</span></td>
+          <td class="c">30 días</td>
+          <td>Crecer facturación sin presionar precio</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#047857">Feriado</strong></td>
+          <td>Expansión geográfica (CABA barrios)</td>
+          <td class="c"><span class="badge badge-ok">🟢 PLANIF.</span></td>
+          <td class="c">90 días</td>
+          <td>+2-3 locales nuevos, x2 volumen de marca</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#0369a1">Patagonia</strong></td>
+          <td>Monitoreo canal propio ≤2% delivery</td>
+          <td class="c"><span class="badge badge-ok">🟢 CONTÍN.</span></td>
+          <td class="c">Continuo</td>
+          <td>Preservar ventaja de margen estructural</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div>
+      <strong>Informe Gerencial de Ventas · Abril 2026</strong><br>
+      Fuente de datos: BigQuery temple-bar-439715 + Google Sheets Objetivos · Última actualización: 19 Abril 2026
+    </div>
+    <div style="text-align:right">
+      Preparado por: <strong>Darwin Salinas · Corporativo</strong><br>
+      Documento confidencial · Uso interno exclusivo
+    </div>
+  </div>
+
+</div><!-- /content-page -->
+</body>
+</html>

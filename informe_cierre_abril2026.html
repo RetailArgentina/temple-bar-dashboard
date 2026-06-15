@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Informe Cierre de Mes — Abril 2026</title>
+<style>
+  @page { size: A4; margin: 16mm 18mm 16mm 18mm; }
+  @media print {
+    .pagebreak { page-break-before: always; }
+    body { font-size: 9.5pt; }
+    .no-print { display: none; }
+    .cover { min-height: 100vh; }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color: #1a1a2e; background: #fff; font-size: 10pt; line-height: 1.55; }
+
+  /* ── PRINT BUTTON ── */
+  .print-btn {
+    position: fixed; top: 16px; right: 16px; z-index: 999;
+    background: #0f172a; color: #38bdf8; border: 1px solid #38bdf8;
+    padding: 8px 18px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    cursor: pointer; letter-spacing: .5px;
+  }
+  .print-btn:hover { background: #1e293b; }
+
+  /* ── PORTADA ── */
+  .cover {
+    min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: flex-start;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 60%, #0f3460 100%);
+    color: #fff; padding: 60px 64px; position: relative; overflow: hidden;
+  }
+  .cover::before {
+    content: ''; position: absolute; top: -80px; right: -80px; width: 420px; height: 420px;
+    border-radius: 50%; background: rgba(56,189,248,0.07); pointer-events: none;
+  }
+  .cover::after {
+    content: ''; position: absolute; bottom: -100px; left: 40%; width: 320px; height: 320px;
+    border-radius: 50%; background: rgba(110,231,183,0.05); pointer-events: none;
+  }
+  .cover-eyebrow { font-size: 8.5pt; letter-spacing: 3.5px; text-transform: uppercase; color: #38bdf8; margin-bottom: 18px; font-weight: 700; }
+  .cover-title { font-size: 38pt; font-weight: 800; line-height: 1.05; margin-bottom: 10px; }
+  .cover-period { font-size: 22pt; font-weight: 300; color: #94a3b8; margin-bottom: 8px; }
+  .cover-close-badge {
+    display: inline-block; background: rgba(110,231,183,0.15); border: 1px solid rgba(110,231,183,0.35);
+    color: #6ee7b7; font-size: 8.5pt; font-weight: 700; letter-spacing: 1px;
+    padding: 4px 14px; border-radius: 20px; margin-bottom: 36px; text-transform: uppercase;
+  }
+  .cover-divider { width: 60px; height: 3px; background: #38bdf8; margin-bottom: 32px; border-radius: 2px; }
+  .cover-meta { display: flex; gap: 52px; flex-wrap: wrap; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 28px; margin-top: 8px; }
+  .cover-meta-item label { font-size: 7.5pt; color: #64748b; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px; }
+  .cover-meta-item span { font-size: 11pt; font-weight: 600; color: #e2e8f0; }
+  .cover-brands { display: flex; gap: 10px; margin-top: 32px; }
+  .brand-pill { padding: 5px 15px; border-radius: 20px; font-size: 8.5pt; font-weight: 700; letter-spacing: .5px; }
+  .brand-pat  { background: rgba(56,189,248,0.14); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3); }
+  .brand-tem  { background: rgba(167,139,250,0.14); color: #a78bfa; border: 1px solid rgba(167,139,250,0.3); }
+  .brand-fer  { background: rgba(110,231,183,0.14); color: #6ee7b7; border: 1px solid rgba(110,231,183,0.3); }
+  .conf-pill  { background: rgba(251,191,36,0.12); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+
+  /* ── LAYOUT ── */
+  .page-body { max-width: 860px; margin: 0 auto; padding: 12px 20px 40px; }
+
+  /* ── SECCIONES ── */
+  .section { padding: 32px 0 18px; }
+  .section + .section { border-top: 1.5px solid #e2e8f0; }
+  .sec-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px; }
+  .sec-num { width: 34px; height: 34px; border-radius: 8px; background: #0f172a; color: #38bdf8;
+             font-size: 9pt; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .sec-title { font-size: 14pt; font-weight: 700; color: #0f172a; line-height: 1.2; }
+  .sec-sub { font-size: 8.5pt; color: #64748b; margin-top: 3px; }
+
+  /* ── TABLAS ── */
+  table { width: 100%; border-collapse: collapse; font-size: 9pt; margin-bottom: 14px; }
+  th { background: #0f172a; color: #94a3b8; font-size: 7.5pt; letter-spacing: .8px; text-transform: uppercase; padding: 9px 11px; font-weight: 600; text-align: left; }
+  th.r, td.r { text-align: right; }
+  th.c, td.c { text-align: center; }
+  td { padding: 8px 11px; border-bottom: 1px solid #f1f5f9; color: #1e293b; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f8fafc; }
+  tr.total-row td { background: #0f172a; color: #e2e8f0; font-weight: 700; border: none; }
+  tr.total-row td.r, tr.total-row td.c { color: #38bdf8; }
+  tr.total-row td.r-ok { color: #6ee7b7; text-align: right; }
+  tr.total-row td.r-warn { color: #fbbf24; text-align: right; }
+
+  /* ── BADGES ── */
+  .badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 5px; font-size: 7.5pt; font-weight: 700; white-space: nowrap; }
+  .badge-ok   { background: #052e16; color: #6ee7b7; }
+  .badge-warn { background: #3d2c00; color: #fbbf24; }
+  .badge-dn   { background: #450a0a; color: #fca5a5; }
+  .badge-neutral { background: #1e293b; color: #94a3b8; }
+  .badge-blue { background: #0c2a3d; color: #38bdf8; }
+
+  /* ── KPI CARDS ── */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; border-top: 3px solid #e2e8f0; }
+  .kpi-card.pat   { border-top-color: #38bdf8; }
+  .kpi-card.tem   { border-top-color: #a78bfa; }
+  .kpi-card.fer   { border-top-color: #6ee7b7; }
+  .kpi-card.total { border-top-color: #f59e0b; }
+  .kpi-label { font-size: 7pt; text-transform: uppercase; letter-spacing: .8px; color: #64748b; margin-bottom: 4px; font-weight: 700; }
+  .kpi-value { font-size: 20pt; font-weight: 800; color: #0f172a; line-height: 1; margin-bottom: 7px; }
+  .kpi-value small { font-size: 11pt; font-weight: 600; color: #475569; }
+  .kpi-sub { font-size: 7.5pt; color: #64748b; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  .kpi-sub-row { margin-top: 4px; font-size: 7.5pt; color: #94a3b8; }
+
+  /* ── RITMO BARS ── */
+  .ritmo-bar-wrap { position: relative; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: visible; margin-bottom: 10px; }
+  .ritmo-bar-fill { height: 100%; border-radius: 4px; transition: width .3s; }
+  .ritmo-marker   { position: absolute; top: -3px; width: 2px; height: 14px; background: #0f172a; border-radius: 1px; }
+
+  /* ── BRAND SECTION HEADERS ── */
+  .brand-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; margin: 14px 0 8px; }
+  .brand-header.pat { background: rgba(56,189,248,0.08); border-left: 3px solid #38bdf8; }
+  .brand-header.tem { background: rgba(167,139,250,0.08); border-left: 3px solid #a78bfa; }
+  .brand-header.fer { background: rgba(110,231,183,0.08); border-left: 3px solid #6ee7b7; }
+  .brand-header-name { font-size: 10pt; font-weight: 700; }
+  .brand-header.pat .brand-header-name { color: #0369a1; }
+  .brand-header.tem .brand-header-name { color: #7c3aed; }
+  .brand-header.fer .brand-header-name { color: #047857; }
+  .brand-header-sub { font-size: 7.5pt; color: #94a3b8; margin-left: auto; }
+
+  /* ── INSIGHT CARDS ── */
+  .insight-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .insight-card { border-radius: 10px; padding: 14px 16px; }
+  .insight-title { font-size: 9pt; font-weight: 700; margin-bottom: 6px; }
+  .insight-body  { font-size: 8pt; color: #94a3b8; line-height: 1.6; }
+
+  /* ── PLAN DE ACCION ── */
+  .plan-table th { background: #1e293b; }
+  .plan-priority { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+  .p-high   { background: #ef4444; }
+  .p-medium { background: #f59e0b; }
+  .p-low    { background: #22c55e; }
+
+  /* ── FOOTNOTE ── */
+  .footnote { font-size: 7.5pt; color: #94a3b8; margin-top: 8px; font-style: italic; }
+
+  /* ── SECTION KICKER ── */
+  .kicker { font-size: 7pt; letter-spacing: 2px; text-transform: uppercase; color: #38bdf8; font-weight: 700; margin-bottom: 6px; }
+
+  /* ── COLS ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+</style>
+</head>
+<body>
+
+<button class="print-btn no-print" onclick="window.print()">Imprimir / PDF</button>
+
+<!-- ═══════════════════════════════════════════
+     PORTADA
+═══════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-eyebrow">Temple Bar S.A. · Análisis Gerencial</div>
+  <div class="cover-title">Informe de<br>Cierre de Mes</div>
+  <div class="cover-period">Abril 2026</div>
+  <span class="cover-close-badge">✓ Mes Cerrado</span>
+  <div class="cover-divider"></div>
+  <div class="cover-brands">
+    <span class="brand-pill brand-pat">Patagonia</span>
+    <span class="brand-pill brand-tem">Temple</span>
+    <span class="brand-pill brand-fer">Feriado</span>
+    <span class="brand-pill conf-pill">Confidencial</span>
+  </div>
+  <div class="cover-meta">
+    <div class="cover-meta-item">
+      <label>Fecha de emisión</label>
+      <span>4 de Mayo 2026</span>
+    </div>
+    <div class="cover-meta-item">
+      <label>Período</label>
+      <span>1 al 30 de Abril 2026</span>
+    </div>
+    <div class="cover-meta-item">
+      <label>Preparado por</label>
+      <span>Darwin Salinas</span>
+    </div>
+    <div class="cover-meta-item">
+      <label>Destino</label>
+      <span>Equipo Gerencial</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     CUERPO DEL INFORME
+═══════════════════════════════════════════ -->
+<div class="page-body">
+
+  <!-- ── SECCIÓN 1: RESUMEN EJECUTIVO ── -->
+  <div class="section">
+    <div class="sec-header">
+      <div class="sec-num">1</div>
+      <div>
+        <div class="sec-title">Resumen Ejecutivo — Abril 2026</div>
+        <div class="sec-sub">KPIs finales del mes cerrado · 3 marcas consolidadas</div>
+      </div>
+    </div>
+
+    <!-- KPI CARDS: TOTAL + 3 MARCAS -->
+    <div class="kpi-grid">
+      <div class="kpi-card total">
+        <div class="kpi-label">Facturación Total</div>
+        <div class="kpi-value">$4.372<small>M</small></div>
+        <div class="kpi-sub">
+          <span class="badge badge-warn">98.5% del objetivo</span>
+        </div>
+        <div class="kpi-sub-row">vs Abr 2025: <strong>+29.6%</strong> nominal</div>
+      </div>
+      <div class="kpi-card pat">
+        <div class="kpi-label">Patagonia</div>
+        <div class="kpi-value">$2.987<small>M</small></div>
+        <div class="kpi-sub">
+          <span class="badge badge-ok">✓ 100.0% obj</span>
+        </div>
+        <div class="kpi-sub-row">vs Abr 2025: <strong>+48.2%</strong></div>
+      </div>
+      <div class="kpi-card tem">
+        <div class="kpi-label">Temple</div>
+        <div class="kpi-value">$1.330<small>M</small></div>
+        <div class="kpi-sub">
+          <span class="badge badge-warn">⚠ 94.5% obj</span>
+        </div>
+        <div class="kpi-sub-row">vs Abr 2025: <strong>+3.1%</strong></div>
+      </div>
+      <div class="kpi-card fer">
+        <div class="kpi-label">Feriado</div>
+        <div class="kpi-value">$55<small>M</small></div>
+        <div class="kpi-sub">
+          <span class="badge badge-ok">✓ 119.6% obj</span>
+        </div>
+        <div class="kpi-sub-row">vs Abr 2025: <strong>−19.1%</strong> <span style="font-size:6.5pt;color:#64748b">(−1 local)</span></div>
+      </div>
+    </div>
+
+    <!-- KPI ÓRDENES Y TICKET -->
+    <div class="kpi-grid-3">
+      <div class="kpi-card total" style="border-top-color:#a78bfa">
+        <div class="kpi-label">Total Órdenes</div>
+        <div class="kpi-value" style="font-size:18pt">110.072</div>
+        <div class="kpi-sub"><span class="badge badge-warn">90.8% del objetivo</span></div>
+        <div class="kpi-sub-row">vs Abr 2025: <strong>+5.9%</strong></div>
+      </div>
+      <div class="kpi-card total" style="border-top-color:#6ee7b7">
+        <div class="kpi-label">Ticket Promedio Consolidado</div>
+        <div class="kpi-value" style="font-size:18pt">$39.717</div>
+        <div class="kpi-sub"><span class="badge badge-blue">Ponderado</span></div>
+        <div class="kpi-sub-row">vs Abr 2025: <strong>+22.4%</strong> nominal</div>
+      </div>
+      <div class="kpi-card total" style="border-top-color:#f59e0b">
+        <div class="kpi-label">Cumplimiento vs Objetivo</div>
+        <div class="kpi-value" style="font-size:18pt">98.5<small style="font-size:12pt">%</small></div>
+        <div class="kpi-sub"><span class="badge badge-warn">−$67M brecha total</span></div>
+        <div class="kpi-sub-row">2 de 3 marcas en objetivo o sobre</div>
+      </div>
+    </div>
+
+    <p class="footnote">* Valores en millones de pesos ARS. Facturación bruta sin deducciones. Ticket promedio consolidado = Facturación total ÷ Órdenes totales. Feriado operó con 1 local en Abril 2026 vs 2 locales en Abril 2025, lo que explica la caída nominal en esa marca.</p>
+  </div>
+
+  <!-- ── SECCIÓN 2: CUMPLIMIENTO VS OBJETIVO ── -->
+  <div class="section pagebreak">
+    <div class="sec-header">
+      <div class="sec-num">2</div>
+      <div>
+        <div class="sec-title">Cumplimiento vs Objetivo — Abril 2026</div>
+        <div class="sec-sub">Mes cerrado · 30 días · comparación real vs objetivo planificado</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Marca</th>
+          <th class="r">Real Fac.</th>
+          <th class="r">Objetivo Fac.</th>
+          <th class="r">Cumpl. %</th>
+          <th class="r">Brecha $</th>
+          <th class="r">Real Ord.</th>
+          <th class="r">Obj. Ord.</th>
+          <th class="r">Cumpl. Ord.</th>
+          <th class="c">Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong style="color:#0369a1">Patagonia</strong></td>
+          <td class="r">$2.987M</td>
+          <td class="r">$2.986M</td>
+          <td class="r"><strong>100.0%</strong></td>
+          <td class="r" style="color:#6ee7b7">+$1M</td>
+          <td class="r">71.024</td>
+          <td class="r">77.292</td>
+          <td class="r">91.9%</td>
+          <td class="c"><span class="badge badge-ok">✓ Objetivo cumplido</span></td>
+        </tr>
+        <tr>
+          <td><strong style="color:#7c3aed">Temple</strong></td>
+          <td class="r">$1.330M</td>
+          <td class="r">$1.407M</td>
+          <td class="r"><strong>94.5%</strong></td>
+          <td class="r" style="color:#fca5a5">−$77M</td>
+          <td class="r">37.727</td>
+          <td class="r">42.884</td>
+          <td class="r">87.9%</td>
+          <td class="c"><span class="badge badge-warn">⚠ Cerca del objetivo</span></td>
+        </tr>
+        <tr>
+          <td><strong style="color:#047857">Feriado</strong></td>
+          <td class="r">$55M</td>
+          <td class="r">$46M</td>
+          <td class="r"><strong>119.6%</strong></td>
+          <td class="r" style="color:#6ee7b7">+$9M</td>
+          <td class="r">1.321</td>
+          <td class="r">1.100</td>
+          <td class="r">120.1%</td>
+          <td class="c"><span class="badge badge-ok">✓ Sobre objetivo</span></td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr class="total-row">
+          <td><strong>TOTAL RED</strong></td>
+          <td class="r">$4.372M</td>
+          <td class="r">$4.439M</td>
+          <td class="r-warn">98.5%</td>
+          <td class="r-warn">−$67M</td>
+          <td class="r">110.072</td>
+          <td class="r">121.276</td>
+          <td class="r-warn">90.8%</td>
+          <td class="c"><span class="badge badge-warn">⚠ 98.5%</span></td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <!-- BARRAS DE CUMPLIMIENTO -->
+    <div style="margin-top:8px">
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:8pt;color:#475569;margin-bottom:4px">
+          <span><strong style="color:#0369a1">Patagonia</strong> — $2.987M de $2.986M</span>
+          <span style="color:#6ee7b7;font-weight:700">100.0%</span>
+        </div>
+        <div class="ritmo-bar-wrap">
+          <div class="ritmo-bar-fill" style="width:100%;background:#38bdf8;"></div>
+          <div class="ritmo-marker" style="left:100%"></div>
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:8pt;color:#475569;margin-bottom:4px">
+          <span><strong style="color:#7c3aed">Temple</strong> — $1.330M de $1.407M</span>
+          <span style="color:#fbbf24;font-weight:700">94.5%</span>
+        </div>
+        <div class="ritmo-bar-wrap">
+          <div class="ritmo-bar-fill" style="width:94.5%;background:#a78bfa;"></div>
+          <div class="ritmo-marker" style="left:100%"></div>
+        </div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;font-size:8pt;color:#475569;margin-bottom:4px">
+          <span><strong style="color:#047857">Feriado</strong> — $55M de $46M</span>
+          <span style="color:#6ee7b7;font-weight:700">119.6%</span>
+        </div>
+        <div class="ritmo-bar-wrap">
+          <div class="ritmo-bar-fill" style="width:100%;background:#6ee7b7;"></div>
+          <div class="ritmo-marker" style="left:83.6%"></div>
+        </div>
+        <div style="font-size:7pt;color:#94a3b8;margin-top:3px">Barra al 100% por sobrepasar el objetivo. Marcador indica el 100% del objetivo.</div>
+      </div>
+    </div>
+
+    <p class="footnote">La línea vertical representa el objetivo mensual (100%). Barras que superan la línea = sobre objetivo. Temple cerró a $77M del objetivo en facturación y a 5.157 órdenes por debajo del objetivo.</p>
+  </div>
+
+  <!-- ── SECCIÓN 3: YoY vs ABRIL 2025 ── -->
+  <div class="section">
+    <div class="sec-header">
+      <div class="sec-num">3</div>
+      <div>
+        <div class="sec-title">Variación Interanual — Abril 2026 vs Abril 2025</div>
+        <div class="sec-sub">Crecimiento nominal vs inflación acumulada 12 meses (~39% IPC INDEC)</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Marca</th>
+          <th class="r">Real Abr 2026</th>
+          <th class="r">Real Abr 2025</th>
+          <th class="r">Δ Nominal</th>
+          <th class="r">Inflación 12m</th>
+          <th class="r">Δ Real</th>
+          <th class="r">Δ Órdenes</th>
+          <th class="r">Δ Ticket</th>
+          <th class="c">Crecimiento real</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong style="color:#0369a1">Patagonia</strong></td>
+          <td class="r">$2.987M</td>
+          <td class="r">$2.016M</td>
+          <td class="r" style="color:#6ee7b7"><strong>+48.2%</strong></td>
+          <td class="r">~39%</td>
+          <td class="r" style="color:#6ee7b7"><strong>+6.6%</strong></td>
+          <td class="r" style="color:#6ee7b7">+30.7%</td>
+          <td class="r">+14.0%</td>
+          <td class="c"><span class="badge badge-ok">✓ Crece en real</span></td>
+        </tr>
+        <tr>
+          <td><strong style="color:#7c3aed">Temple</strong></td>
+          <td class="r">$1.330M</td>
+          <td class="r">$1.290M</td>
+          <td class="r" style="color:#fbbf24"><strong>+3.1%</strong></td>
+          <td class="r">~39%</td>
+          <td class="r" style="color:#fca5a5"><strong>−25.8%</strong></td>
+          <td class="r" style="color:#fca5a5">−20.2%</td>
+          <td class="r" style="color:#6ee7b7">+28.1%</td>
+          <td class="c"><span class="badge badge-dn">✗ Contracción real</span></td>
+        </tr>
+        <tr>
+          <td><strong style="color:#047857">Feriado</strong></td>
+          <td class="r">$55M</td>
+          <td class="r">$68M</td>
+          <td class="r" style="color:#fca5a5"><strong>−19.1%</strong></td>
+          <td class="r">~39%</td>
+          <td class="r" style="color:#fca5a5"><strong>−41.8%</strong></td>
+          <td class="r" style="color:#fca5a5">−41.9%</td>
+          <td class="r" style="color:#6ee7b7">+38.7%</td>
+          <td class="c"><span class="badge badge-neutral">★ Ajuste de red</span></td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr class="total-row">
+          <td><strong>TOTAL RED</strong></td>
+          <td class="r">$4.372M</td>
+          <td class="r">$3.374M</td>
+          <td class="r-ok">+29.6%</td>
+          <td class="r">~39%</td>
+          <td class="r-warn">−6.8%</td>
+          <td class="r-warn">+5.9%</td>
+          <td class="r-ok">+22.4%</td>
+          <td class="c"><span class="badge badge-warn">⚠ Debajo inflación</span></td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin-top:4px;">
+      <div style="font-size:8pt;font-weight:700;color:#0f172a;margin-bottom:8px;">Lectura gerencial del YoY</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+        <div>
+          <div style="font-size:7.5pt;color:#0369a1;font-weight:700;margin-bottom:3px">Patagonia — único crecimiento real</div>
+          <div style="font-size:7.5pt;color:#475569;line-height:1.5">Creció +6.6% en términos reales: supera inflación. Combinación de expansión de red (+locales Patagonia sur) y suba de ticket (+14%).</div>
+        </div>
+        <div>
+          <div style="font-size:7.5pt;color:#7c3aed;font-weight:700;margin-bottom:3px">Temple — recuperación incompleta</div>
+          <div style="font-size:7.5pt;color:#475569;line-height:1.5">+28% de ticket compensa parcialmente −20% de volumen. La red de locales perdió tráfico respecto a 2025. Prioridad: recuperar frecuencia de visita.</div>
+        </div>
+        <div>
+          <div style="font-size:7.5pt;color:#047857;font-weight:700;margin-bottom:3px">Feriado — contexto de red</div>
+          <div style="font-size:7.5pt;color:#475569;line-height:1.5">Comparación afectada por operar con 1 local en Abr 2026 vs 2 en Abr 2025. En términos por local, ticket creció +38.7%. Base no comparable.</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="footnote" style="margin-top:10px">* Inflación 12 meses (Abr 2025 → Abr 2026): ~39% (IPC INDEC, estimación acumulada). Δ Real = (1 + Δ Nominal) / (1 + Inflación) − 1. Feriado: −1 local activo en Abr 2026 vs Abr 2025.</p>
+  </div>
+
+  <!-- ── SECCIÓN 4: YTD ENERO–ABRIL 2026 ── -->
+  <div class="section pagebreak">
+    <div class="sec-header">
+      <div class="sec-num">4</div>
+      <div>
+        <div class="sec-title">Acumulado YTD — Enero a Abril 2026</div>
+        <div class="sec-sub">4 meses cerrados · performance del año hasta el cierre de abril</div>
+      </div>
+    </div>
+
+    <!-- TABLA YTD FACTURACIÓN -->
+    <table>
+      <thead>
+        <tr>
+          <th>Marca</th>
+          <th class="r">Enero</th>
+          <th class="r">Febrero</th>
+          <th class="r">Marzo</th>
+          <th class="r">Abril</th>
+          <th class="r">YTD Real</th>
+          <th class="r">YTD Objetivo</th>
+          <th class="r">Cumpl. YTD</th>
+          <th class="c">Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong style="color:#0369a1">Patagonia</strong></td>
+          <td class="r">$4.567M</td>
+          <td class="r">$3.695M</td>
+          <td class="r">$3.440M</td>
+          <td class="r">$2.987M</td>
+          <td class="r"><strong>$14.689M</strong></td>
+          <td class="r">$14.702M</td>
+          <td class="r"><strong>99.9%</strong></td>
+          <td class="c"><span class="badge badge-warn">⚠ −$13M</span></td>
+        </tr>
+        <tr>
+          <td><strong style="color:#7c3aed">Temple</strong></td>
+          <td class="r">$1.513M</td>
+          <td class="r">$1.442M</td>
+          <td class="r">$1.460M</td>
+          <td class="r">$1.330M</td>
+          <td class="r"><strong>$5.745M</strong></td>
+          <td class="r">$5.597M</td>
+          <td class="r"><strong>102.6%</strong></td>
+          <td class="c"><span class="badge badge-ok">✓ +$148M</span></td>
+        </tr>
+        <tr>
+          <td><strong style="color:#047857">Feriado</strong></td>
+          <td class="r">$73M</td>
+          <td class="r">$59M</td>
+          <td class="r">$58M</td>
+          <td class="r">$55M</td>
+          <td class="r"><strong>$245M</strong></td>
+          <td class="r">$217M</td>
+          <td class="r"><strong>112.9%</strong></td>
+          <td class="c"><span class="badge badge-ok">✓ +$28M</span></td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr class="total-row">
+          <td><strong>TOTAL RED</strong></td>
+          <td class="r">$6.153M</td>
+          <td class="r">$5.196M</td>
+          <td class="r">$4.958M</td>
+          <td class="r">$4.372M</td>
+          <td class="r">$20.679M</td>
+          <td class="r">$20.516M</td>
+          <td class="r-ok">100.8%</td>
+          <td class="c"><span class="badge badge-ok">✓ +$163M</span></td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;margin-bottom:14px;">
+      <div style="font-size:8.5pt;font-weight:700;color:#166534;margin-bottom:4px">La red cierra Q1+Abril en objetivo: $20.679M acumulados vs $20.516M objetivo = 100.8%</div>
+      <div style="font-size:7.5pt;color:#166534;line-height:1.6">
+        Temple compensa con superávit de $148M el déficit de Patagonia (−$13M). Feriado aporta un excedente de $28M.
+        La tendencia muestra desaceleración mensual en las 3 marcas (Ene&gt;Feb&gt;Mar&gt;Abr), consecuente con la estacionalidad otoño-invierno.
+      </div>
+    </div>
+
+    <!-- TABLA YTD ÓRDENES -->
+    <table style="font-size:8.5pt">
+      <thead>
+        <tr>
+          <th>Marca</th>
+          <th class="r">YTD Órdenes</th>
+          <th class="r">YTD Obj. Ord.</th>
+          <th class="r">Cumpl. Ord.</th>
+          <th class="r">Ticket Promedio Abr</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong style="color:#0369a1">Patagonia</strong></td>
+          <td class="r">334.853</td>
+          <td class="r">379.359</td>
+          <td class="r"><span class="badge badge-dn">88.3%</span></td>
+          <td class="r">$42.281</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#7c3aed">Temple</strong></td>
+          <td class="r">170.598</td>
+          <td class="r">169.582</td>
+          <td class="r"><span class="badge badge-ok">100.6%</span></td>
+          <td class="r">$36.377</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#047857">Feriado</strong></td>
+          <td class="r">5.903</td>
+          <td class="r">5.669</td>
+          <td class="r"><span class="badge badge-ok">104.1%</span></td>
+          <td class="r">$41.554</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr class="total-row">
+          <td><strong>TOTAL</strong></td>
+          <td class="r">511.354</td>
+          <td class="r">554.610</td>
+          <td class="r-warn">92.2%</td>
+          <td class="r-ok">$39.717</td>
+        </tr>
+      </tfoot>
+    </table>
+    <p class="footnote">Patagonia arrastra brecha de órdenes YTD (88.3%) compensada por ticket más alto ($42.281 vs $36.377 Temple). Resultado neto en facturación: prácticamente en objetivo.</p>
+  </div>
+
+  <!-- ── SECCIÓN 5: TOP 10 LOCALES ── -->
+  <div class="section pagebreak">
+    <div class="sec-header">
+      <div class="sec-num">5</div>
+      <div>
+        <div class="sec-title">Ranking Top 10 Locales — Abril 2026</div>
+        <div class="sec-sub">Ordenados por facturación · mes cerrado</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th class="c">#</th>
+          <th>Local</th>
+          <th class="c">Marca</th>
+          <th class="r">Facturación</th>
+          <th class="r">Órdenes</th>
+          <th class="r">Ticket Prom.</th>
+          <th class="r">% del Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="c" style="font-weight:800;color:#f59e0b">🥇</td>
+          <td><strong>MIS - PUERTO IGUAZU</strong></td>
+          <td class="c"><span class="badge badge-blue">Patagonia</span></td>
+          <td class="r"><strong>$244.6M</strong></td>
+          <td class="r">4.563</td>
+          <td class="r">$53.606</td>
+          <td class="r">5.6%</td>
+        </tr>
+        <tr>
+          <td class="c" style="font-weight:800;color:#94a3b8">🥈</td>
+          <td><strong>PUERTO MADERO</strong></td>
+          <td class="c"><span class="badge" style="background:#1e0c3d;color:#a78bfa">Temple</span></td>
+          <td class="r"><strong>$229.2M</strong></td>
+          <td class="r">4.662</td>
+          <td class="r">$49.157</td>
+          <td class="r">5.2%</td>
+        </tr>
+        <tr>
+          <td class="c" style="font-weight:800;color:#b45309">🥉</td>
+          <td><strong>USHUAIA</strong></td>
+          <td class="c"><span class="badge badge-blue">Patagonia</span></td>
+          <td class="r"><strong>$228.5M</strong></td>
+          <td class="r">3.950</td>
+          <td class="r">$57.859</td>
+          <td class="r">5.2%</td>
+        </tr>
+        <tr>
+          <td class="c" style="color:#64748b;font-weight:700">4</td>
+          <td>CHALTEN</td>
+          <td class="c"><span class="badge badge-blue">Patagonia</span></td>
+          <td class="r">$222.2M</td>
+          <td class="r">4.320</td>
+          <td class="r">$51.435</td>
+          <td class="r">5.1%</td>
+        </tr>
+        <tr>
+          <td class="c" style="color:#64748b;font-weight:700">5</td>
+          <td>CLUB TEMPLE</td>
+          <td class="c"><span class="badge" style="background:#1e0c3d;color:#a78bfa">Temple</span></td>
+          <td class="r">$204.8M</td>
+          <td class="r">3.999</td>
+          <td class="r">$51.223</td>
+          <td class="r">4.7%</td>
+        </tr>
+        <tr>
+          <td class="c" style="color:#64748b;font-weight:700">6</td>
+          <td>PUERTO MADERO</td>
+          <td class="c"><span class="badge badge-blue">Patagonia</span></td>
+          <td class="r">$186.2M</td>
+          <td class="r">3.752</td>
+          <td class="r">$49.632</td>
+          <td class="r">4.3%</td>
+        </tr>
+        <tr>
+          <td class="c" style="color:#64748b;font-weight:700">7</td>
+          <td>SOHO</td>
+          <td class="c"><span class="badge" style="background:#1e0c3d;color:#a78bfa">Temple</span></td>
+          <td class="r">$151.1M</td>
+          <td class="r">4.387</td>
+          <td class="r">$34.448</td>
+          <td class="r">3.5%</td>
+        </tr>
+        <tr>
+          <td class="c" style="color:#64748b;font-weight:700">8</td>
+          <td>RIO GALLEGOS</td>
+          <td class="c"><span class="badge badge-blue">Patagonia</span></td>
+          <td class="r">$150.4M</td>
+          <td class="r">4.717</td>
+          <td class="r">$31.883</td>
+          <td class="r">3.4%</td>
+        </tr>
+        <tr>
+          <td class="c" style="color:#64748b;font-weight:700">9</td>
+          <td>RESISTENCIA</td>
+          <td class="c"><span class="badge badge-blue">Patagonia</span></td>
+          <td class="r">$143.3M</td>
+          <td class="r">10.117</td>
+          <td class="r">$14.160</td>
+          <td class="r">3.3%</td>
+        </tr>
+        <tr>
+          <td class="c" style="color:#64748b;font-weight:700">10</td>
+          <td>NEUQUEN</td>
+          <td class="c"><span class="badge badge-blue">Patagonia</span></td>
+          <td class="r">$139.6M</td>
+          <td class="r">1.965</td>
+          <td class="r">$71.024</td>
+          <td class="r">3.2%</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr class="total-row">
+          <td colspan="3"><strong>TOP 10 SUBTOTAL</strong></td>
+          <td class="r">$1.899.9M</td>
+          <td class="r">46.432</td>
+          <td class="r">$40.919</td>
+          <td class="r-ok">43.5% del total</td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:4px">
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px">
+        <div style="font-size:7.5pt;font-weight:700;color:#0f172a;margin-bottom:6px">Distribución por marca en Top 10</div>
+        <div style="font-size:8pt;color:#475569;line-height:1.8">
+          <span style="color:#38bdf8">■</span> <strong>Patagonia:</strong> 7 locales · $1.359.8M · 71.6% del top 10<br>
+          <span style="color:#a78bfa">■</span> <strong>Temple:</strong> 3 locales · $585.1M · 30.8% del top 10<br>
+          <span style="color:#6ee7b7">■</span> <strong>Feriado:</strong> 0 locales en top 10 (1 local total)
+        </div>
+      </div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px">
+        <div style="font-size:7.5pt;font-weight:700;color:#0f172a;margin-bottom:6px">Observaciones de ticket</div>
+        <div style="font-size:8pt;color:#475569;line-height:1.8">
+          <strong>NEUQUEN</strong> tiene el ticket más alto del top 10: $71.024.<br>
+          <strong>RESISTENCIA</strong> tiene el mayor volumen de órdenes (10.117) con ticket más bajo ($14.160) — modelo de alta frecuencia y bajo ticket medio.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECCIÓN 6: TURNO Y CANAL ── -->
+  <div class="section pagebreak">
+    <div class="sec-header">
+      <div class="sec-num">6</div>
+      <div>
+        <div class="sec-title">Análisis por Turno y Canal — Abril 2026</div>
+        <div class="sec-sub">Distribución de facturación por franja horaria y canal de venta</div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <!-- TURNO -->
+      <div>
+        <div class="kicker">Por Turno</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Marca / Turno</th>
+              <th class="r">Facturación</th>
+              <th class="r">% mix</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:#f0f9ff">
+              <td colspan="3" style="padding:5px 11px;font-size:7.5pt;font-weight:700;color:#0369a1">Patagonia — $2.987M</td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Noche</td>
+              <td class="r">$1.067.9M</td>
+              <td class="r"><strong>35.7%</strong></td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Mañana</td>
+              <td class="r">$904.2M</td>
+              <td class="r">30.3%</td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Tarde</td>
+              <td class="r">$897.1M</td>
+              <td class="r">30.0%</td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Extra</td>
+              <td class="r">$118.0M</td>
+              <td class="r">3.9%</td>
+            </tr>
+            <tr style="background:#faf5ff">
+              <td colspan="3" style="padding:5px 11px;font-size:7.5pt;font-weight:700;color:#7c3aed">Temple — $1.330M</td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Noche</td>
+              <td class="r">$824.9M</td>
+              <td class="r"><strong>62.0%</strong></td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Tarde</td>
+              <td class="r">$271.8M</td>
+              <td class="r">20.4%</td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Mañana</td>
+              <td class="r">$228.8M</td>
+              <td class="r">17.2%</td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Extra</td>
+              <td class="r">$4.2M</td>
+              <td class="r">0.3%</td>
+            </tr>
+            <tr style="background:#f0fdf4">
+              <td colspan="3" style="padding:5px 11px;font-size:7.5pt;font-weight:700;color:#047857">Feriado — $55M</td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Noche</td>
+              <td class="r">$35.1M</td>
+              <td class="r"><strong>63.9%</strong></td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Tarde</td>
+              <td class="r">$19.8M</td>
+              <td class="r">36.1%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- CANAL -->
+      <div>
+        <div class="kicker">Por Canal de Venta</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Marca / Canal</th>
+              <th class="r">Facturación</th>
+              <th class="r">% mix</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:#f0f9ff">
+              <td colspan="3" style="padding:5px 11px;font-size:7.5pt;font-weight:700;color:#0369a1">Patagonia — $2.987M</td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">App Propia</td>
+              <td class="r">$2.935M</td>
+              <td class="r"><strong style="color:#6ee7b7">98.3%</strong></td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Pedidos Ya</td>
+              <td class="r">$52M</td>
+              <td class="r">1.7%</td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Rappi</td>
+              <td class="r">~$0M</td>
+              <td class="r">0.0%</td>
+            </tr>
+            <tr style="background:#faf5ff">
+              <td colspan="3" style="padding:5px 11px;font-size:7.5pt;font-weight:700;color:#7c3aed">Temple — $1.330M</td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">App Propia</td>
+              <td class="r">$1.229M</td>
+              <td class="r"><strong style="color:#6ee7b7">92.4%</strong></td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Pedidos Ya</td>
+              <td class="r">$101M</td>
+              <td class="r">7.6%</td>
+            </tr>
+            <tr>
+              <td style="padding-left:20px">Otros digitales</td>
+              <td class="r">~$0M</td>
+              <td class="r">0.0%</td>
+            </tr>
+            <tr style="background:#f0fdf4">
+              <td colspan="3" style="padding:5px 11px;font-size:7.5pt;font-weight:700;color:#047857">Feriado — $55M</td>
+            </tr>
+            <tr>
+              <td colspan="3" style="padding:8px 20px;font-size:7.5pt;color:#94a3b8;font-style:italic">Opera 100% canal directo (sin app de terceros)</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="background:#052e16;border:1px solid rgba(110,231,183,.2);border-radius:8px;padding:12px 14px;margin-top:8px">
+          <div style="font-size:8pt;font-weight:700;color:#6ee7b7;margin-bottom:4px">Canal propio red: 94.6%</div>
+          <div style="font-size:7.5pt;color:#94a3b8;line-height:1.6">
+            Patagonia 98.3% + Temple 92.4% ponderados ≈ 95% del canal es directo.
+            A 25-32% de comisión de terceros, cada punto de mix en canal directo representa ~$13M de margen adicional a nivel red.
+            Objetivo: mantener canal propio por encima del 90% en todas las marcas durante Mayo.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-top:14px">
+      <div style="font-size:8pt;font-weight:700;color:#0f172a;margin-bottom:6px">Insight turno: Patagonia mucho más distribuida que Temple y Feriado</div>
+      <div style="font-size:7.5pt;color:#475569;line-height:1.6">
+        Patagonia distribuye casi equitativamente entre Noche (35.7%), Mañana (30.3%) y Tarde (30.0%) — modelo de negocio durante todo el día.
+        Temple y Feriado concentran el 62-64% de facturación en el turno Noche, lo que implica mayor vulnerabilidad ante factores que afecten específicamente la demanda nocturna
+        (clima, eventos, días de semana). <strong>Oportunidad:</strong> activar Mañana en Temple (actualmente 17%) mediante promociones desayuno/brunch dirigidas a la app propia.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECCIÓN 7: INSIGHTS + PLAN DE ACCIÓN ── -->
+  <div class="section pagebreak">
+    <div class="sec-header">
+      <div class="sec-num">7</div>
+      <div>
+        <div class="sec-title">Insights Clave + Plan de Acción Mayo 2026</div>
+        <div class="sec-sub">Análisis de cierre · objetivos y acciones prioritarias para el mes siguiente</div>
+      </div>
+    </div>
+
+    <!-- INSIGHTS GRID -->
+    <div class="kicker" style="margin-bottom:10px">Insights del cierre de abril</div>
+    <div class="insight-grid" style="margin-bottom:20px">
+      <div class="insight-card" style="background:#064e3b;border:1px solid rgba(110,231,183,.2)">
+        <div class="insight-title" style="color:#6ee7b7">Red en objetivo YTD a pesar de desaceleración mensual</div>
+        <div class="insight-body">Los 4 meses acumulados suman $20.679M vs objetivo de $20.516M (+0.8%). Abril fue el mes más débil del año ($4.372M), consistente con la estacionalidad otoño. El año sigue encaminado si se mantiene el ritmo en los meses de mayor tráfico.</div>
+      </div>
+      <div class="insight-card" style="background:#0c2a3d;border:1px solid rgba(56,189,248,.2)">
+        <div class="insight-title" style="color:#38bdf8">Patagonia: único crecimiento real en YoY (+6.6%)</div>
+        <div class="insight-body">Es la única marca que creció por encima de la inflación interanual (~39%). El crecimiento se apoya en expansión de locales Patagonia sur (Iguazú #1, Ushuaia #3, Chaltén #4) con ticket promedio >$50K. Diferenciador estratégico del portfolio.</div>
+      </div>
+      <div class="insight-card" style="background:#3d2c00;border:1px solid rgba(251,191,36,.2)">
+        <div class="insight-title" style="color:#fbbf24">Temple: volumen cae, ticket sube — desafío de frecuencia</div>
+        <div class="insight-body">Temple perdió −20.2% de órdenes YoY pero recuperó ticket (+28.1%). La base de clientes paga más por visita pero visita menos. Riesgo: si el ticket toca el techo de elasticidad, el negocio se achica. Acción urgente: recuperar frecuencia de visita.</div>
+      </div>
+      <div class="insight-card" style="background:#1e0c3d;border:1px solid rgba(167,139,250,.2)">
+        <div class="insight-title" style="color:#a78bfa">Canal propio >94%: ventaja estructural de margen</div>
+        <div class="insight-body">Patagonia al 98.3% y Temple al 92.4% de canal directo. Con comisiones de terceros de 25-32%, mantener este nivel equivale a un subsidio de ~$400-500M por año en margen bruto vs una red que dependa de Rappi/PY.</div>
+      </div>
+    </div>
+
+    <!-- OBJETIVOS MAYO -->
+    <div class="kicker" style="margin-bottom:8px">Objetivos Mayo 2026</div>
+    <table style="margin-bottom:20px">
+      <thead>
+        <tr>
+          <th>Marca</th>
+          <th class="r">Objetivo Fac. Mayo</th>
+          <th class="r">Objetivo Ord. Mayo</th>
+          <th class="r">Superávit YTD arrastrado</th>
+          <th class="c">Contexto</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong style="color:#0369a1">Patagonia</strong></td>
+          <td class="r">$2.929M</td>
+          <td class="r">67.449</td>
+          <td class="r" style="color:#fca5a5">−$13M (déficit)</td>
+          <td class="c"><span class="badge badge-warn">Recuperar brecha</span></td>
+        </tr>
+        <tr>
+          <td><strong style="color:#7c3aed">Temple</strong></td>
+          <td class="r">$1.424M</td>
+          <td class="r">38.137</td>
+          <td class="r" style="color:#6ee7b7">+$148M (superávit)</td>
+          <td class="c"><span class="badge badge-ok">Mantener ritmo</span></td>
+        </tr>
+        <tr>
+          <td><strong style="color:#047857">Feriado</strong></td>
+          <td class="r">Sin obj. definido</td>
+          <td class="r">—</td>
+          <td class="r" style="color:#6ee7b7">+$28M (superávit)</td>
+          <td class="c"><span class="badge badge-neutral">Definir objetivo</span></td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr class="total-row">
+          <td><strong>TOTAL MAYO</strong></td>
+          <td class="r">$4.353M+</td>
+          <td class="r">105.586+</td>
+          <td class="r-ok">+$163M YTD</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <!-- PLAN DE ACCIÓN -->
+    <div class="kicker" style="margin-bottom:8px">Plan de acción — Mayo 2026</div>
+    <table class="plan-table">
+      <thead>
+        <tr>
+          <th class="c">Prior.</th>
+          <th>Acción</th>
+          <th class="c">Marca</th>
+          <th>Meta / KPI</th>
+          <th class="c">Deadline</th>
+          <th class="c">Responsable</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="c"><span class="plan-priority p-high"></span>Alta</td>
+          <td>Activar campaña frecuencia de visita Temple: programa de puntos o beneficio por visita reiterada en canal propio</td>
+          <td class="c"><span class="badge" style="background:#1e0c3d;color:#a78bfa">Temple</span></td>
+          <td>Recuperar +10% órdenes mayo vs abril<br><span style="font-size:7pt;color:#94a3b8">Base: 37.727 → meta: 41.500</span></td>
+          <td class="c">15/05</td>
+          <td class="c">Marketing / Ops</td>
+        </tr>
+        <tr>
+          <td class="c"><span class="plan-priority p-high"></span>Alta</td>
+          <td>Revisión de cumplimiento por local Temple: identificar locales con mayor desvío vs objetivo individual y asignar plan correctivo</td>
+          <td class="c"><span class="badge" style="background:#1e0c3d;color:#a78bfa">Temple</span></td>
+          <td>Top 5 locales bajo 80% cumplimiento con plan activo</td>
+          <td class="c">10/05</td>
+          <td class="c">Regional Ops</td>
+        </tr>
+        <tr>
+          <td class="c"><span class="plan-priority p-medium"></span>Media</td>
+          <td>Activar turno Mañana en Temple (actualmente 17% del mix): promo desayuno/brunch dirigida a canal directo L-J</td>
+          <td class="c"><span class="badge" style="background:#1e0c3d;color:#a78bfa">Temple</span></td>
+          <td>Llevar turno Mañana de 17% a 20% del mix en mayo</td>
+          <td class="c">08/05</td>
+          <td class="c">Marketing</td>
+        </tr>
+        <tr>
+          <td class="c"><span class="plan-priority p-medium"></span>Media</td>
+          <td>Patagonia: recuperar brecha de órdenes YTD. Activar locales rezagados en cumplimiento de órdenes (déficit 11.7% en YTD)</td>
+          <td class="c"><span class="badge badge-blue">Patagonia</span></td>
+          <td>Órdenes mayo ≥ 67.449 · cerrar brecha YTD a −5% o menos</td>
+          <td class="c">31/05</td>
+          <td class="c">Ops / CRM</td>
+        </tr>
+        <tr>
+          <td class="c"><span class="plan-priority p-medium"></span>Media</td>
+          <td>Capitalizar locales estrella Patagonia sur (Iguazú, Ushuaia, Chaltén): estrategia de upselling para mantener ticket >$50K en invierno</td>
+          <td class="c"><span class="badge badge-blue">Patagonia</span></td>
+          <td>Mantener ticket promedio top 3 locales > $50.000 en mayo</td>
+          <td class="c">31/05</td>
+          <td class="c">Revenue Mgmt</td>
+        </tr>
+        <tr>
+          <td class="c"><span class="plan-priority p-medium"></span>Media</td>
+          <td>Definir objetivo facturación mayo para Feriado (actualmente en $0 en la planilla) y cargar en sistema</td>
+          <td class="c"><span class="badge" style="background:#052e16;color:#6ee7b7">Feriado</span></td>
+          <td>Objetivo cargado en planilla antes de 08/05</td>
+          <td class="c">08/05</td>
+          <td class="c">Control de Gestión</td>
+        </tr>
+        <tr>
+          <td class="c"><span class="plan-priority p-low"></span>Baja</td>
+          <td>Mantener canal propio >90% en las 3 marcas. Monitoreo semanal de mix de canal y alerta si PY/Rappi supera 10%</td>
+          <td class="c"><span class="badge badge-neutral">Todas</span></td>
+          <td>Canal propio ≥ 90% en toda la red durante mayo</td>
+          <td class="c">Continuo</td>
+          <td class="c">Digital / Ops</td>
+        </tr>
+        <tr>
+          <td class="c"><span class="plan-priority p-low"></span>Baja</td>
+          <td>Evaluar viabilidad de apertura de segundo local Feriado en Q3 2026 (superó objetivo 19.6% en abril con 1 local activo)</td>
+          <td class="c"><span class="badge" style="background:#052e16;color:#6ee7b7">Feriado</span></td>
+          <td>Análisis de mercado + proyección financiera entregado antes de fin de mayo</td>
+          <td class="c">31/05</td>
+          <td class="c">Expansión / CFO</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="footnote">Prioridades: ● Alta = impacto directo en cumplimiento mayo · ● Media = mejora estructural mes · ● Baja = decisiones estratégicas Q2-Q3.</p>
+  </div>
+
+  <!-- ── FOOTER ── -->
+  <div style="border-top:1.5px solid #e2e8f0;padding-top:18px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+    <div style="font-size:7.5pt;color:#94a3b8">
+      Temple Bar S.A. · Informe de Cierre Mensual · Abril 2026 · Confidencial<br>
+      Datos: BigQuery <code>temple-bar-439715.Corporativo.vw_Ventas_Corporativo_Base</code> · Generado el 4 de Mayo 2026
+    </div>
+    <div style="font-size:7.5pt;color:#94a3b8;text-align:right">
+      Uso exclusivo equipo gerencial<br>
+      No distribuir externamente
+    </div>
+  </div>
+
+</div><!-- /page-body -->
+</body>
+</html>

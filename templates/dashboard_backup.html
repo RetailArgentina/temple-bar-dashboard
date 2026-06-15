@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Temple Bar Executive Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+</head>
+<body>
+
+    <!-- Loading overlay — hidden by JS after data loads -->
+    <div id="loadingOverlay" class="loading-overlay">
+        Cargando datos…
+    </div>
+
+    <div class="header no-print">
+        <div class="header-top">
+            <div class="logo">🍺 Temple Bar Executive Dashboard</div>
+            <div class="header-controls">
+                <div class="date-range">
+                    <label>Período:</label>
+                    <input type="text" id="dateRange" placeholder="Seleccionar fechas">
+                </div>
+                <!-- Options populated dynamically by dashboard.js from /api/data -->
+                <select id="estabSelect" class="estab-select">
+                    <option value="ALL">Todos los establecimientos</option>
+                </select>
+            </div>
+            <div class="header-buttons">
+                <span class="user-info no-print">{{ user.name }}</span>
+                <form method="post" action="{{ url_for('logout') }}" style="display:inline" class="no-print">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn-logout">Salir</button>
+                </form>
+                <button id="btnDark">🌙</button>
+                <button id="btnPrint" class="no-print">📄 PDF</button>
+            </div>
+        </div>
+        <div class="header-bottom no-print">
+            <span id="lastUpdated"></span>
+            <span class="data-limit-notice">Datos: últimos 90 días</span>
+        </div>
+    </div>
+
+    <div class="tabs no-print">
+        <button class="tab-btn active" data-tab="tab-resumen">Resumen</button>
+        <button class="tab-btn" data-tab="tab-cerv">Cervezas</button>
+        <button class="tab-btn" data-tab="tab-gin">Gin</button>
+        <button class="tab-btn" data-tab="tab-ferid">Feriado</button>
+        <button class="tab-btn" data-tab="tab-mix">Productos</button>
+    </div>
+
+    <div class="content">
+        <!-- TAB 1: RESUMEN -->
+        <div id="tab-resumen" class="tab-content active">
+            <div class="tab-toolbar no-print">
+                <button onclick="exportResumen()">⬇ Descargar CSV</button>
+            </div>
+            <div id="kpiResumen" class="kpi-row"></div>
+            <div class="chart-row">
+                <div class="chart-wrapper">
+                    <div class="chart-title">Ventas Diarias</div>
+                    <div class="chart-container">
+                        <canvas id="chartVentasDiarias"></canvas>
+                    </div>
+                </div>
+                <div class="chart-wrapper">
+                    <div class="chart-title">Órdenes por Canal</div>
+                    <div class="chart-container">
+                        <canvas id="chartCanal"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="chart-row">
+                <div class="chart-wrapper">
+                    <div class="chart-title">Ventas por Turno</div>
+                    <div class="chart-container">
+                        <canvas id="chartTurno"></canvas>
+                    </div>
+                </div>
+                <div class="chart-wrapper">
+                    <div class="chart-title">Mix de Categorías</div>
+                    <div class="chart-container">
+                        <canvas id="chartMix"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <div class="table-title">Top 10 Establecimientos</div>
+                <table id="tableEstab"></table>
+            </div>
+            <div id="alertsContainer" class="alerts-grid"></div>
+        </div>
+
+        <!-- TAB 2: CERVEZAS -->
+        <div id="tab-cerv" class="tab-content">
+            <div class="tab-toolbar no-print">
+                <button onclick="exportCerv()">⬇ Descargar CSV</button>
+            </div>
+            <div id="kpiCerv" class="kpi-row"></div>
+            <div class="chart-row">
+                <div class="chart-wrapper">
+                    <div class="chart-title">Top 10 Estilos</div>
+                    <div class="chart-container">
+                        <canvas id="chartCervTop"></canvas>
+                    </div>
+                </div>
+                <div class="chart-wrapper">
+                    <div class="chart-title">Categorías</div>
+                    <div class="chart-container">
+                        <canvas id="chartCervCat"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <div class="table-title">Detalle Cervezas</div>
+                <table id="tableCerv"></table>
+            </div>
+        </div>
+
+        <!-- TAB 3: GIN -->
+        <div id="tab-gin" class="tab-content">
+            <div class="tab-toolbar no-print">
+                <button onclick="exportGin()">⬇ Descargar CSV</button>
+            </div>
+            <div id="kpiGin" class="kpi-row"></div>
+            <div class="chart-row">
+                <div class="chart-wrapper">
+                    <div class="chart-title">Top 10 Productos</div>
+                    <div class="chart-container">
+                        <canvas id="chartGinTop"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <div class="table-title">Detalle Gin</div>
+                <table id="tableGin"></table>
+            </div>
+        </div>
+
+        <!-- TAB 4: FERIADO -->
+        <div id="tab-ferid" class="tab-content">
+            <div class="tab-toolbar no-print">
+                <button onclick="exportFerid()">⬇ Descargar CSV</button>
+            </div>
+            <div id="kpiFerid" class="kpi-row"></div>
+            <div class="chart-row">
+                <div class="chart-wrapper">
+                    <div class="chart-title">Top 10 Productos Feriado</div>
+                    <div class="chart-container">
+                        <canvas id="chartFeridTop"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <div class="table-title">Detalle Feriado</div>
+                <table id="tableFerid"></table>
+            </div>
+        </div>
+
+        <!-- TAB 5: PRODUCTOS (MIX) -->
+        <div id="tab-mix" class="tab-content">
+            <div class="tab-toolbar no-print">
+                <button onclick="exportMix()">⬇ Descargar CSV</button>
+            </div>
+            <div id="kpiMix" class="kpi-row"></div>
+            <div class="chart-row">
+                <div class="chart-wrapper">
+                    <div class="chart-title">Categorías</div>
+                    <div class="chart-container">
+                        <canvas id="chartMixCat"></canvas>
+                    </div>
+                </div>
+                <div class="chart-wrapper">
+                    <div class="chart-title">Top 15 Productos</div>
+                    <div class="chart-container">
+                        <canvas id="chartMixTop"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <div class="table-title">Detalle Mix</div>
+                <table id="tableMix"></table>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>

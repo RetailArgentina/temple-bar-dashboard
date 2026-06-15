@@ -1,0 +1,12 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'Dockerfile.job'
+      - '-t'
+      - 'southamerica-east1-docker.pkg.dev/temple-bar-439715/dashboard/dashboard-refresh-job:latest'
+      - '.'
+
+images:
+  - 'southamerica-east1-docker.pkg.dev/temple-bar-439715/dashboard/dashboard-refresh-job:latest'

@@ -1,0 +1,15 @@
+# Temple Bar Dashboard — Authorized Users
+# One email address per line (case-insensitive).
+# To add a user: add their email here, then redeploy with `bash deploy/deploy.sh`
+# IMPORTANT: This file is committed to the repo. Keep the repo private.
+
+darwin.salinas@temple.com.ar
+facundo.imas@temple.com.ar
+juan.nielsen@temple.com.ar
+juani.chereminiano@temple.com.ar
+bruno@temple.com.ar
+nico.raiber@temple.com.ar
+mechi.stefanich@temple.com.ar
+agustina.mathiasen@temple.com.ar
+cristian.bustos@temple.com.ar
+franquicias@temple.com.ar

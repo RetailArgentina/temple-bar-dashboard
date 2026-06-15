@@ -1,0 +1,69 @@
+{
+  "_meta": {
+    "fuente": "INDEC — IPC (Índice de Precios al Consumidor) — Nivel General",
+    "ultima_actualizacion": "2026-04-11",
+    "frecuencia_revision": "mensual — actualizar dentro de los 15 días de la publicación del IPC de INDEC",
+    "nota": "Los datos de IPC son publicados por INDEC aprox. los días 10-12 de cada mes. Actualizar 'ipc_mensual' con el dato del mes anterior apenas esté disponible. También actualizar 'contexto' con las notas del sector.",
+    "link_indec": "https://www.indec.gob.ar/indec/web/Nivel4-Tema-3-5-31"
+  },
+
+  "ipc_mensual": {
+    "___comentario___": "Inflación mensual en %, publicada por INDEC. Actualizar mensualmente.",
+    "2024-01": 20.6,
+    "2024-02": 13.2,
+    "2024-03": 11.0,
+    "2024-04": 8.8,
+    "2024-05": 4.2,
+    "2024-06": 4.6,
+    "2024-07": 4.0,
+    "2024-08": 4.2,
+    "2024-09": 3.5,
+    "2024-10": 2.4,
+    "2024-11": 2.4,
+    "2024-12": 2.7,
+    "2025-01": 2.3,
+    "2025-02": 2.4,
+    "2025-03": 3.7,
+    "2025-04": 3.0,
+    "2025-05": 3.3,
+    "2025-06": 3.3,
+    "2025-07": 3.0,
+    "2025-08": 4.2,
+    "2025-09": 3.5,
+    "2025-10": 2.4,
+    "2025-11": 2.4,
+    "2025-12": 2.7,
+    "2026-01": 2.3,
+    "2026-02": 2.4,
+    "2026-03": 3.7
+  },
+
+  "contexto": {
+    "umbrales_ticket": {
+      "___comentario___": "Rango de resistencia del consumidor premium en pesos. Revisar trimestralmente y ajustar por inflación.",
+      "premium_bajo": 35000,
+      "premium_alto": 65000
+    },
+
+    "comision_delivery": {
+      "___comentario___": "Comisión que cobran Pedidos Ya y Rappi (% sobre el ticket). Revisar semestralmente.",
+      "min": 25,
+      "max": 32
+    },
+
+    "nota_sector": "Recuperación gradual en el segmento gastronómico premium post-recesión 2024. El consumidor ajustó frecuencia de visita antes que el gasto por salida. Q1 2026 muestra señales de rebote real en el segmento medio-alto, impulsado por mejora del salario real y desaceleración inflacionaria. Turismo interno fuerte en enero-febrero 2026 por competitividad cambiaria. Q2 históricamente débil: necesita activación de consumo local para sostener el ingreso.",
+
+    "benchmarks_crecimiento": {
+      "___comentario___": "Para considerar 'crecimiento real', la facturación nominal debe superar estos umbrales mensuales.",
+      "umbral_real_mensual_pct": 3.5,
+      "umbral_real_trimestral_pct": 10.5,
+      "umbral_real_anual_pct": 40.0
+    },
+
+    "referencias_sector": {
+      "FEHGRA": "Federación Empresaria Hotelera Gastronómica de la República Argentina — reportes trimestrales de consumo en restaurantes.",
+      "INDEC_canasta": "Canasta básica alimentaria y total — benchmark de poder adquisitivo del segmento medio.",
+      "IPC_gastro": "El IPC Alimentos y Bebidas suele superar al IPC General 1-2 puntos por mes en contextos inflacionarios."
+    }
+  }
+}

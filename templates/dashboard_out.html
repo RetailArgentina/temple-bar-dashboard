@@ -1,0 +1,1804 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="theme-color" content="#0d1117"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Tablero · Ventas Corporativas</title>
+<script>
+/* Carga Chart.js desde CDN; si falla (offline) muestra aviso en cada canvas */
+function loadChartJS(cb){
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
+  s.onload=cb;
+  s.onerror=function(){
+    document.querySelectorAll('canvas').forEach(function(c){
+      var d=document.createElement('div');
+      d.style.cssText='padding:14px;color:#8b949e;font-size:11px;text-align:center';
+      d.textContent='Grafico no disponible sin conexion';
+      c.replaceWith(d);
+    });
+    cb();
+  };
+  document.head.appendChild(s);
+}
+</script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',system-ui,sans-serif;font-size:14px}
+::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:#161b22}::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+.wrap{max-width:1400px;margin:0 auto;padding:20px 24px}
+
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.hdr h1{font-size:20px;font-weight:800;letter-spacing:-.5px}
+.hdr p{font-size:11px;color:#8b949e;margin-top:3px}
+.date-range-wrap{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.date-inp{background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#e6edf3;font-size:12px;padding:5px 9px;cursor:pointer;-webkit-appearance:none;min-width:130px}
+.date-inp:focus{outline:none;border-color:#58a6ff}
+.date-inp::-webkit-calendar-picker-indicator{filter:invert(.6);cursor:pointer}
+.snap{font-size:11px;color:#8b949e;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:4px 10px}
+.data-badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;border-radius:8px;padding:5px 11px;border:1px solid}
+.data-badge-fresh{background:#052e16;border-color:rgba(110,231,183,.3);color:#6ee7b7}
+.data-badge-warn{background:#3d2c00;border-color:rgba(251,191,36,.3);color:#fbbf24}
+.data-badge-stale{background:#450a0a;border-color:rgba(248,113,113,.3);color:#f87171}
+.data-badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+
+.filterbar{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:14px 20px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:20px;align-items:center}
+.filter-group{display:flex;flex-direction:column;gap:6px}
+.filter-label{font-size:10px;color:#8b949e;font-weight:700;letter-spacing:.5px}
+.filter-btns{display:flex;gap:6px;flex-wrap:wrap}
+.fb{padding:5px 12px;font-size:12px;border-radius:20px;cursor:pointer;border:1px solid #30363d;background:transparent;color:#8b949e;transition:all .18s;white-space:nowrap}
+.fb:hover{border-color:#8b949e;color:#e6edf3}
+.fb.active-todas{border-color:#e6edf3;background:#21262d;color:#e6edf3}
+.fb.active-pat{border-color:#38bdf8;background:#0c2a3d;color:#38bdf8}
+.fb.active-tmp{border-color:#f472b6;background:#3d0c2a;color:#f472b6}
+.fb.active-fer{border-color:#fbbf24;background:#3d2c00;color:#fbbf24}
+.fb.active-per{border-color:#a78bfa;background:#1e1b4b;color:#a78bfa}
+
+
+.toast{background:#1c2952;border:1px solid #388bfd;border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:12px;color:#79c0ff;display:none;gap:8px;align-items:flex-start}
+.toast.show{display:flex}
+
+.banner{background:linear-gradient(135deg,#1a237e,#0d47a1 50%,#006064);border-radius:12px;padding:18px 24px;margin-bottom:18px}
+.banner-title{font-size:10px;color:#90caf9;font-weight:700;letter-spacing:.6px;margin-bottom:12px}
+.banner-brands{display:flex;gap:0;flex-wrap:wrap}
+.bloc{flex:1;min-width:90px;padding:0 20px;border-right:1px solid rgba(144,202,249,.2)}
+.bloc:first-child{padding-left:0}
+.bloc:last-child{border-right:none}
+.bloc-name{font-size:10px;color:#90caf9;font-weight:700;letter-spacing:.4px;text-transform:uppercase;margin-bottom:4px}
+.bloc-num{font-size:28px;font-weight:800;color:#fff;line-height:1}
+.bloc-sub{font-size:10px;color:#90caf9;margin-top:3px}
+.bloc-div{border-top:1px solid rgba(144,202,249,.15);margin:8px 0}
+.bloc-yoy-lbl{font-size:9px;color:#64b5f6;font-weight:700;letter-spacing:.4px;margin-bottom:3px}
+.bloc-yoy{font-size:11px;color:#90caf9}
+.bloc-yoy .up2{color:#6ee7b7;font-weight:700}.bloc-yoy .dn2{color:#fca5a5;font-weight:700}.bloc-yoy .na2{color:#6e7681}
+
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:18px}
+.kpi-card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px 18px}
+.kpi-top{display:flex;justify-content:space-between;margin-bottom:6px}
+.kpi-lbl{font-size:11px;color:#8b949e}
+.kpi-val{font-size:25px;font-weight:700;margin-bottom:6px}
+.kpi-foot{display:flex;align-items:center;gap:7px}
+.badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px}
+.up{background:#064e3b;color:#6ee7b7}.dn{background:#450a0a;color:#fca5a5}
+.yoy-up{background:#1e1b4b;color:#a78bfa}.yoy-dn{background:#3d0c1e;color:#f472b6}.yoy-na{background:#21262d;color:#6e7681}
+.kpi-sub{font-size:10px;color:#6e7681}
+.kpi-div{border-top:1px solid #21262d;margin:7px 0}
+.kpi-yoy-lbl{font-size:9px;color:#8b949e;font-weight:700;letter-spacing:.4px;margin-bottom:3px}
+
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:18px;margin-bottom:16px}
+.card h2{font-size:14px;font-weight:700;margin-bottom:2px}
+.card .csub{font-size:11px;color:#8b949e;margin-bottom:12px}
+
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE — tablet (≤768), mobile (≤480), xs (≤360)
+   ═══════════════════════════════════════════════════ */
+
+/* Scroll horizontal para tablas en cualquier ancho */
+.table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+/* ── Tablet ≤ 768px ─────────────────────────────── */
+@media(max-width:768px){
+  .wrap{padding:14px 16px}
+  .hdr h1{font-size:17px}
+  .filterbar{padding:10px 14px;gap:10px}
+  .filter-sep{display:none}
+  .banner{padding:14px 18px}
+  .bloc-num{font-size:22px}
+  .bloc{padding:0 14px}
+  .kpi-grid{grid-template-columns:1fr 1fr}
+  .g2{grid-template-columns:1fr}
+  .ig{grid-template-columns:1fr 1fr}
+  .obj-grid{grid-template-columns:1fr}
+  #filterLabel{width:100%;margin-left:0}
+}
+
+/* ── Mobile ≤ 480px ─────────────────────────────── */
+@media(max-width:480px){
+  .wrap{padding:10px 10px}
+  .hdr{flex-direction:column;gap:8px}
+  .hdr h1{font-size:15px}
+  .hdr p{font-size:10px}
+  .hdr>div:last-child{width:100%;display:flex;justify-content:flex-end;align-items:center}
+  .snap{font-size:10px;padding:3px 8px}
+  .date-inp{font-size:10px;padding:4px 7px;min-width:100px}
+  .date-range-wrap{gap:6px}
+  .filterbar{padding:10px 10px;gap:8px;border-radius:10px}
+  .filter-label{font-size:9px;letter-spacing:.3px}
+  .filter-btns{gap:4px;flex-wrap:wrap}
+  .fb{padding:4px 9px;font-size:11px}
+  .filter-sep{display:none}
+  #filterLabel{display:none}
+  .banner{padding:14px 16px;border-radius:10px}
+  .banner-brands{flex-wrap:wrap;gap:12px}
+  .bloc{border-right:none;padding:0;min-width:calc(50% - 6px)}
+  .bloc-num{font-size:20px}
+  .kpi-grid{grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+  .kpi-card{padding:12px 12px;border-radius:10px}
+  .kpi-val{font-size:21px}
+  .kpi-lbl{font-size:10px}
+  .card{padding:14px 12px;border-radius:10px;margin-bottom:12px}
+  .card h2{font-size:13px}
+  .card .csub{font-size:10px;margin-bottom:10px}
+  .ig{grid-template-columns:1fr}
+  .ic{padding:10px 12px}
+  .it{font-size:11px}
+  .ib{font-size:10px;line-height:1.6}
+  .obj-grid{grid-template-columns:1fr}
+  .obj-card{padding:12px 14px;border-radius:10px}
+  table{font-size:11px}
+  th{font-size:9px;padding:5px 6px;white-space:nowrap}
+  td{padding:7px 6px}
+  .mbadge{font-size:9px;padding:2px 5px}
+  .strack{height:4px}.sfill{height:4px}
+  .wbox{font-size:10px;padding:6px 9px}
+  .ibox{font-size:10px;padding:7px 10px}
+  .footer{font-size:9px;padding:10px 0}
+}
+
+/* ── Extra small ≤ 360px ────────────────────────── */
+@media(max-width:360px){
+  .wrap{padding:8px 8px}
+  .kpi-grid{grid-template-columns:1fr}
+  .tmini-grid{grid-template-columns:1fr}
+  .obj-gauges{grid-template-columns:1fr 1fr}
+  .bloc-num{font-size:17px}
+  .fb{padding:3px 8px;font-size:10px}
+}
+
+.blist-item{margin-bottom:11px}
+.blist-row{display:flex;justify-content:space-between;margin-bottom:3px}
+.bname{font-size:12px;font-weight:600}
+.bpct{font-size:11px;color:#8b949e}
+.bar-t{background:#21262d;border-radius:4px;height:6px}
+.bar-f{border-radius:4px;height:6px;transition:width .4s}
+.bmeta{display:flex;gap:8px;margin-top:3px}
+.bmeta span{font-size:10px;color:#6e7681}
+
+.citem{margin-bottom:12px}
+.crow{display:flex;justify-content:space-between;margin-bottom:4px}
+.cname{font-size:12px}
+.cnums{display:flex;gap:10px;align-items:center}
+.cpct{font-size:12px;font-weight:700}
+.cval{font-size:10px;color:#6e7681}
+.ctrack{background:#21262d;border-radius:4px;height:8px}
+.cfill{border-radius:4px;height:8px;transition:width .4s}
+
+.tmini-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px}
+.tmini{background:#0d1117;border-radius:7px;padding:7px 9px}
+.tmini .tn{font-size:12px;font-weight:600;margin-bottom:1px}
+.tmini .tm{font-size:10px;color:#8b949e}
+
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{padding:7px 8px;text-align:left;color:#8b949e;font-weight:600;font-size:10px;border-bottom:1px solid #30363d;white-space:nowrap}
+td{padding:9px 8px;border-bottom:1px solid #21262d}
+tr:nth-child(even) td{background:rgba(13,17,23,.4)}
+.mbadge{padding:2px 7px;border-radius:99px;font-size:10px}
+.strack{background:#21262d;border-radius:4px;height:5px}
+.sfill{border-radius:4px;height:5px}
+
+.ibox{margin-top:10px;padding:9px 12px;background:#0d1117;border-radius:7px;font-size:11px;color:#79c0ff;border:1px solid #1f3a5f}
+.wbox{margin-top:8px;padding:8px 11px;border-radius:7px;font-size:11px}
+.note{font-size:10px;color:#6e7681;text-align:center;margin-top:6px}
+.filter-sep{width:1px;background:#30363d;height:40px;align-self:center}
+.footer{text-align:center;color:#6e7681;font-size:10px;padding:12px 0}
+.ig{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.ic{border-radius:10px;padding:12px 14px}
+.it{font-size:12px;font-weight:700;margin-bottom:5px}
+.ib{font-size:11px;color:#c9d1d9;line-height:1.65}
+
+
+/* Charts responsive */
+canvas{max-width:100%;display:block}
+.chart-wrap{position:relative;width:100%}
+
+/* ── Objetivos ─────────────────────────────────────── */
+.obj-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:12px}
+.obj-card{background:#0d1117;border:1px solid #21262d;border-radius:12px;padding:16px 18px}
+.obj-brand-hdr{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.obj-brand-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.obj-gauges{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.obj-gauge-wrap{text-align:center}
+.obj-gauge-lbl{font-size:10px;color:#8b949e;margin-top:2px;font-weight:700;letter-spacing:.4px}
+.obj-pbar-section{margin-bottom:10px}
+.obj-pbar-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px}
+.obj-pbar-name{font-size:11px;color:#8b949e}
+.obj-pbar-val{font-size:11px;font-weight:700}
+.obj-pbar-track{background:#21262d;border-radius:4px;height:8px}
+.obj-pbar-fill{border-radius:4px;height:8px;transition:width .5s ease}
+.obj-pbar-meta{font-size:10px;color:#6e7681;margin-top:2px;text-align:right}
+.obj-table-wrap{overflow-x:auto;margin-top:6px}
+.obj-table{width:100%;border-collapse:collapse;font-size:11px}
+.obj-table th{padding:5px 8px;text-align:left;color:#6e7681;font-weight:600;font-size:10px;border-bottom:1px solid #21262d;white-space:nowrap}
+.obj-table td{padding:7px 8px;border-bottom:1px solid #161b22}
+.obj-table tr:last-child td{border-bottom:none}
+.obj-empty{text-align:center;color:#6e7681;padding:28px;font-size:12px;font-style:italic}
+.obj-nota{font-size:10px;color:#6e7681;margin-top:6px;font-style:italic;text-align:right}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="hdr">
+  <div>
+    <h1>&#128202; Tablero &middot; Ventas Corporativas</h1>
+    <p>temple-bar-439715 &middot; Corporativo.Ventas_Corporativas_Claude</p>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <span class="data-badge data-badge-fresh" title="Último registro en BigQuery: 14 Abr 2026">
+      <span class="dot"></span>
+      Datos al 14 Abr 2026 &middot; actualizado ayer
+    </span>
+  </div>
+</div>
+
+<div class="filterbar">
+  <div class="filter-group">
+    <div class="filter-label">&#127991; MARCA</div>
+    <div class="filter-btns" id="btnsMarca">
+      <button class="fb active-todas" onclick="setMarca('todas',this)">Todas</button>
+      <button class="fb" onclick="setMarca('Patagonia',this)">Patagonia</button>
+      <button class="fb" onclick="setMarca('Temple',this)">Temple</button>
+      <button class="fb" onclick="setMarca('Feriado',this)">Feriado</button>
+    </div>
+  </div>
+  <div class="filter-sep"></div>
+  <div class="filter-group">
+    <div class="filter-label">&#128197; PERÍODO RÁPIDO</div>
+    <div class="filter-btns" id="btnsPeriodo">
+      <button class="fb active-per" onclick="setPeriodo('mes_actual',this)">Este mes</button>
+      <button class="fb" onclick="setPeriodo('mes_anterior',this)">Mes pasado</button>
+      <button class="fb" onclick="setPeriodo('ultimos_3m',this)">Últimos 3 meses</button>
+      <button class="fb" onclick="setPeriodo('ultimos_6m',this)">Últimos 6 meses</button>
+      <button class="fb" onclick="setPeriodo('ytd',this)">YTD</button>
+    </div>
+  </div>
+  <div class="filter-sep"></div>
+  <div class="filter-group">
+    <div class="filter-label">&#128467; RANGO PERSONALIZADO</div>
+    <div class="date-range-wrap">
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <span style="font-size:9px;color:#6e7681">DESDE</span>
+        <input type="month" id="fromMes" class="date-inp" min="2024-01" max="2026-03" value="2024-01" onchange="applyCustomRange()">
+      </div>
+      <span style="color:#30363d;font-size:14px;padding-top:16px">→</span>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <span style="font-size:9px;color:#6e7681">HASTA</span>
+        <input type="month" id="toMes" class="date-inp" min="2024-01" max="2026-03" value="2026-03" onchange="applyCustomRange()">
+      </div>
+    </div>
+  </div>
+  <div style="margin-left:auto;font-size:11px;color:#8b949e" id="filterLabel">Mostrando: <strong style="color:#e6edf3">Todas las marcas &middot; Todo el período</strong></div>
+</div>
+
+<div class="banner">
+  <div class="banner-title">&#127978; LOCALES POR MARCA</div>
+  <div class="banner-brands">
+    <div class="bloc">
+      <div class="bloc-name">Patagonia</div>
+      <div class="bloc-num" id="loc-P">36</div>
+      <div class="bloc-sub">locales</div>
+      <div class="bloc-div"></div>
+      <div class="bloc-yoy-lbl">&#128197; A&#209;O ANTERIOR</div>
+      <div class="bloc-yoy" id="loc-P-yoy"><span class="dn2">▼ -7</span> vs 43 en 2025</div>
+    </div>
+    <div class="bloc">
+      <div class="bloc-name">Temple</div>
+      <div class="bloc-num" id="loc-T">26</div>
+      <div class="bloc-sub">locales</div>
+      <div class="bloc-div"></div>
+      <div class="bloc-yoy-lbl">&#128197; A&#209;O ANTERIOR</div>
+      <div class="bloc-yoy" id="loc-T-yoy"><span class="dn2">▼ -13</span> vs 39 en 2025</div>
+    </div>
+    <div class="bloc">
+      <div class="bloc-name">Feriado</div>
+      <div class="bloc-num" id="loc-F">2</div>
+      <div class="bloc-sub">locales</div>
+      <div class="bloc-div"></div>
+      <div class="bloc-yoy-lbl">&#128197; A&#209;O ANTERIOR</div>
+      <div class="bloc-yoy" id="loc-F-yoy"><span class="dn2">▼ -1</span> vs 3 en 2025</div>
+    </div>
+    <div class="bloc">
+      <div class="bloc-name" style="color:#c3d8ff">Total</div>
+      <div class="bloc-num" id="loc-total">64</div>
+      <div class="bloc-sub">3 marcas</div>
+      <div class="bloc-div"></div>
+      <div class="bloc-yoy-lbl">&#128197; A&#209;O ANTERIOR</div>
+      <div class="bloc-yoy" id="loc-total-yoy"><span class="dn2">▼ -21</span> vs 85 en 2025</div>
+    </div>
+  </div>
+</div>
+
+<div style="font-size:10px;color:#8b949e;font-weight:700;letter-spacing:.5px;margin-bottom:8px" id="kpiLabel">KPIs &middot; PERÍODO SELECCIONADO</div>
+<div class="kpi-grid">
+
+  <div class="kpi-card">
+    <div class="kpi-top"><span class="kpi-lbl">Facturaci&#243;n per&#237;odo</span><span>&#128176;</span></div>
+    <div class="kpi-val" id="k-fac">—</div>
+    <div class="kpi-foot"><span class="badge" id="k-fac-b">—</span><span class="kpi-sub" id="k-fac-s">—</span></div>
+    <div class="kpi-div"></div>
+    <div class="kpi-yoy-lbl">&#128197; AÑO ANTERIOR</div>
+    <div class="kpi-foot"><span class="badge yoy-na" id="k-fac-yoy">—</span><span class="kpi-sub" id="k-fac-yoys">—</span></div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-top"><span class="kpi-lbl">&#211;rdenes per&#237;odo</span><span>&#128230;</span></div>
+    <div class="kpi-val" id="k-ord">—</div>
+    <div class="kpi-foot"><span class="badge" id="k-ord-b">—</span><span class="kpi-sub" id="k-ord-s">—</span></div>
+    <div class="kpi-div"></div>
+    <div class="kpi-yoy-lbl">&#128197; AÑO ANTERIOR</div>
+    <div class="kpi-foot"><span class="badge yoy-na" id="k-ord-yoy">—</span><span class="kpi-sub" id="k-ord-yoys">—</span></div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-top"><span class="kpi-lbl">Ticket Promedio</span><span>&#127915;</span></div>
+    <div class="kpi-val" id="k-tick">—</div>
+    <div class="kpi-foot"><span class="badge" id="k-tick-b">—</span><span class="kpi-sub" id="k-tick-s">—</span></div>
+    <div class="kpi-div"></div>
+    <div class="kpi-yoy-lbl">&#128197; AÑO ANTERIOR</div>
+    <div class="kpi-foot"><span class="badge yoy-na" id="k-tick-yoy">—</span><span class="kpi-sub" id="k-tick-yoys">—</span></div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-top"><span class="kpi-lbl">Variaci&#243;n facturaci&#243;n</span><span>&#128200;</span></div>
+    <div class="kpi-yoy-lbl" style="margin-top:2px;margin-bottom:2px">&#8645; VS PER&#205;ODO ANTERIOR</div>
+    <div class="kpi-val" id="k-var" style="color:#f87171">—</div>
+    <div class="kpi-foot"><span class="kpi-sub" id="k-var-s">—</span></div>
+    <div class="kpi-div"></div>
+    <div class="kpi-yoy-lbl">&#128197; VS AÑO ANTERIOR</div>
+    <div style="font-size:20px;font-weight:700;margin-bottom:3px" id="k-varyoy">—</div>
+    <div class="kpi-foot"><span class="kpi-sub" id="k-varyoy-s">—</span></div>
+  </div>
+
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+    <div><h2>&#127919; Objetivos vs Real</h2><div class="csub" id="objSub">Facturaci&#243;n y &#211;rdenes · per&#237;odo seleccionado</div></div>
+    <span id="objPeriodNote" class="snap"></span>
+  </div>
+  <div id="objResumen"></div>
+  <div id="objPorMarca"></div>
+  <div class="obj-grid" id="objGrid"></div>
+  <div id="objTableWrap"></div>
+</div>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+    <div><h2>&#128200; Tendencia Mensual</h2><div class="csub">2026 vs 2025 &middot; filtrado por marca</div></div>
+    <div style="display:flex;gap:5px" id="tendToggle">
+      <button class="fb active-per" onclick="setTendView('fac',this)">Facturación</button>
+      <button class="fb" onclick="setTendView('ord',this)">Órdenes</button>
+      <button class="fb" onclick="setTendView('tick',this)">Ticket</button>
+    </div>
+  </div>
+  <canvas id="cTend" height="90" style="width:100%"></canvas>
+  <p class="note" id="tendNote">Área = Facturación &middot; Línea rosa = Ticket promedio</p>
+</div>
+
+<div class="g2">
+  <div class="card" style="margin-bottom:0">
+    <h2>&#128176; Royalties 2026</h2>
+    <div class="csub">Real Ene–Mar · Estimado Abr–Dic · se adapta al filtro de marca</div>
+    <div id="royaltiesCard"></div>
+  </div>
+  <div class="card" style="margin-bottom:0">
+    <h2>&#128203; Plan de Acción</h2>
+    <div class="csub">Para llegar al objetivo · se adapta al filtro de marca</div>
+    <div id="planAccion"></div>
+  </div>
+</div>
+<div style="margin-bottom:14px"></div>
+
+<div class="g2">
+  <div class="card" style="margin-bottom:0">
+    <h2>&#128336; Análisis por Turno</h2>
+    <div class="csub">Filtrado por marca &middot; datos históricos totales</div>
+    <canvas id="cTurnos" height="150"></canvas>
+    <div class="tmini-grid" id="turnoMini"></div>
+  </div>
+  <div class="card" style="margin-bottom:0">
+    <h2>&#128197; Distribución por Día</h2>
+    <div class="csub">Filtrado por marca &middot; datos históricos totales</div>
+    <canvas id="cDias" height="150"></canvas>
+    <div class="wbox" style="background:#3d2c00;color:#fbbf24;border:1px solid rgba(251,191,36,.2);margin-top:8px">
+      &#9889; <strong id="finSemanaPct">—</strong> de la facturación es en fin de semana (V+S+D)
+    </div>
+  </div>
+</div>
+<div style="margin-bottom:14px"></div>
+
+<div class="card">
+  <h2>&#127942; Top 10 Locales</h2>
+  <div class="csub" id="top10Sub">Filtrado por marca y período</div>
+  <div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table id="topTable"></table></div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+    <div>
+      <h2>&#127978; Ranking Locales &middot; Cumplimiento vs Objetivos</h2>
+      <div class="csub" id="localesSub">57 locales &middot; Patagonia y Temple &middot; YTD 2026</div>
+    </div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap">
+      <div class="filter-label" style="align-self:center;font-size:9px">ORDENAR:</div>
+      <button class="fb active-per" id="btnSortFac" onclick="setLocSort('fac',this)">&#8595; Facturaci&#243;n</button>
+      <button class="fb" id="btnSortPct" onclick="setLocSort('pct',this)">&#8595; Cumplimiento</button>
+    </div>
+  </div>
+  <div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table id="localesTable" style="width:100%;border-collapse:collapse;font-size:12px"></table></div>
+  <p id="localesNota" class="note" style="margin-top:6px"></p>
+</div>
+
+<div class="card">
+  <h2 style="margin-bottom:4px">&#129504; Insights Clave</h2>
+  <div style="font-size:10px;color:#6e7681;margin-bottom:12px">&#128337; Actualizado 15 Apr 2026 &middot; An&aacute;lisis autom&aacute;tico sobre datos reales BigQuery &middot; Contexto econ&oacute;mico retail Argentina (IPC INDEC)</div>
+  <div class="ig" id="insightsClave">
+    <div class="ic" style="background:#450a0a;border:1px solid rgba(248,113,113,.2)"><div class="it" style="color:#f87171">📉 Alerta semana 08/04–14/04: -23.9% en facturación</div><div class="ib">Del 08/04 al 14/04, la facturación cayó -23.9% vs la semana anterior. Las órdenes variaron -22.6%. En el contexto de recuperación gradual del sector gastronómico argentino, una caída sostenida en el tráfico es la señal de riesgo más crítica: el consumidor ajusta primero la frecuencia de visita antes que el gasto por salida.</div></div>
+    <div class="ic" style="background:#3d2c00;border:1px solid rgba(251,191,36,.2)"><div class="it" style="color:#fbbf24">🏆 Patagonia lidera el portfolio: -32.2% YoY (real -75.0%)</div><div class="ib">En 2026-04, Patagonia creció -32.2% YoY en facturación. Con inflación acumulada de ~43% en los últimos 12 meses (IPC INDEC), el crecimiento real es -75.0%. Temple creció -49.9% nominal (-92.7% real) — aún por debajo de la inflación. La brecha entre marcas refleja diferencias en posicionamiento de precio, mix de canales y cobertura geográfica.</div></div>
+    <div class="ic" style="background:#0c2a3d;border:1px solid rgba(56,189,248,.2)"><div class="it" style="color:#38bdf8">📱 Canal propio al 93% — ventaja estructural de margen</div><div class="ib">93% de las órdenes se procesan por canal directo (app o mostrador propio). En el mercado argentino, apps de terceros como Pedidos Ya y Rappi cobran entre 25% y 32% de comisión — hasta 8–10 puntos de margen bruto por transacción. Mantener el canal propio por encima del 85% es una decisión estratégica de rentabilidad. Oportunidad: activar L–J (días de menor tráfico) con promociones dirigidas al canal directo sin canibalizar el fin de semana.</div></div>
+    <div class="ic" style="background:#1e0c3d;border:1px solid rgba(167,139,250,.2)"><div class="it" style="color:#a78bfa">💰 Ticket promedio $39,194 — cerca del umbral de elasticidad premium</div><div class="ib">El ticket promedio de Patagonia ronda $39,194, acercándose al rango de elasticidad del consumidor premium argentino ($35,000–$65,000 según consultoras del sector, 2026). Los ajustes de precios en los próximos meses deben equilibrar la actualización inflacionaria con el sostenimiento de la frecuencia de visita. Tickets del portfolio: Patagonia: $39,194, Temple: $33,582.</div></div>
+    <div class="ic" style="background:#450a0a;border:1px solid rgba(248,113,113,.2)"><div class="it" style="color:#f87171">🇦🇷 Macro AR retail: inflación 8.6% acum. 2026 · 6.2% últimos 3 meses</div><div class="ib">Con 8.6% de inflación acumulada en 2026 y 43% interanual (IPC INDEC), el entorno del sector gastronómico/retail argentino en 2026 muestra desaceleración inflacionaria respecto al pico de 2024 (ene-feb 2024: +20.6% y +13.2% mensual). Recuperación gradual en el segmento gastronómico premium post-recesión 2024. El consumidor ajustó frecuencia de visita antes que el gasto por salida. Q1 2026 muestra señales de rebote real en el segmento medio-alto, impulsado por mejora del salario real y desaceleración inflacionaria. Turismo interno fuerte en enero-febrero 2026 por competitividad cambiaria. Q2 históricamente débil: necesita activación de consumo local para sostener el ingreso. Para el portfolio Temple Bar, el termómetro clave es si la facturación nominal crece por encima del IPC — cualquier número por debajo implica contracción real. Benchmark: crecer >3–4% mensual nominal en Q2 2026 implica expansión real del negocio.</div></div>
+  </div>
+</div>
+
+<div class="footer">Generado por Claude &middot; Snapshot 2026-04-02 &middot; temple-bar-439715.Corporativo.Ventas_Corporativas_Claude</div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════
+   DATOS  — BigQuery snapshot 2026-04-15 (vw_Ventas_Corporativo_Base)
+   Para actualizar: "Actualizá el tablero de ventas"
+   ════════════════════════════════════════════════════ */
+
+const MENSUAL = [{"mes":"2023-12","m":"Patagonia","fac":825,"ord":56910,"tick":14506},{"mes":"2024-01","m":"Patagonia","fac":1541,"ord":101378,"tick":15202},{"mes":"2024-02","m":"Patagonia","fac":1476,"ord":87442,"tick":16880},{"mes":"2024-03","m":"Patagonia","fac":1610,"ord":87253,"tick":18463},{"mes":"2024-04","m":"Patagonia","fac":1272,"ord":62000,"tick":20530},{"mes":"2024-05","m":"Feriado","fac":9,"ord":422,"tick":20535},{"mes":"2024-05","m":"Patagonia","fac":1113,"ord":50172,"tick":22202},{"mes":"2024-06","m":"Feriado","fac":59,"ord":2247,"tick":26345},{"mes":"2024-06","m":"Patagonia","fac":1522,"ord":67290,"tick":22624},{"mes":"2024-07","m":"Feriado","fac":62,"ord":2155,"tick":28891},{"mes":"2024-07","m":"Patagonia","fac":1750,"ord":63701,"tick":27486},{"mes":"2024-08","m":"Feriado","fac":63,"ord":2013,"tick":31321},{"mes":"2024-08","m":"Patagonia","fac":1776,"ord":66303,"tick":26794},{"mes":"2024-09","m":"Feriado","fac":61,"ord":1826,"tick":33600},{"mes":"2024-09","m":"Patagonia","fac":2003,"ord":73455,"tick":27288},{"mes":"2024-10","m":"Feriado","fac":56,"ord":1684,"tick":33290},{"mes":"2024-10","m":"Patagonia","fac":2294,"ord":79632,"tick":28829},{"mes":"2024-10","m":"Temple","fac":2,"ord":55,"tick":29473},{"mes":"2024-11","m":"Feriado","fac":46,"ord":1411,"tick":32763},{"mes":"2024-11","m":"Patagonia","fac":2717,"ord":88895,"tick":30574},{"mes":"2024-11","m":"Temple","fac":476,"ord":19164,"tick":25881},{"mes":"2024-12","m":"Feriado","fac":67,"ord":1924,"tick":34589},{"mes":"2024-12","m":"Patagonia","fac":3448,"ord":111787,"tick":30863},{"mes":"2024-12","m":"Temple","fac":831,"ord":27674,"tick":30865},{"mes":"2025-01","m":"Feriado","fac":57,"ord":1717,"tick":33366},{"mes":"2025-01","m":"Patagonia","fac":3536,"ord":120475,"tick":29356},{"mes":"2025-01","m":"Temple","fac":1037,"ord":34316,"tick":30843},{"mes":"2025-02","m":"Feriado","fac":48,"ord":1452,"tick":32792},{"mes":"2025-02","m":"Patagonia","fac":2730,"ord":94421,"tick":28924},{"mes":"2025-02","m":"Temple","fac":1289,"ord":44735,"tick":29625},{"mes":"2025-03","m":"Feriado","fac":85,"ord":2719,"tick":31249},{"mes":"2025-03","m":"Patagonia","fac":2811,"ord":71853,"tick":39134},{"mes":"2025-03","m":"Temple","fac":1504,"ord":52936,"tick":29315},{"mes":"2025-04","m":"Feriado","fac":68,"ord":2273,"tick":29954},{"mes":"2025-04","m":"Patagonia","fac":2018,"ord":54366,"tick":37120},{"mes":"2025-04","m":"Temple","fac":1290,"ord":47316,"tick":28390},{"mes":"2025-05","m":"Feriado","fac":68,"ord":2238,"tick":30581},{"mes":"2025-05","m":"Patagonia","fac":1989,"ord":52140,"tick":38156},{"mes":"2025-05","m":"Temple","fac":1289,"ord":44921,"tick":30362},{"mes":"2025-06","m":"Feriado","fac":59,"ord":1875,"tick":31238},{"mes":"2025-06","m":"Patagonia","fac":1675,"ord":44068,"tick":38025},{"mes":"2025-06","m":"Temple","fac":1102,"ord":37070,"tick":30907},{"mes":"2025-07","m":"Feriado","fac":56,"ord":1451,"tick":38355},{"mes":"2025-07","m":"Patagonia","fac":2694,"ord":66118,"tick":40758},{"mes":"2025-07","m":"Temple","fac":1380,"ord":44845,"tick":31764},{"mes":"2025-08","m":"Feriado","fac":49,"ord":1347,"tick":36124},{"mes":"2025-08","m":"Patagonia","fac":2750,"ord":71665,"tick":38395},{"mes":"2025-08","m":"Temple","fac":1333,"ord":44175,"tick":31405},{"mes":"2025-09","m":"Feriado","fac":47,"ord":1182,"tick":39924},{"mes":"2025-09","m":"Patagonia","fac":2657,"ord":70219,"tick":37916},{"mes":"2025-09","m":"Temple","fac":1191,"ord":38891,"tick":32035},{"mes":"2025-10","m":"Feriado","fac":57,"ord":1362,"tick":41780},{"mes":"2025-10","m":"Patagonia","fac":3076,"ord":75144,"tick":41063},{"mes":"2025-10","m":"Temple","fac":1408,"ord":45395,"tick":32212},{"mes":"2025-11","m":"Feriado","fac":55,"ord":1375,"tick":39674},{"mes":"2025-11","m":"Patagonia","fac":3527,"ord":81915,"tick":43201},{"mes":"2025-11","m":"Temple","fac":1617,"ord":50683,"tick":33114},{"mes":"2025-12","m":"Feriado","fac":44,"ord":1023,"tick":43200},{"mes":"2025-12","m":"Patagonia","fac":2967,"ord":63488,"tick":46877},{"mes":"2025-12","m":"Temple","fac":1583,"ord":43016,"tick":37821},{"mes":"2026-01","m":"Feriado","fac":73,"ord":1737,"tick":41833},{"mes":"2026-01","m":"Patagonia","fac":4567,"ord":102772,"tick":44572},{"mes":"2026-01","m":"Temple","fac":1513,"ord":43593,"tick":35668},{"mes":"2026-02","m":"Feriado","fac":59,"ord":1415,"tick":41764},{"mes":"2026-02","m":"Patagonia","fac":3701,"ord":83360,"tick":44455},{"mes":"2026-02","m":"Temple","fac":1442,"ord":44343,"tick":33491},{"mes":"2026-03","m":"Feriado","fac":58,"ord":1430,"tick":40744},{"mes":"2026-03","m":"Patagonia","fac":3436,"ord":77557,"tick":44454},{"mes":"2026-03","m":"Temple","fac":1460,"ord":44935,"tick":33425},{"mes":"2026-04","m":"Feriado","fac":23,"ord":533,"tick":43747},{"mes":"2026-04","m":"Patagonia","fac":1368,"ord":34319,"tick":39972},{"mes":"2026-04","m":"Temple","fac":646,"ord":18522,"tick":35709}];
+
+const TURNOS_DATA = [{"m":"Feriado","t":"Noche","fac":825,"ord":21623,"tick":38161,"color":"#818cf8"},{"m":"Feriado","t":"Tarde","fac":504,"ord":17667,"tick":28510,"color":"#34d399"},{"m":"Patagonia","t":"T","fac":27427,"ord":902963,"tick":30416,"color":"#94a3b8"},{"m":"Patagonia","t":"N","fac":26314,"ord":786539,"tick":33490,"color":"#94a3b8"},{"m":"Patagonia","t":"M","fac":14813,"ord":383769,"tick":38656,"color":"#94a3b8"},{"m":"Patagonia","t":"X","fac":1611,"ord":56232,"tick":28649,"color":"#94a3b8"},{"m":"Patagonia","t":"3","fac":602,"ord":28278,"tick":21281,"color":"#94a3b8"},{"m":"Patagonia","t":"2","fac":345,"ord":10129,"tick":34080,"color":"#94a3b8"},{"m":"Patagonia","t":"1","fac":204,"ord":5811,"tick":35045,"color":"#94a3b8"},{"m":"Patagonia","t":"S","fac":0,"ord":5,"tick":57340,"color":"#94a3b8"},{"m":"Temple","t":"N","fac":10069,"ord":242274,"tick":43372,"color":"#94a3b8"},{"m":"Temple","t":"T","fac":6694,"ord":173273,"tick":39639,"color":"#94a3b8"},{"m":"Temple","t":"M","fac":5001,"ord":174280,"tick":29559,"color":"#94a3b8"},{"m":"Temple","t":"2","fac":306,"ord":8485,"tick":36490,"color":"#94a3b8"},{"m":"Temple","t":"3","fac":196,"ord":7525,"tick":27043,"color":"#94a3b8"},{"m":"Temple","t":"1","fac":93,"ord":3579,"tick":26709,"color":"#94a3b8"},{"m":"Temple","t":"X","fac":32,"ord":911,"tick":35181,"color":"#94a3b8"}];
+
+const DIAS_DATA = [
+  {m:"Feriado",dia:"Dom",dow:1,fac:224},
+  {m:"Feriado",dia:"Lun",dow:2,fac:126},
+  {m:"Feriado",dia:"Mar",dow:3,fac:121},
+  {m:"Feriado",dia:"Mie",dow:4,fac:134},
+  {m:"Feriado",dia:"Jue",dow:5,fac:166},
+  {m:"Feriado",dia:"Vie",dow:6,fac:242},
+  {m:"Feriado",dia:"Sab",dow:7,fac:291},
+  {m:"Patagonia",dia:"Dom",dow:1,fac:9862},
+  {m:"Patagonia",dia:"Lun",dow:2,fac:5647},
+  {m:"Patagonia",dia:"Mar",dow:3,fac:6013},
+  {m:"Patagonia",dia:"Mie",dow:4,fac:7098},
+  {m:"Patagonia",dia:"Jue",dow:5,fac:9176},
+  {m:"Patagonia",dia:"Vie",dow:6,fac:15088},
+  {m:"Patagonia",dia:"Sab",dow:7,fac:16891},
+  {m:"Temple",dia:"Dom",dow:1,fac:3745},
+  {m:"Temple",dia:"Lun",dow:2,fac:1758},
+  {m:"Temple",dia:"Mar",dow:3,fac:1839},
+  {m:"Temple",dia:"Mie",dow:4,fac:2119},
+  {m:"Temple",dia:"Jue",dow:5,fac:2782},
+  {m:"Temple",dia:"Vie",dow:6,fac:4321},
+  {m:"Temple",dia:"Sab",dow:7,fac:5180}
+];
+
+const CANAL_DATA = [{"mes":"2025-10","m":"Patagonia","c":"sale_app","fac":1545,"ord":39030},{"mes":"2025-10","m":"Patagonia","c":"pedidos_ya","fac":18,"ord":958},{"mes":"2025-10","m":"Patagonia","c":"rappi","fac":0,"ord":9},{"mes":"2025-10","m":"Temple","c":"SALE_APP","fac":667,"ord":19714},{"mes":"2025-10","m":"Temple","c":"PEDIDOS_YA","fac":64,"ord":3690},{"mes":"2025-10","m":"Temple","c":"DIGITAL","fac":0,"ord":2},{"mes":"2025-11","m":"Patagonia","c":"sale_app","fac":3488,"ord":80334},{"mes":"2025-11","m":"Patagonia","c":"pedidos_ya","fac":39,"ord":2103},{"mes":"2025-11","m":"Patagonia","c":"rappi","fac":1,"ord":23},{"mes":"2025-11","m":"Temple","c":"SALE_APP","fac":1498,"ord":44452},{"mes":"2025-11","m":"Temple","c":"PEDIDOS_YA","fac":119,"ord":7092},{"mes":"2025-11","m":"Temple","c":"DIGITAL","fac":0,"ord":27},{"mes":"2025-12","m":"Patagonia","c":"sale_app","fac":2934,"ord":61982},{"mes":"2025-12","m":"Patagonia","c":"pedidos_ya","fac":33,"ord":1707},{"mes":"2025-12","m":"Patagonia","c":"rappi","fac":0,"ord":19},{"mes":"2025-12","m":"Temple","c":"SALE_APP","fac":1481,"ord":38485},{"mes":"2025-12","m":"Temple","c":"PEDIDOS_YA","fac":102,"ord":5532},{"mes":"2025-12","m":"Temple","c":"DIGITAL","fac":0,"ord":15},{"mes":"2026-01","m":"Patagonia","c":"sale_app","fac":4517,"ord":100827},{"mes":"2026-01","m":"Patagonia","c":"pedidos_ya","fac":49,"ord":2572},{"mes":"2026-01","m":"Patagonia","c":"rappi","fac":1,"ord":36},{"mes":"2026-01","m":"Temple","c":"SALE_APP","fac":1415,"ord":38772},{"mes":"2026-01","m":"Temple","c":"PEDIDOS_YA","fac":97,"ord":5583},{"mes":"2026-01","m":"Temple","c":"BOOKING","fac":0,"ord":1},{"mes":"2026-01","m":"Temple","c":"DIGITAL","fac":0,"ord":24},{"mes":"2026-02","m":"Patagonia","c":"sale_app","fac":3659,"ord":82016},{"mes":"2026-02","m":"Patagonia","c":"pedidos_ya","fac":42,"ord":2069},{"mes":"2026-02","m":"Patagonia","c":"rappi","fac":0,"ord":20},{"mes":"2026-02","m":"Temple","c":"SALE_APP","fac":1337,"ord":39252},{"mes":"2026-02","m":"Temple","c":"PEDIDOS_YA","fac":104,"ord":5596},{"mes":"2026-02","m":"Temple","c":"DIGITAL","fac":0,"ord":39},{"mes":"2026-03","m":"Patagonia","c":"sale_app","fac":3385,"ord":75254},{"mes":"2026-03","m":"Patagonia","c":"pedidos_ya","fac":50,"ord":2688},{"mes":"2026-03","m":"Patagonia","c":"rappi","fac":0,"ord":16},{"mes":"2026-03","m":"Temple","c":"SALE_APP","fac":1354,"ord":39256},{"mes":"2026-03","m":"Temple","c":"PEDIDOS_YA","fac":105,"ord":5675},{"mes":"2026-03","m":"Temple","c":"MUNDO_LINGO","fac":0,"ord":1},{"mes":"2026-03","m":"Temple","c":"DIGITAL","fac":0,"ord":3},{"mes":"2026-04","m":"Patagonia","c":"sale_app","fac":1349,"ord":33357},{"mes":"2026-04","m":"Patagonia","c":"pedidos_ya","fac":19,"ord":959},{"mes":"2026-04","m":"Patagonia","c":"rappi","fac":0,"ord":6},{"mes":"2026-04","m":"Temple","c":"SALE_APP","fac":602,"ord":16310},{"mes":"2026-04","m":"Temple","c":"PEDIDOS_YA","fac":44,"ord":2212}];
+
+const TOP10_DATA = [{"p":"mes_actual","m":"Patagonia","l":"MIS - PUERTO IGUAZU","fac":114,"ord":3220,"tick":35251},{"p":"mes_actual","m":"Patagonia","l":"USHUAIA","fac":107,"ord":1811,"tick":58943},{"p":"mes_actual","m":"Patagonia","l":"CHALTEN","fac":106,"ord":1939,"tick":54557},{"p":"mes_actual","m":"Temple","l":"PUERTO MADERO","fac":104,"ord":2248,"tick":46601},{"p":"mes_actual","m":"Temple","l":"CLUB TEMPLE","fac":98,"ord":1898,"tick":51865},{"p":"mes_actual","m":"Patagonia","l":"PUERTO MADERO","fac":78,"ord":1624,"tick":48072},{"p":"mes_actual","m":"Temple","l":"SOHO","fac":76,"ord":2159,"tick":35534},{"p":"mes_actual","m":"Patagonia","l":"RESISTENCIA","fac":69,"ord":4994,"tick":13736},{"p":"mes_actual","m":"Patagonia","l":"RIO GALLEGOS","fac":68,"ord":2326,"tick":29304},{"p":"mes_actual","m":"Patagonia","l":"NEUQUEN","fac":65,"ord":906,"tick":71488},{"p":"mes_anterior","m":"Patagonia","l":"USHUAIA","fac":401,"ord":7198,"tick":55688},{"p":"mes_anterior","m":"Patagonia","l":"CHALTEN","fac":328,"ord":6234,"tick":52619},{"p":"mes_anterior","m":"Patagonia","l":"MIS - PUERTO IGUAZU","fac":252,"ord":7473,"tick":33787},{"p":"mes_anterior","m":"Temple","l":"PUERTO MADERO","fac":238,"ord":5510,"tick":43322},{"p":"mes_anterior","m":"Temple","l":"CLUB TEMPLE","fac":201,"ord":4251,"tick":47181},{"p":"mes_anterior","m":"Patagonia","l":"PUERTO MADERO","fac":200,"ord":4223,"tick":47387},{"p":"mes_anterior","m":"Patagonia","l":"CALAFATE","fac":190,"ord":4040,"tick":47082},{"p":"mes_anterior","m":"Temple","l":"SOHO","fac":169,"ord":5174,"tick":32943},{"p":"mes_anterior","m":"Patagonia","l":"NEUQUEN","fac":157,"ord":2271,"tick":69170},{"p":"mes_anterior","m":"Patagonia","l":"RESISTENCIA","fac":151,"ord":10960,"tick":13790},{"p":"ultimos_3m","m":"Patagonia","l":"USHUAIA","fac":881,"ord":15701,"tick":56091},{"p":"ultimos_3m","m":"Patagonia","l":"CHALTEN","fac":674,"ord":12922,"tick":52140},{"p":"ultimos_3m","m":"Patagonia","l":"MIS - PUERTO IGUAZU","fac":618,"ord":18576,"tick":33247},{"p":"ultimos_3m","m":"Temple","l":"PUERTO MADERO","fac":573,"ord":13208,"tick":43529},{"p":"ultimos_3m","m":"Temple","l":"CLUB TEMPLE","fac":482,"ord":9989,"tick":48269},{"p":"ultimos_3m","m":"Patagonia","l":"PUERTO MADERO","fac":481,"ord":10019,"tick":48019},{"p":"ultimos_3m","m":"Patagonia","l":"CALAFATE","fac":471,"ord":10428,"tick":45145},{"p":"ultimos_3m","m":"Patagonia","l":"NEUQUEN","fac":422,"ord":6331,"tick":66648},{"p":"ultimos_3m","m":"Temple","l":"SOHO","fac":394,"ord":12037,"tick":33019},{"p":"ultimos_3m","m":"Patagonia","l":"RESISTENCIA","fac":377,"ord":27386,"tick":13758},{"p":"ultimos_6m","m":"Patagonia","l":"USHUAIA","fac":2090,"ord":37184,"tick":56199},{"p":"ultimos_6m","m":"Patagonia","l":"MIS - PUERTO IGUAZU","fac":1529,"ord":47432,"tick":32243},{"p":"ultimos_6m","m":"Temple","l":"PUERTO MADERO","fac":1334,"ord":30835,"tick":43404},{"p":"ultimos_6m","m":"Patagonia","l":"PUERTO MADERO","fac":1065,"ord":22300,"tick":47762},{"p":"ultimos_6m","m":"Patagonia","l":"CALAFATE","fac":1064,"ord":24323,"tick":43746},{"p":"ultimos_6m","m":"Patagonia","l":"NEUQUEN","fac":1051,"ord":16246,"tick":64645},{"p":"ultimos_6m","m":"Temple","l":"CLUB TEMPLE","fac":1033,"ord":21313,"tick":48448},{"p":"ultimos_6m","m":"Patagonia","l":"CHALTEN","fac":1004,"ord":19649,"tick":51060},{"p":"ultimos_6m","m":"Patagonia","l":"RESISTENCIA","fac":900,"ord":64678,"tick":13917},{"p":"ultimos_6m","m":"Temple","l":"SOHO","fac":884,"ord":28220,"tick":31642}];
+
+const PD = {"todo":{"label":"Todo el periodo","meses":null,"prevMeses":null,"prevLabel":"","yoyMeses":null,"yoyLabel":""},"mes_actual":{"label":"Este mes (Abr 26)","meses":["2026-04"],"prevMeses":["2026-03"],"prevLabel":"Mar 26","yoyMeses":["2025-04"],"yoyLabel":"Abr 25"},"mes_anterior":{"label":"Mes pasado (Mar 26)","meses":["2026-03"],"prevMeses":["2026-02"],"prevLabel":"Feb 26","yoyMeses":["2025-03"],"yoyLabel":"Mar 25"},"ultimos_3m":{"label":"\u00daltimos 3 meses","meses":["2026-02","2026-03","2026-04"],"prevMeses":["2025-11","2025-12","2026-01"],"prevLabel":"Ene 26\u2013Mar 26","yoyMeses":["2025-02","2025-03","2025-04"],"yoyLabel":"Feb 25\u2013Abr 25"},"ultimos_6m":{"label":"\u00daltimos 6 meses","meses":["2025-11","2025-12","2026-01","2026-02","2026-03","2026-04"],"prevMeses":["2025-05","2025-06","2025-07","2025-08","2025-09","2025-10"],"prevLabel":"Oct 25\u2013Mar 26","yoyMeses":["2024-11","2024-12","2025-01","2025-02","2025-03","2025-04"],"yoyLabel":"Nov 24\u2013Abr 25"},"ytd":{"label":"YTD 2026","meses":["2026-01","2026-02","2026-03","2026-04"],"prevMeses":["2025-01","2025-02","2025-03","2025-04"],"prevLabel":"YTD 2025","yoyMeses":["2025-01","2025-02","2025-03","2025-04"],"yoyLabel":"YTD 2025"}};
+
+/* ── Locales con objetivos 2026 · d:[[real,obj]×ene,feb,mar] en $M ── */
+const LOCALES_OBJ = [
+  {b:"P",l:"ARISTIDES",d:[[47.9,47.8],[36,38.5],[18.1,40]]},
+  {b:"P",l:"BA - LANUS",d:[[9.6,9.6],[113,8.8],[54.3,101.9]]},
+  {b:"P",l:"BAHIA BLANCA",d:[[121,128.4],[113.1,118.8],[54.1,76.1]]},
+  {b:"P",l:"CABALLITO",d:[[45.2,47.6],[37.2,43.4],[19.1,37.5]]},
+  {b:"P",l:"CALAFATE",d:[[253.6,229.4],[224.7,205.2],[91.4,197.6]]},
+  {b:"P",l:"CARILO",d:[[80.6,75],[48.3,69],[8.7,22.8]]},
+  {b:"P",l:"CASA DEL TANGO",d:[[101.4,99.9],[98,77.9],[62,97.7]]},
+  {b:"P",l:"CAT - CATAMARCA",d:[[67.2,63],[61.9,60.5],[26.9,70.2]]},
+  {b:"P",l:"CBA - MERCADO CENTRAL (GUEMES)",d:[[55.8,56.1],[56.1,71.1],[28.9,60.3]]},
+  {b:"P",l:"CBA - MERCADO DE LAS ROSAS",d:[[19.6,18],[15.7,13.5]]},
+  {b:"P",l:"CHALTEN",d:[[299.8,240],[240,217.2],[161.5,208.9]]},
+  {b:"P",l:"COMODORO",d:[[76.2,73.5],[61.6,54.8],[27.7,67.2]]},
+  {b:"P",l:"COR - CORRIENTES",d:[[164.9,138.2],[132.8,115.2],[66,136.2]]},
+  {b:"P",l:"JUJUY",d:[[60.6,62],[64.8,54.8],[20.8,50.3]]},
+  {b:"P",l:"MIS - POSADAS",d:[[141.4,115.8],[114.7,75.2],[50.9,112.7]]},
+  {b:"P",l:"MIS - PUERTO IGUAZU",d:[[372.5,383.4],[251.6,265.3],[119.4,299.7]]},
+  {b:"P",l:"MIS - PUERTO IGUAZU 2",d:[[127.2,126.1],[101.7,108.6],[45.1,137.7]]},
+  {b:"P",l:"NEUQUÉN",d:[[252.6,247.2],[200.1,222.7],[83.4,171]]},
+  {b:"P",l:"PALMARES",d:[[87.9,85.3],[81.1,67.1],[34,74.3]]},
+  {b:"P",l:"PARANA",d:[[99.2,96.1],[87.5,74.8],[42.3,90.8]]},
+  {b:"P",l:"PARQUE LELOIR",d:[[140.2,138.1],[125.7,114.8],[56,107.1]]},
+  {b:"P",l:"PINAMAR",d:[[160.5,208.3],[68.7,166.5],[6.2,25]]},
+  {b:"P",l:"PLAZA SHOPPING",d:[[44,42.5],[40.6,34.7],[23.5,41.4]]},
+  {b:"P",l:"PUERTO MADERO",d:[[215.7,204.5],[202.9,183.6],[97.9,176.2]]},
+  {b:"P",l:"RADA TILLY",d:[[151.8,145.5],[74.6,78.7],[21,50.2]]},
+  {b:"P",l:"RESISTENCIA",d:[[222.3,219.2],[157,167.9],[81.2,187.4]]},
+  {b:"P",l:"RIO GALLEGOS",d:[[173.1,167.2],[127.8,182.2],[73.6,124.8]]},
+  {b:"P",l:"SALTA",d:[[43.2,48.7],[34,67.1],[15.2,30.9]]},
+  {b:"P",l:"SFE - ALTO ROSARIO",d:[[52.6,54.4],[52,46.4],[26.8,66.4]]},
+  {b:"P",l:"SFE - ROSARIO LA FLORIDA",d:[[112.7,103.9],[79.1,68.6],[32.9,68.4]]},
+  {b:"P",l:"SGO - SANTIAGO DEL ESTERO",d:[[64.7,56.8],[58,49],[27.1,55.2]]},
+  {b:"P",l:"TCM - ABASTO",d:[[115.7,95.2],[91.1,89.8],[43.4,84.6]]},
+  {b:"P",l:"TCM - ACONQUIJA",d:[[15,13.4],[12.3,12.9],[4.5,9.7]]},
+  {b:"P",l:"TCM - SHERATON",d:[[48.6,45],[37.6,43.5],[11,33.5]]},
+  {b:"P",l:"TERMAS RIO HONDO",d:[[17.5,22.2],[21.3,20.2],[6.9,27.8]]},
+  {b:"P",l:"USHUAIA",d:[[505.3,516.4],[373.1,424.3],[189.1,406.3]]},
+  {b:"T",l:"BARRIO CHINO",d:[[101.4,110.2],[108,96.2],[58.8,129.9]]},
+  {b:"T",l:"CAMINITO",d:[[46.3,43.8],[43.3,28.9],[22.9,42.1]]},
+  {b:"T",l:"CASA TEMPLE",d:[[66,81.4],[80.1,52.2],[38.7,76.6]]},
+  {b:"T",l:"CLUB TEMPLE",d:[[147.5,156.3],[183.2,165.8],[88.1,234.9]]},
+  {b:"T",l:"COMODORO RIVADAVIA",d:[[23.9,25.8],[22.8,28.3],[10.8,22.7]]},
+  {b:"T",l:"CORRIENTES",d:[[20,21.8],[19.6,19.6],[11,23]]},
+  {b:"T",l:"GUEMES",d:[[8.9,15],[18.5,21.2],[12.3,32.2]]},
+  {b:"T",l:"HOLLYWOOD",d:[[82.2,78.3],[84.3,68.4],[48,95.6]]},
+  {b:"T",l:"MASCHWITZ",d:[[83.4,73.5],[74.2,68.3],[32,90.6]]},
+  {b:"T",l:"MONROE",d:[[81.7,24.5],[103.7,22.6],[38,104.3]]},
+  {b:"T",l:"PILAR",d:[[53.4,55],[46.2,48.4],[19.9,44.4]]},
+  {b:"T",l:"PINAMAR",d:[[170.4,175.7],[61.3,94.4],[3.6,33.7]]},
+  {b:"T",l:"POSADAS",d:[[4.8,9]]},
+  {b:"T",l:"PUERTO MADERO",d:[[252.2,204.1],[231,176.9],[117.3,277.4]]},
+  {b:"T",l:"RECOLETA",d:[[33.9,43.9],[45.8,38.8],[25.1,62.4]]},
+  {b:"T",l:"RIO GALLEGOS",d:[[47.6,44.2],[37.8,43],[21.1,62.3]]},
+  {b:"T",l:"ROSARIO 2",d:[[15,15.7],[18.4,17.5],[9.2,22.3]]},
+  {b:"T",l:"SALTA",d:[[46.9,33.4],[42.9,32.9],[20.3,47.4]]},
+  {b:"T",l:"SANTIAGO DEL ESTERO",d:[[42.2,48.8],[35.7,52.3],[14.8,46.3]]},
+  {b:"T",l:"SOHO",d:[[151.8,120.2],[148.5,111.7],[78.4,164.1]]},
+  {b:"T",l:"TUCUMAN 3",d:[[9.7,9.2],[8,8.8],[3.4,7.9]]}
+];
+
+
+
+
+/* ── Objetivos mensuales (BigQuery · Corporativo.Ventas_vs_Objetivos_Mensual) ── */
+const OBJETIVOS = {"Temple":{"2026-01":{"obj_fac":1392,"obj_ord":41261},"2026-02":{"obj_fac":1195,"obj_ord":35518},"2026-03":{"obj_fac":1603,"obj_ord":49919},"2026-04":{"obj_fac":1407,"obj_ord":42884},"2026-05":{"obj_fac":1365,"obj_ord":41027},"2026-06":{"obj_fac":1573,"obj_ord":45855},"2026-07":{"obj_fac":1495,"obj_ord":43003},"2026-08":{"obj_fac":1532,"obj_ord":43656},"2026-09":{"obj_fac":1588,"obj_ord":45161},"2026-10":{"obj_fac":1818,"obj_ord":50764},"2026-11":{"obj_fac":2149,"obj_ord":60759},"2026-12":{"obj_fac":1828,"obj_ord":51373}},"Patagonia":{"2026-01":{"obj_fac":4420,"obj_ord":117517},"2026-02":{"obj_fac":3829,"obj_ord":96928},"2026-03":{"obj_fac":3674,"obj_ord":95422},"2026-04":{"obj_fac":3078,"obj_ord":79142},"2026-05":{"obj_fac":2956,"obj_ord":76305},"2026-06":{"obj_fac":3010,"obj_ord":76616},"2026-07":{"obj_fac":2951,"obj_ord":74539},"2026-08":{"obj_fac":3125,"obj_ord":78206},"2026-09":{"obj_fac":3157,"obj_ord":77193},"2026-10":{"obj_fac":3610,"obj_ord":86074},"2026-11":{"obj_fac":4203,"obj_ord":96939},"2026-12":{"obj_fac":4523,"obj_ord":105270}},"Feriado":{"2026-01":{"obj_fac":65,"obj_ord":1717},"2026-02":{"obj_fac":50,"obj_ord":1452},"2026-03":{"obj_fac":56,"obj_ord":1400},"2026-04":{"obj_fac":46,"obj_ord":1100},"2026-05":{"obj_fac":0,"obj_ord":1000},"2026-06":{"obj_fac":0,"obj_ord":0},"2026-07":{"obj_fac":24,"obj_ord":500},"2026-08":{"obj_fac":38,"obj_ord":750},"2026-09":{"obj_fac":46,"obj_ord":875},"2026-10":{"obj_fac":51,"obj_ord":940},"2026-11":{"obj_fac":77,"obj_ord":1350},"2026-12":{"obj_fac":177,"obj_ord":3050}}};
+
+/* ── Royalties (Google Sheet · Resumen) ── */
+const ROYALTY_DATA = {"monthly":{"Temple":{"2026-01":{"gmv":1510608232,"roy":35345451,"pct":2.34},"2026-02":{"gmv":1441616361,"roy":35978793,"pct":2.5},"2026-03":{"gmv":1458333297,"roy":37254139,"pct":2.55}},"Patagonia":{"2026-01":{"gmv":4563477898,"roy":173144435,"pct":3.79},"2026-02":{"gmv":3672651310,"roy":143373265,"pct":3.9},"2026-03":{"gmv":3400283643,"roy":136372336,"pct":4.01}},"Feriado":{"2026-01":{"gmv":72664176,"roy":1786236,"pct":2.46},"2026-02":{"gmv":59099603,"roy":1577981,"pct":2.67},"2026-03":{"gmv":58260313,"roy":1732185,"pct":2.97}}},"avgPct":{"Temple":2.46,"Patagonia":3.89,"Feriado":2.68}};
+
+const BCOLOR = {Patagonia:"#38bdf8",Temple:"#f472b6",Feriado:"#fbbf24",todas:"#58a6ff"};
+let STATE = {marca:"todas", periodo:"mes_actual", tendView:"fac", locSort:"fac", fromMes:"2023-12", toMes:"2026-04"};
+let CHARTS = {};
+
+const fmtM  = v => v>=1000 ? "$"+(v/1000).toFixed(1)+"B" : "$"+Math.round(v)+"M";
+const fmtN  = v => Math.round(v).toLocaleString("es-AR");
+const fmtT  = v => "$"+Math.round(v).toLocaleString("es-AR");
+const pctCh = (c,p) => p>0 ? (((c-p)/p)*100).toFixed(1) : null;
+
+function getBadge(c,p){
+  const v=pctCh(c,p); if(!v) return {cls:"",txt:"—"};
+  const n=parseFloat(v);
+  return n>=0 ? {cls:"up",txt:"▲ "+Math.abs(n)+"%"} : {cls:"dn",txt:"▼ "+Math.abs(n)+"%"};
+}
+function getYoyBadge(c,y){
+  if(!y||y===0) return {cls:"yoy-na",txt:"sin datos"};
+  const v=pctCh(c,y); if(!v) return {cls:"yoy-na",txt:"—"};
+  const n=parseFloat(v);
+  return n>=0 ? {cls:"yoy-up",txt:"▲ "+Math.abs(n)+"%"} : {cls:"yoy-dn",txt:"▼ "+Math.abs(n)+"%"};
+}
+
+/* Devuelve los meses del rango personalizado activo */
+function getCustomMeses(){
+  const all=[...new Set(MENSUAL.map(r=>r.mes))].sort();
+  return all.filter(m=>m>=STATE.fromMes&&m<=STATE.toMes);
+}
+
+function filterM(meses){
+  let r=MENSUAL;
+  if(STATE.marca!=="todas") r=r.filter(x=>x.m===STATE.marca);
+  if(meses) r=r.filter(x=>meses.includes(x.mes));
+  return r;
+}
+
+/* Filtra usando el rango personalizado */
+function filterMCustom(){
+  return filterM(getCustomMeses());
+}
+
+function updateBannerKPI(){
+  let meses, prevMeses, yoyMeses, periodLabel, prevLabel, yoyLabel;
+
+  if(STATE.periodo==="custom"){
+    meses=getCustomMeses();
+    // período anterior: misma cantidad de meses antes del rango
+    const all=[...new Set(MENSUAL.map(r=>r.mes))].sort();
+    const fromIdx=all.indexOf(STATE.fromMes), toIdx=all.indexOf(STATE.toMes);
+    const span=toIdx-fromIdx+1;
+    const prevStart=Math.max(0,fromIdx-span), prevEnd=fromIdx-1;
+    prevMeses=prevEnd>=prevStart?all.slice(prevStart,prevEnd+1):null;
+    yoyMeses=null; yoyLabel="";
+    periodLabel=STATE.fromMes+" → "+STATE.toMes;
+    prevLabel=prevMeses?prevMeses[0]+" → "+prevMeses[prevMeses.length-1]:"";
+  } else {
+    const pd=PD[STATE.periodo];
+    meses=pd.meses; prevMeses=pd.prevMeses; yoyMeses=pd.yoyMeses;
+    periodLabel=pd.label; prevLabel=pd.prevLabel; yoyLabel=pd.yoyLabel;
+  }
+
+  const cr=filterM(meses), pr=filterM(prevMeses), yr=filterM(yoyMeses);
+  const cf=cr.reduce((s,r)=>s+r.fac,0), co=cr.reduce((s,r)=>s+r.ord,0);
+  const pf=pr.reduce((s,r)=>s+r.fac,0), po=pr.reduce((s,r)=>s+r.ord,0);
+  const yf=yr.reduce((s,r)=>s+r.fac,0), yo=yr.reduce((s,r)=>s+r.ord,0);
+  const ct=co>0?(cf*1e6)/co:0, pt=po>0?(pf*1e6)/po:0, yt=yo>0?(yf*1e6)/yo:0;
+
+  // Actualizar locales por marca según filtro de marca activo
+  const locCount = {P:36, T:26, F:2};
+  const locCount25 = {P:43, T:39, F:3};
+  const brandMap = {todas:null, Patagonia:"P", Temple:"T", Feriado:"F"};
+  const activeBrand = brandMap[STATE.marca];
+  if(activeBrand) {
+    const abN = locCount[activeBrand] || 0;
+    const abP = locCount25[activeBrand] || 0;
+    document.getElementById("loc-P").textContent = activeBrand==="P" ? locCount.P : "—";
+    document.getElementById("loc-T").textContent = activeBrand==="T" ? locCount.T : "—";
+    document.getElementById("loc-F").textContent = activeBrand==="F" ? locCount.F : "—";
+    document.getElementById("loc-total").textContent = abN || "—";
+    document.getElementById("loc-total").nextElementSibling.textContent = "1 marca";
+    ["P","T","F"].forEach(b => {
+      const el = document.getElementById("loc-"+b+"-yoy");
+      if(el) el.innerHTML = b===activeBrand ? fmtYoyLoc(locCount[b], locCount25[b]) : '<span class="na2">—</span>';
+    });
+    const elTot = document.getElementById("loc-total-yoy");
+    if(elTot) elTot.innerHTML = fmtYoyLoc(abN, abP);
+  } else {
+    document.getElementById("loc-P").textContent = locCount.P;
+    document.getElementById("loc-T").textContent = locCount.T;
+    document.getElementById("loc-F").textContent = locCount.F;
+    document.getElementById("loc-total").textContent = locCount.P + locCount.T + locCount.F;
+    document.getElementById("loc-total").nextElementSibling.textContent = "3 marcas";
+    ["P","T","F"].forEach(b => {
+      const el = document.getElementById("loc-"+b+"-yoy");
+      if(el) el.innerHTML = fmtYoyLoc(locCount[b], locCount25[b]);
+    });
+    const elTot = document.getElementById("loc-total-yoy");
+    if(elTot) elTot.innerHTML = fmtYoyLoc(locCount.P+locCount.T+locCount.F, locCount25.P+locCount25.T+locCount25.F);
+  }
+
+  const mL=STATE.marca==="todas"?"Todas las marcas":STATE.marca;
+  document.getElementById("kpiLabel").textContent="KPIs \u00b7 "+periodLabel.toUpperCase()+" \u00b7 "+mL.toUpperCase()+(prevLabel?" \u00b7 vs "+prevLabel:"");
+  document.getElementById("filterLabel").innerHTML="Mostrando: <strong style='color:#e6edf3'>"+mL+" \u00b7 "+periodLabel+"</strong>";
+
+  function sk(id, v, pv, yv, fmt){
+    document.getElementById("k-"+id).textContent=fmt(v);
+    // vs periodo anterior
+    const b=getBadge(v,pv);
+    const el=document.getElementById("k-"+id+"-b");
+    el.className="badge "+b.cls; el.textContent=b.txt;
+    document.getElementById("k-"+id+"-s").textContent=pv?"ant: "+fmt(pv):"sin comparacion";
+    // vs año anterior (YoY)
+    const by=getYoyBadge(v,yv);
+    const ely=document.getElementById("k-"+id+"-yoy");
+    if(ely){ely.className="badge "+by.cls; ely.textContent=by.txt;}
+    const elys=document.getElementById("k-"+id+"-yoys");
+    if(elys) elys.textContent=yoyLabel ? yoyLabel+" · "+fmt(yv) : "sin datos";
+  }
+  sk("fac",cf,pf,yf,fmtM);
+  sk("ord",co,po,yo,fmtN);
+  sk("tick",Math.round(ct),Math.round(pt),Math.round(yt),fmtT);
+
+  // 4ª tarjeta: variación vs período anterior
+  const vp=pf>0?parseFloat(pctCh(cf,pf)):null;
+  document.getElementById("k-var").textContent=vp!==null?(vp>0?"+":"")+vp.toFixed(1)+"%":"—";
+  document.getElementById("k-var").style.color=vp===null?"#e6edf3":vp>=0?"#6ee7b7":"#f87171";
+  document.getElementById("k-var-s").textContent=prevLabel?"vs "+prevLabel:"sin período de comparación";
+
+  // 4ª tarjeta: variación vs año anterior (YoY)
+  const vyoy=yf>0?parseFloat(pctCh(cf,yf)):null;
+  const eyoy=document.getElementById("k-varyoy");
+  if(eyoy){
+    eyoy.textContent=vyoy!==null?(vyoy>0?"+":"")+vyoy.toFixed(1)+"%":"—";
+    eyoy.style.color=vyoy===null?"#8b949e":vyoy>=0?"#a78bfa":"#f472b6";
+  }
+  const eyoys=document.getElementById("k-varyoy-s");
+  if(eyoys) eyoys.textContent=yoyLabel?"vs "+yoyLabel+(yf?" · ant: "+fmtM(yf):""):"sin datos YoY";
+}
+
+function buildTend(){
+  if(typeof Chart==='undefined') return;
+  const v=STATE.tendView;
+  const MN=["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  const months12=["01","02","03","04","05","06","07","08","09","10","11","12"];
+  const labels=months12.map(mo=>MN[+mo]);
+
+  let rows=MENSUAL;
+  if(STATE.marca!=="todas") rows=rows.filter(r=>r.m===STATE.marca);
+
+  function aggYear(yr){
+    return months12.map(mo=>{
+      const mes=yr+"-"+mo;
+      const s=rows.filter(r=>r.mes===mes);
+      if(!s.length) return null;
+      const f=s.reduce((x,r)=>x+r.fac,0), o=s.reduce((x,r)=>x+r.ord,0);
+      return v==="fac"?f : v==="ord"?o : (o>0?Math.round(f*1e6/o):null);
+    });
+  }
+
+  const d26=aggYear("2026"), d25=aggYear("2025");
+  const col=BCOLOR[STATE.marca]||"#58a6ff";
+  const ml=v==="fac"?"Facturación ($M)":v==="ord"?"Órdenes":"Ticket ($)";
+  const mf=v==="fac"?x=>"$"+fmtN(x)+"M":v==="ord"?x=>fmtN(x):x=>"$"+fmtN(x);
+
+  const datasets=[
+    {label:"2026",data:d26,borderColor:col,fill:true,tension:.32,pointRadius:3,
+     pointBackgroundColor:col,borderWidth:2.5,spanGaps:false,yAxisID:"y",
+     backgroundColor:(ctx)=>{const g=ctx.chart.ctx.createLinearGradient(0,0,0,ctx.chart.height);
+       g.addColorStop(0,col+"44");g.addColorStop(1,col+"00");return g;}},
+    {label:"2025",data:d25,borderColor:"#6e7681",fill:false,tension:.32,
+     pointRadius:2,pointBackgroundColor:"#6e7681",borderWidth:1.5,
+     borderDash:[5,4],spanGaps:false,yAxisID:"y",backgroundColor:"transparent"}
+  ];
+
+  if(CHARTS.tend) CHARTS.tend.destroy();
+  CHARTS.tend=new Chart(document.getElementById("cTend").getContext("2d"),{
+    type:"line",data:{labels,datasets},
+    options:{responsive:true,interaction:{mode:"index",intersect:false},
+      plugins:{
+        legend:{display:true,labels:{color:"#8b949e",font:{size:10},usePointStyle:true,
+          generateLabels:chart=>chart.data.datasets.map((ds,i)=>({
+            text:ds.label,fillStyle:ds.borderColor,strokeStyle:ds.borderColor,
+            lineWidth:2,hidden:false,datasetIndex:i,
+            lineDash:ds.borderDash||[]}))}},
+        tooltip:{backgroundColor:"#1c2128",borderColor:"#30363d",borderWidth:1,
+          titleColor:"#8b949e",bodyColor:"#e6edf3",padding:10,
+          callbacks:{
+            title:items=>MN[+months12[items[0].dataIndex]]+" ("+ml+")",
+            label:c=>{
+              const yr=c.dataset.label;
+              const val=c.raw;
+              return " "+yr+": "+(val!==null?mf(val):"—");
+            },
+            afterBody:items=>{
+              const i=items[0].dataIndex;
+              const v26=d26[i], v25=d25[i];
+              if(v26!==null&&v25!==null&&v25>0){
+                const pct=((v26-v25)/v25*100).toFixed(1);
+                return ["","  vs 2025: "+(pct>0?"+":"")+pct+"%"];
+              } return [];
+            }
+          }}
+      },
+      scales:{
+        x:{grid:{color:"#21262d"},ticks:{color:"#8b949e",font:{size:9},maxRotation:0}},
+        y:{grid:{color:"#21262d"},ticks:{color:"#8b949e",font:{size:8},callback:mf}}
+      }
+    }
+  });
+  // Actualizar nota debajo del gráfico
+  const note=document.getElementById("tendNote");
+  note.style.display="block";
+  note.innerHTML="&#9473; <span style=\"color:"+col+"\">2026</span>&nbsp;&nbsp;"
+    +"<span style=\"letter-spacing:2px;color:#6e7681\">- - -</span> <span style=\"color:#6e7681\">2025</span>"
+    +"&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span style=\"color:#8b949e\">*Mar 26 parcial</span>";
+}
+
+function buildRoyalties(){
+  const el=document.getElementById("royaltiesCard");
+  if(!el||typeof ROYALTY_DATA==="undefined") return;
+  const fmtRoy=v=>"$"+Math.round(v/1e6).toLocaleString("es-AR")+"M";
+  const allObjMarcas=Object.keys(OBJETIVOS).filter(k=>Object.keys(OBJETIVOS[k]||{}).length>0);
+  const marcasFiltro=STATE.marca==="todas"?allObjMarcas:(OBJETIVOS[STATE.marca]?[STATE.marca]:[]);
+  if(!marcasFiltro.length){el.innerHTML="";return;}
+  const today=new Date();
+  const currentYear=today.getFullYear().toString();
+  const MN=["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  const months12=Array.from({length:12},(_,i)=>`${currentYear}-${String(i+1).padStart(2,"0")}`);
+  // Per-brand calculations
+  const brandData=marcasFiltro.map(marca=>{
+    const col=BCOLOR[marca]||"#8b949e";
+    const avgPct=(ROYALTY_DATA.avgPct||{})[marca]||3.5;
+    const monthlyMap=(ROYALTY_DATA.monthly||{})[marca]||{};
+    let actualTotal=0,proyTotal=0,totalGmv=0,latestRealRoy=0,latestRealMes="";
+    const rows=months12.map(mes=>{
+      const real=monthlyMap[mes];
+      if(real&&real.roy>0){
+        actualTotal+=real.roy;proyTotal+=real.roy;totalGmv+=real.gmv;
+        latestRealRoy=real.roy;latestRealMes=mes;
+        return {type:"real",roy:real.roy,pct:real.pct,gmv:real.gmv};
+      }
+      const objMd=OBJETIVOS[marca]&&OBJETIVOS[marca][mes];
+      const estGmv=objMd&&objMd.obj_fac>0?objMd.obj_fac*1e6:0;
+      const est=estGmv*(avgPct/100);
+      proyTotal+=est;totalGmv+=estGmv;
+      return {type:"est",roy:est,pct:avgPct,gmv:estGmv};
+    });
+    const pctAnual=totalGmv>0?proyTotal/totalGmv*100:avgPct;
+    const [,lmo]=latestRealMes?latestRealMes.split("-").map(Number):[0,0];
+    const mesLabel=latestRealMes?MN[lmo]+" "+String(latestRealMes.split("-")[0]).slice(2):"";
+    return {marca,col,avgPct,pctAnual,actualTotal,proyTotal,totalGmv,latestRealRoy,mesLabel,rows};
+  });
+  const totalProy=brandData.reduce((s,b)=>s+b.proyTotal,0);
+  const totalGmvAll=brandData.reduce((s,b)=>s+b.totalGmv,0);
+  const totalPctAnual=totalGmvAll>0?totalProy/totalGmvAll*100:0;
+  const totalRoyMes=brandData.reduce((s,b)=>s+b.latestRealRoy,0);
+  const latestMesLabel=brandData.reduce((lbl,b)=>b.mesLabel||lbl,"");
+  // KPI strip — proyección anual + % ponderado + royalty del mes
+  const kpiCols=brandData.map(b=>`
+    <div style="flex:1;text-align:center;padding:8px 6px;border-right:1px solid #21262d">
+      <div style="font-size:9px;color:${b.col};font-weight:700;letter-spacing:.3px;margin-bottom:3px">${b.marca}</div>
+      <div style="font-size:15px;font-weight:700;color:#f0f6fc">${fmtRoy(b.proyTotal)}</div>
+      <div style="font-size:9px;color:#6e7681;margin-top:1px">${b.pctAnual.toFixed(2)}% royalty est. 2026</div>
+      <div style="margin-top:5px;padding-top:5px;border-top:1px solid #21262d">
+        <div style="font-size:8px;color:#6e7681;margin-bottom:1px">${b.mesLabel||"—"}</div>
+        <div style="font-size:13px;font-weight:600;color:#e6edf3">${b.latestRealRoy>0?fmtRoy(b.latestRealRoy):"—"}</div>
+      </div>
+    </div>`).join("");
+  const kpiStrip=`<div style="display:flex;background:#161b22;border:1px solid #21262d;border-radius:8px;overflow:hidden;margin-bottom:12px">
+    ${kpiCols}
+    <div style="flex:1;text-align:center;padding:8px 6px">
+      <div style="font-size:9px;color:#8b949e;font-weight:700;letter-spacing:.3px;margin-bottom:3px">TOTAL 2026</div>
+      <div style="font-size:15px;font-weight:700;color:#f0f6fc">${fmtRoy(totalProy)}</div>
+      <div style="font-size:9px;color:#6e7681;margin-top:1px">${totalPctAnual.toFixed(2)}% royalty est. 2026</div>
+      <div style="margin-top:5px;padding-top:5px;border-top:1px solid #21262d">
+        <div style="font-size:8px;color:#6e7681;margin-bottom:1px">${latestMesLabel||"—"}</div>
+        <div style="font-size:13px;font-weight:600;color:#e6edf3">${totalRoyMes>0?fmtRoy(totalRoyMes):"—"}</div>
+      </div>
+    </div>
+  </div>`;
+  // Table headers
+  const thCells=`<th style="font-size:9px;color:#6e7681;font-weight:600;padding:4px 6px 4px 0;text-align:left">Mes</th>`+
+    brandData.map(b=>`<th style="font-size:9px;color:${b.col};font-weight:600;padding:4px 6px;text-align:right">${b.marca}</th>`).join("")+
+    (brandData.length>1?`<th style="font-size:9px;color:#8b949e;font-weight:600;padding:4px 6px;text-align:right">Total</th>`:"");
+  // Month rows
+  const trRows=months12.map((mes,i)=>{
+    const [,m]=mes.split("-").map(Number);
+    let rowTotal=0;
+    const tds=brandData.map(b=>{
+      const r=b.rows[i]; rowTotal+=r.roy;
+      const tc=r.type==="real"?"#e6edf3":"#6e7681";
+      const badge=r.type==="est"?`<span style="font-size:8px;color:#484f58;margin-left:1px">est.</span>`:"";
+      return `<td style="text-align:right;font-size:10px;color:${tc};padding:4px 6px;white-space:nowrap">${r.roy>0?fmtRoy(r.roy):"—"}${badge} <span style="font-size:8px;color:#484f58">${r.pct.toFixed(1)}%</span></td>`;
+    }).join("");
+    const totTd=brandData.length>1?`<td style="text-align:right;font-size:10px;font-weight:600;color:${rowTotal>0?"#f0f6fc":"#484f58"};padding:4px 6px">${rowTotal>0?fmtRoy(rowTotal):"—"}</td>`:"";
+    return `<tr style="border-bottom:1px solid #1c2128"><td style="font-size:10px;color:#8b949e;padding:4px 6px 4px 0">${MN[m]}</td>${tds}${totTd}</tr>`;
+  }).join("");
+  // Footer totals
+  const tfTds=brandData.map(b=>`<td style="text-align:right;font-size:10px;font-weight:700;color:${b.col};padding:5px 6px">${fmtRoy(b.proyTotal)}</td>`).join("");
+  const tfTotal=brandData.length>1?`<td style="text-align:right;font-size:10px;font-weight:700;color:#f0f6fc;padding:5px 6px">${fmtRoy(totalProy)}</td>`:"";
+  el.innerHTML=kpiStrip+
+    `<div style="font-size:9px;color:#484f58;margin-bottom:8px">Valores en pesos · Real: meses con datos · <span style="color:#6e7681">est.</span> = % YTD × objetivo mensual</div>
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
+      <thead><tr style="border-bottom:1px solid #30363d">${thCells}</tr></thead>
+      <tbody>${trRows}</tbody>
+      <tfoot><tr style="border-top:1px solid #30363d">
+        <td style="font-size:10px;font-weight:700;color:#8b949e;padding:5px 6px 5px 0">Total</td>
+        ${tfTds}${tfTotal}
+      </tr></tfoot>
+    </table></div>`;
+}
+
+function buildPlanAccion(){
+  const el=document.getElementById("planAccion");
+  if(!el) return;
+  const fmtML=v=>"$"+Math.round(v).toLocaleString("es-AR")+"M";
+  const fmtPesos=v=>"$"+Math.round(v).toLocaleString("es-AR");
+  const allObjMarcas=Object.keys(OBJETIVOS).filter(k=>Object.keys(OBJETIVOS[k]||{}).length>0);
+  const marcasFiltro=STATE.marca==="todas"?allObjMarcas:(OBJETIVOS[STATE.marca]?[STATE.marca]:[]);
+  if(!marcasFiltro.length){el.innerHTML="";return;}
+  const mensualMeses=new Set(MENSUAL.map(r=>r.mes));
+  const allMonths=[...new Set(marcasFiltro.flatMap(k=>Object.keys(OBJETIVOS[k])))].sort();
+  const monthsWithReal=allMonths.filter(m=>mensualMeses.has(m));
+  if(!monthsWithReal.length){el.innerHTML="";return;}
+  const latestMes=monthsWithReal[monthsWithReal.length-1];
+  const today=new Date();
+  const todayMes=today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0");
+  const [y,mo]=latestMes.split("-").map(Number);
+  const daysInMonth=new Date(y,mo,0).getDate();
+  const isCurrentMonth=latestMes===todayMes;
+  const daysElapsed=isCurrentMonth?today.getDate():daysInMonth;
+  const daysRemaining=isCurrentMonth?daysInMonth-daysElapsed:0;
+  const endOfYear=new Date(today.getFullYear(),11,31);
+  const daysRemainingAño=Math.max(0,Math.floor((endOfYear-today)/(1000*60*60*24)));
+  const currentYear=today.getFullYear().toString();
+  // Historical weight
+  const allBrandsForWeight=STATE.marca==="todas"?allObjMarcas:[STATE.marca];
+  const completedMonths=isCurrentMonth?monthsWithReal.slice(0,-1):monthsWithReal;
+  const histMonths=completedMonths.slice(-3);
+  const histByMarca={};let histTotal=0;
+  allBrandsForWeight.forEach(marca=>{
+    let bTotal=0;
+    histMonths.forEach(mes=>{const rr=MENSUAL.find(r=>r.mes===mes&&r.m===marca);if(rr) bTotal+=rr.fac;});
+    histByMarca[marca]=bTotal;histTotal+=bTotal;
+  });
+  let totalObjMes=0;
+  marcasFiltro.forEach(marca=>{const md=OBJETIVOS[marca]&&OBJETIVOS[marca][latestMes];if(md) totalObjMes+=md.obj_fac;});
+  const MN=["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  const mesLabel=MN[mo]+" "+String(y).slice(2);
+  // Compute all per-brand metrics in one pass
+  const brandData=marcasFiltro.map(marca=>{
+    const peso=histTotal>0?(histByMarca[marca]||0)/histTotal:(1/marcasFiltro.length);
+    const targetPonderado=totalObjMes*peso;
+    const rrMes=MENSUAL.find(r=>r.mes===latestMes&&r.m===marca);
+    const realMes=rrMes?rrMes.fac:0,ordMes=rrMes?rrMes.ord:0;
+    const faltaMes=Math.max(0,targetPonderado-realMes);
+    const pctMes=targetPonderado>0?realMes/targetPonderado:0;
+    const ritmoNecesario=daysRemaining>0?faltaMes/daysRemaining:0;
+    const ritmoActual=daysElapsed>0?realMes/daysElapsed:0;
+    const brechaRitmo=ritmoNecesario-ritmoActual;
+    const pctBrecha=ritmoActual>0?brechaRitmo/ritmoActual:0;
+    const ordDia=daysElapsed>0?ordMes/daysElapsed:0;
+    const ticketActual=ordMes>0?(realMes*1e6)/ordMes:0;
+    // Revenue gap per day: how much the brand needs to generate PER DAY just to cover the remaining gap
+    // Always positive when faltaMes > 0. Independent of current pace (brechaRitmo can be negative).
+    const revenueGapDia=daysRemaining>0?faltaMes*1e6/daysRemaining:0;
+    const ordenesExtraDia=ticketActual>0&&daysRemaining>0?revenueGapDia/ticketActual:0;
+    const deltaTicket=ordDia>0&&daysRemaining>0?revenueGapDia/ordDia:0;
+    const yearMonths=allMonths.filter(m=>m.startsWith(currentYear));
+    let objAño=0,realAño=0;
+    yearMonths.forEach(mes=>{
+      const md=OBJETIVOS[marca]&&OBJETIVOS[marca][mes];if(md) objAño+=md.obj_fac;
+      if(mensualMeses.has(mes)){const rr=MENSUAL.find(r=>r.mes===mes&&r.m===marca);if(rr) realAño+=rr.fac;}
+    });
+    const faltaAño=Math.max(0,objAño-realAño);
+    const pctAño=objAño>0?realAño/objAño:0;
+    const ritmoAnual=daysRemainingAño>0?faltaAño/daysRemainingAño:0;
+    return {marca,targetPonderado,realMes,faltaMes,pctMes,ritmoNecesario,ritmoActual,brechaRitmo,pctBrecha,ordDia,ticketActual,ordenesExtraDia,deltaTicket,objAño,realAño,faltaAño,pctAño,ritmoAnual};
+  });
+  // Plan rows (mensual)
+  const planRows=brandData.map(d=>{
+    const col=BCOLOR[d.marca]||"#8b949e";
+    const mesCol=d.pctMes>=1?"#6ee7b7":d.pctMes>=0.85?"#fbbf24":"#f87171";
+    const añoCol=d.pctAño>=1?"#6ee7b7":d.pctAño>=0.85?"#fbbf24":"#f87171";
+    let body="";
+    if(!isCurrentMonth){
+      const lbl=d.pctMes>=1?"✓ Mes cerrado · objetivo cumplido":"✗ Mes cerrado · "+fmtML(d.faltaMes)+" por debajo";
+      body=`<div style="padding:5px 8px;background:#161b22;border-radius:5px;border-left:2px solid ${mesCol};font-size:10px;color:${mesCol}">${lbl}</div>`;
+    } else if(d.pctMes>=1){
+      body=`<div style="padding:5px 8px;background:#161b22;border-radius:5px;border-left:2px solid #6ee7b7;font-size:10px;color:#6ee7b7">✓ En ritmo mensual — mantener cadencia (${fmtML(d.ritmoActual)}/día)</div>`;
+    } else {
+      const pctBStr=(d.brechaRitmo>0?"+":"")+Math.round(d.pctBrecha*100)+"%";
+      const opA=d.ordenesExtraDia>=0.5?`<span style="background:#21262d;padding:2px 8px;border-radius:4px;font-size:10px;color:#e6edf3">+${Math.round(d.ordenesExtraDia)} órd/día</span>`:"";
+      const opB=d.deltaTicket>=100?`<span style="background:#21262d;padding:2px 8px;border-radius:4px;font-size:10px;color:#e6edf3">ó +${fmtPesos(Math.round(d.deltaTicket/100)*100)}/ticket</span>`:"";
+      body=`<div style="padding:7px 10px;background:#161b22;border-radius:6px;border-left:2px solid ${col}">
+        <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;font-size:10px;margin-bottom:6px">
+          <span style="color:#8b949e">Ritmo actual: <b style="color:#f0f6fc">${fmtML(d.ritmoActual)}/día</b></span>
+          <span style="color:#8b949e">Necesario: <b style="color:${mesCol}">${fmtML(d.ritmoNecesario)}/día</b> <span style="color:#6e7681;font-size:9px">(${pctBStr})</span></span>
+        </div>
+        ${opA||opB?`<div style="font-size:9px;color:#6e7681;text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">Para cerrar el mes:</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap">${opA}${opB}</div>`:""}
+      </div>`;
+    }
+    return `<div style="margin-bottom:9px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap">
+        <span style="color:${col};font-weight:700;font-size:12px">${d.marca}</span>
+        <span style="color:${mesCol};font-size:10px;font-weight:600">${(d.pctMes*100).toFixed(0)}% mensual</span>
+        <span style="color:#30363d">·</span>
+        <span style="color:${añoCol};font-size:10px;font-weight:600">${(d.pctAño*100).toFixed(0)}% anual</span>
+        ${isCurrentMonth?`<span style="color:#6e7681;font-size:9px;margin-left:auto">${daysRemaining}d rest.</span>`:""}
+      </div>
+      ${body}
+    </div>`;
+  }).join("");
+  // Annual summary table
+  const añoRows=brandData.map(d=>{
+    const col=BCOLOR[d.marca]||"#8b949e";
+    const añoCol=d.pctAño>=1?"#6ee7b7":d.pctAño>=0.85?"#fbbf24":"#f87171";
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #21262d;flex-wrap:wrap;gap:3px">
+      <span style="color:${col};font-size:10px;font-weight:600;min-width:70px">${d.marca}</span>
+      <span style="font-size:10px;color:#8b949e">Obj <span style="color:#f0f6fc">${fmtML(d.objAño)}</span></span>
+      <span style="font-size:10px;color:#8b949e">Real <span style="color:${añoCol}">${fmtML(d.realAño)}</span></span>
+      <span style="font-size:10px;color:${añoCol};font-weight:700">${(d.pctAño*100).toFixed(0)}%</span>
+      ${d.faltaAño>0&&daysRemainingAño>0
+        ?`<span style="font-size:10px;color:#fbbf24;font-weight:600">${fmtML(d.ritmoAnual)}/día</span>`
+        :`<span style="font-size:10px;color:#6ee7b7">✓</span>`}
+    </div>`;
+  }).join("");
+  el.innerHTML=`
+    <div style="font-size:10px;color:#6e7681;margin-bottom:10px">
+      ${mesLabel} · ${daysElapsed}d transcurridos${isCurrentMonth?" · "+daysRemaining+"d restantes":" · mes cerrado"}
+    </div>
+    ${planRows}
+    <div style="margin-top:10px;padding-top:8px;border-top:1px solid #30363d">
+      <div style="font-size:9px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">Proyección Anual 2026 · ${daysRemainingAño}d restantes al 31/dic</div>
+      ${añoRows}
+    </div>`;
+}
+
+function buildTurnos(){
+  if(typeof Chart==='undefined') return;
+  let rows=TURNOS_DATA;
+  if(STATE.marca!=="todas") rows=rows.filter(r=>r.m===STATE.marca);
+  const agg={}; rows.forEach(r=>{if(!agg[r.t])agg[r.t]={fac:0,ord:0,color:r.color};agg[r.t].fac+=r.fac;agg[r.t].ord+=r.ord;});
+  const order=["Tarde","Noche","Mañana","Extra"];
+  const labels=order.filter(t=>agg[t]);
+  const displayLabels=labels.map(t=>t==="Mañana"?"Mañana":t);
+  const vals=labels.map(t=>agg[t].fac), cols=labels.map(t=>agg[t].color);
+  if(CHARTS.turn) CHARTS.turn.destroy();
+  CHARTS.turn=new Chart(document.getElementById("cTurnos").getContext("2d"),{
+    type:"bar",data:{labels:displayLabels,datasets:[{label:"Facturación ($M)",data:vals,backgroundColor:cols,borderRadius:5}]},
+    options:{indexAxis:"y",responsive:true,plugins:{legend:{display:false},tooltip:{backgroundColor:"#1c2128",borderColor:"#30363d",borderWidth:1,titleColor:"#8b949e",bodyColor:"#e6edf3",padding:10,callbacks:{label:c=>"$"+fmtN(c.raw)+"M"}}},
+      scales:{x:{grid:{color:"#21262d"},ticks:{color:"#8b949e",font:{size:9}}},y:{grid:{color:"#21262d"},ticks:{color:"#8b949e",font:{size:10}}}}}});
+  document.getElementById("turnoMini").innerHTML=labels.map(t=>{
+    const d=agg[t],dn=t==="Mañana"?"Mañana":t;
+    return `<div class="tmini"><div class="tn" style="color:${d.color}">${dn}</div><div class="tm">${fmtN(d.ord)} ord \u00b7 ${fmtT(d.ord>0?Math.round(d.fac*1e6/d.ord):0)}</div></div>`;}).join("");
+}
+
+function buildDias(){
+  if(typeof Chart==='undefined') return;
+  let rows=DIAS_DATA;
+  if(STATE.marca!=="todas") rows=rows.filter(r=>r.m===STATE.marca);
+  const order=["Dom","Lun","Mar","Mie","Jue","Vie","Sab"];
+  const displayOrder=["Dom","Lun","Mar","Mie","Jue","Vie","Sab"];
+  const agg={}; rows.forEach(r=>{if(!agg[r.dia])agg[r.dia]=0;agg[r.dia]+=r.fac;});
+  const vals=order.map(d=>agg[d]||0);
+  const fsTot=(agg["Vie"]||0)+(agg["Sab"]||0)+(agg["Dom"]||0);
+  const total=vals.reduce((s,v)=>s+v,0);
+  const fsPct=total>0?Math.round((fsTot/total)*100):0;
+  const col=BCOLOR[STATE.marca]||"#38bdf8";
+  const cols=order.map(d=>["Vie","Sab"].includes(d)?"#f472b6":d==="Dom"?"#fbbf24":col);
+  if(CHARTS.dias) CHARTS.dias.destroy();
+  CHARTS.dias=new Chart(document.getElementById("cDias").getContext("2d"),{
+    type:"bar",data:{labels:displayOrder,datasets:[{label:"Facturación ($M)",data:vals,backgroundColor:cols,borderRadius:4}]},
+    options:{responsive:true,plugins:{legend:{display:false},tooltip:{backgroundColor:"#1c2128",borderColor:"#30363d",borderWidth:1,titleColor:"#8b949e",bodyColor:"#e6edf3",padding:10,callbacks:{label:c=>"$"+fmtN(c.raw)+"M"}}},
+      scales:{x:{grid:{color:"#21262d"},ticks:{color:"#8b949e",font:{size:10}}},y:{grid:{color:"#21262d"},ticks:{color:"#8b949e",font:{size:9}}}}}});
+  document.getElementById("finSemanaPct").textContent=fsPct+"%";
+}
+
+function buildTop10(){
+  // Para rango personalizado mapeamos al preset más cercano por cantidad de meses
+  let pkFallback="ultimos_6m", customNote="";
+  if(STATE.periodo==="custom"){
+    const span=getCustomMeses().length;
+    if(span<=1) pkFallback="mes_actual";
+    else if(span<=4) pkFallback="ultimos_3m";
+    else if(span<=6) pkFallback="ultimos_6m";
+    else pkFallback="ultimos_6m";
+    customNote=" (referencia: "+PD[pkFallback].label+")";
+  }
+  const pk=STATE.periodo==="todo"?"ultimos_6m":STATE.periodo==="ytd"?"ultimos_3m":STATE.periodo==="mes_anterior"?"mes_anterior":STATE.periodo==="custom"?pkFallback:STATE.periodo;
+  let rows=TOP10_DATA.filter(r=>r.p===pk);
+  if(STATE.marca!=="todas") rows=rows.filter(r=>r.m===STATE.marca);
+  rows.sort((a,b)=>b.fac-a.fac);
+  const mL=STATE.marca!=="todas"?STATE.marca:"todas las marcas";
+  const pL=STATE.periodo==="custom"?STATE.fromMes+" → "+STATE.toMes:PD[STATE.periodo]?PD[STATE.periodo].label:STATE.periodo;
+  document.getElementById("top10Sub").textContent=mL+" \u00b7 "+pL+(STATE.periodo==="todo"||STATE.periodo==="ytd"?" (referencia: ultimos 6M)":customNote);
+  if(!rows.length){document.getElementById("topTable").innerHTML='<tr><td colspan="6" style="color:#6e7681;padding:16px">Sin datos para este filtro.</td></tr>';return;}
+  const maxF=Math.max(...rows.map(r=>r.fac));
+  const MC={Patagonia:{bg:"#0c2a3d",cl:"#38bdf8"},Temple:{bg:"#3d0c2a",cl:"#f472b6"},Feriado:{bg:"#3d2c00",cl:"#fbbf24"}};
+  let h='<thead><tr><th>#</th><th>Local</th><th>Marca</th><th>Facturación</th><th>Órdenes</th><th>Ticket</th><th style="min-width:80px">Share</th></tr></thead><tbody>';
+  rows.slice(0,10).forEach((r,i)=>{
+    const mc=MC[r.m]||{bg:"#21262d",cl:"#8b949e"}, pct=((r.fac/maxF)*100).toFixed(0);
+    h+=`<tr><td style="color:#6e7681;font-weight:700">${i+1}</td><td style="font-weight:600">${r.l}</td>
+      <td><span class="mbadge" style="background:${mc.bg};color:${mc.cl}">${r.m}</span></td>
+      <td style="font-weight:700;color:#58a6ff">$${fmtN(r.fac)}M</td>
+      <td style="color:#8b949e">${fmtN(r.ord)}</td><td style="color:#6ee7b7">${fmtT(r.tick)}</td>
+      <td><div style="font-size:9px;color:#6e7681;margin-bottom:2px">${pct}%</div>
+          <div class="strack"><div class="sfill" style="background:${mc.cl};width:${pct}%"></div></div></td></tr>`;});
+  h+="</tbody>"; document.getElementById("topTable").innerHTML=h;
+}
+
+/* ── SVG Semi-circular Gauge ───────────────────────── */
+function svgGauge(pct) {
+  const alpha = Math.min(Math.max(pct, 0), 0.9999);
+  const cx=100, cy=80, r=62;
+  const ar = Math.PI * (1 - alpha);
+  const ex = (cx + r * Math.cos(ar)).toFixed(2);
+  const ey = (cy - r * Math.sin(ar)).toFixed(2);
+  const gcol = pct >= 1 ? "#6ee7b7" : pct >= 0.85 ? "#fbbf24" : "#f87171";
+  const lbl = pct >= 1 ? "\u2713 " : "";
+  return `<svg viewBox="0 0 200 105" style="width:100%;max-width:170px">
+    <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${cx+r} ${cy}" fill="none" stroke="#1e2328" stroke-width="13" stroke-linecap="round"/>
+    <path d="M ${cx-r} ${cy} A ${r} ${r} 0 0 1 ${ex} ${ey}" fill="none" stroke="${gcol}" stroke-width="13" stroke-linecap="round"/>
+    <text x="${cx}" y="${cy-5}" text-anchor="middle" font-size="22" font-weight="800" fill="${gcol}" font-family="Segoe UI,system-ui,sans-serif">${lbl}${(pct*100).toFixed(1)}%</text>
+    <text x="${cx}" y="${cy+13}" text-anchor="middle" font-size="9" fill="#8b949e" font-family="Segoe UI,system-ui,sans-serif">cumplimiento</text>
+    <line x1="${cx-r-6}" y1="${cy}" x2="${cx-r+2}" y2="${cy}" stroke="#6e7681" stroke-width="1"/>
+    <line x1="${cx+r-2}" y1="${cy}" x2="${cx+r+6}" y2="${cy}" stroke="#6e7681" stroke-width="1"/>
+    <text x="${cx-r-8}" y="${cy+4}" text-anchor="end" font-size="8" fill="#6e7681" font-family="Segoe UI,system-ui,sans-serif">0%</text>
+    <text x="${cx+r+8}" y="${cy+4}" text-anchor="start" font-size="8" fill="#6e7681" font-family="Segoe UI,system-ui,sans-serif">100%</text>
+  </svg>`;
+}
+
+
+
+
+/* ── Objetivos Section ─────────────────────────────── */
+function buildObjetivos() {
+  const MN = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  // Derivar meses y marcas disponibles dinámicamente desde OBJETIVOS inyectado
+  const objMarcas = Object.keys(OBJETIVOS).filter(k => Object.keys(OBJETIVOS[k]||{}).length > 0);
+  const allObjMonths = [...new Set(objMarcas.flatMap(k => Object.keys(OBJETIVOS[k])))].sort();
+  const pd = STATE.periodo==="custom" ? {meses:getCustomMeses(),label:STATE.fromMes+" → "+STATE.toMes} : PD[STATE.periodo];
+  const selMeses = pd.meses || allObjMonths;
+  const relevantMonths = allObjMonths.filter(m => selMeses.includes(m));
+  const marcas = STATE.marca === "todas" ? objMarcas :
+                 (OBJETIVOS[STATE.marca] ? [STATE.marca] : []);
+
+  const grid = document.getElementById("objGrid");
+  const tableWrap = document.getElementById("objTableWrap");
+  const objSub = document.getElementById("objSub");
+  const objNote = document.getElementById("objPeriodNote");
+
+  if (!relevantMonths.length || !marcas.length) {
+    const objRng = allObjMonths.length ? `${MN[+allObjMonths[0].split("-")[1]]} ${allObjMonths[0].slice(2,4)}-${MN[+allObjMonths[allObjMonths.length-1].split("-")[1]]} ${allObjMonths[allObjMonths.length-1].slice(2,4)}` : "sin datos";
+    grid.innerHTML = `<div class="obj-empty">&#128683; Sin objetivos disponibles para el per&#237;odo/marca seleccionado.<br><span style="font-size:10px">Objetivos cargados: ${objRng} · ${objMarcas.join(" y ")}</span></div>`;
+    tableWrap.innerHTML = "";
+    objNote.textContent = "Sin datos";
+    return;
+  }
+
+  const latestMes = "2026-04";
+  const isPartialLatest = relevantMonths.includes(latestMes);
+  const isPartialMar = isPartialLatest; // alias para compatibilidad
+
+  /* ── Cards con gauges ── */
+  grid.innerHTML = marcas.map(marca => {
+    const col = BCOLOR[marca];
+    const objData = OBJETIVOS[marca];
+    let sumObjFac=0, sumObjOrd=0, sumRealFac=0, sumRealOrd=0;
+    relevantMonths.forEach(m => {
+      if (!objData[m]) return;
+      sumObjFac += objData[m].obj_fac;
+      sumObjOrd += objData[m].obj_ord;
+      const real = MENSUAL.find(r => r.mes === m && r.m === marca);
+      if (real) { sumRealFac += real.fac; sumRealOrd += real.ord; }
+    });
+    const pctFac = sumObjFac > 0 ? sumRealFac / sumObjFac : 0;
+    const pctOrd = sumObjOrd > 0 ? sumRealOrd / sumObjOrd : 0;
+    const difFac = sumRealFac - sumObjFac;
+    const difOrd = sumRealOrd - sumObjOrd;
+    const colFac = pctFac >= 1 ? "#6ee7b7" : pctFac >= 0.85 ? "#fbbf24" : "#f87171";
+    const colOrd = pctOrd >= 1 ? "#6ee7b7" : pctOrd >= 0.85 ? "#fbbf24" : "#f87171";
+    const barFac = Math.min(pctFac * 100, 100).toFixed(1);
+    const barOrd = Math.min(pctOrd * 100, 100).toFixed(1);
+    return `<div class="obj-card">
+      <div class="obj-brand-hdr">
+        <div class="obj-brand-dot" style="background:${col}"></div>
+        <span style="font-size:14px;font-weight:700;color:${col}">${marca}</span>
+        ${isPartialMar ? '<span style="font-size:10px;color:#6e7681;margin-left:6px">*Mar parcial</span>' : ''}
+      </div>
+      <div class="obj-gauges">
+        <div class="obj-gauge-wrap">${svgGauge(pctFac)}<div class="obj-gauge-lbl">FACTURACI&#211;N</div></div>
+        <div class="obj-gauge-wrap">${svgGauge(pctOrd)}<div class="obj-gauge-lbl">&#211;RDENES</div></div>
+      </div>
+      <div class="obj-pbar-section">
+        <div class="obj-pbar-row">
+          <span class="obj-pbar-name">&#128176; Facturaci&#243;n</span>
+          <span class="obj-pbar-val" style="color:${colFac}">$${fmtN(sumRealFac)}M <span style="color:#6e7681;font-weight:400">/ $${fmtN(sumObjFac)}M</span></span>
+        </div>
+        <div class="obj-pbar-track"><div class="obj-pbar-fill" style="background:${colFac};width:${barFac}%"></div></div>
+        <div class="obj-pbar-meta" style="color:${colFac}">${difFac>=0?"&#9650; +":"&#9660; "}$${fmtN(Math.abs(difFac))}M vs objetivo</div>
+      </div>
+      <div class="obj-pbar-section">
+        <div class="obj-pbar-row">
+          <span class="obj-pbar-name">&#128230; &#211;rdenes</span>
+          <span class="obj-pbar-val" style="color:${colOrd}">${fmtN(sumRealOrd)} <span style="color:#6e7681;font-weight:400">/ ${fmtN(sumObjOrd)}</span></span>
+        </div>
+        <div class="obj-pbar-track"><div class="obj-pbar-fill" style="background:${colOrd};width:${barOrd}%"></div></div>
+        <div class="obj-pbar-meta" style="color:${colOrd}">${difOrd>=0?"&#9650; +":"&#9660; "}${fmtN(Math.abs(difOrd))} &#243;rdenes vs objetivo</div>
+      </div>
+    </div>`;
+  }).join("");
+
+  /* ── Tabla resumen anual completo — mes actual primero, agrupado por mes ── */
+  let rows = [];
+  const tableMarcas = objMarcas;
+  // Ordenar meses descendente (más reciente primero)
+  const tableMonths = [...allObjMonths].reverse();
+  tableMonths.forEach(m => {
+    // Contar cuántas marcas tienen datos reales para este mes (para rowspan)
+    const marcasConDatos = tableMarcas.filter(marca => {
+      const objData = OBJETIVOS[marca];
+      if (!objData || !objData[m]) return false;
+      return !!MENSUAL.find(r => r.mes === m && r.m === marca);
+    });
+    if (!marcasConDatos.length) return;
+    const [y, mo] = m.split("-");
+    const isCurrent = m === latestMes;
+    const mesLabel = `${MN[+mo]} ${y.slice(2)}${isCurrent ? " *" : ""}`;
+
+    marcasConDatos.forEach((marca, idx) => {
+      const objData = OBJETIVOS[marca];
+      const real = MENSUAL.find(r => r.mes === m && r.m === marca);
+      const pF = objData[m].obj_fac > 0 ? real.fac / objData[m].obj_fac : null;
+      const pO = objData[m].obj_ord > 0 ? real.ord / objData[m].obj_ord : null;
+      const cF = pF === null ? "#6e7681" : pF >= 1 ? "#6ee7b7" : pF >= 0.85 ? "#fbbf24" : "#f87171";
+      const cO = pO === null ? "#6e7681" : pO >= 1 ? "#6ee7b7" : pO >= 0.85 ? "#fbbf24" : "#f87171";
+      const dF = real.fac - objData[m].obj_fac;
+      const dO = real.ord - objData[m].obj_ord;
+      // Celda de mes solo en la primera fila del grupo (rowspan)
+      const mesCell = idx === 0
+        ? `<td rowspan="${marcasConDatos.length}" style="color:#8b949e;white-space:nowrap;vertical-align:middle;font-weight:600">${mesLabel}</td>`
+        : "";
+      rows.push(`<tr>
+        ${mesCell}
+        <td><span style="font-size:11px;font-weight:700;color:${BCOLOR[marca]}">${marca}</span></td>
+        <td style="font-weight:600;color:#e6edf3">$${fmtN(real.fac)}M</td>
+        <td style="color:#6e7681">$${fmtN(objData[m].obj_fac)}M</td>
+        <td style="color:${cF};font-weight:600">${dF>=0?"+":""}$${fmtN(dF)}M</td>
+        <td><span style="font-weight:800;color:${cF}">${pF !== null ? (pF*100).toFixed(1)+"%" : "—"}</span></td>
+        <td style="color:#e6edf3">${fmtN(real.ord)}</td>
+        <td style="color:#6e7681">${fmtN(objData[m].obj_ord)}</td>
+        <td style="color:#6e7681">${dO>=0?"+":""}${fmtN(dO)}</td>
+        <td><span style="font-weight:800;color:${cO}">${pO !== null ? (pO*100).toFixed(1)+"%" : "—"}</span></td>
+      </tr>`);
+    });
+  });
+
+  let tableHTML = `<div class="obj-table-wrap">
+    <table class="obj-table">
+      <thead><tr>
+        <th>Mes</th><th>Marca</th>
+        <th>Real Fac.</th><th>Obj. Fac.</th><th>Dif. Fac.</th><th>% Fac.</th>
+        <th>Real Ord.</th><th>Obj. Ord.</th><th>Dif. Ord.</th><th>% Ord.</th>
+      </tr></thead>
+      <tbody>${rows.join("")}</tbody>
+    </table>
+  </div>`;
+  if (isPartialLatest) {
+    const [ly, lmo] = latestMes.split("-");
+    tableHTML += `<p class="obj-nota">* ${MN[+lmo]} ${ly.slice(2)} en curso — datos parciales</p>`;
+  }
+  tableWrap.innerHTML = tableHTML;
+
+  /* ── Subtitle update ── */
+  const mLabel = STATE.marca === "todas" ? "Patagonia &amp; Temple" : STATE.marca;
+  const pLabel = relevantMonths.map(m => { const [y,mo]=m.split("-"); return MN[+mo]+" "+y.slice(2); }).join(", ");
+  objSub.innerHTML = `${mLabel} &middot; ${pLabel}`;
+  objNote.textContent = `${relevantMonths.length} mes${relevantMonths.length!==1?"es":""} con objetivos`;
+}
+
+/* ── Ranking de Locales ────────────────────────────── */
+function buildLocalesTable() {
+  const tbl   = document.getElementById("localesTable");
+  const sub   = document.getElementById("localesSub");
+  const nota  = document.getElementById("localesNota");
+  const MC    = {P:{col:"#38bdf8",name:"Patagonia",bg:"#0c2a3d"},T:{col:"#f472b6",name:"Temple",bg:"#3d0c2a"}};
+  const MN    = ["Ene","Feb","Mar"];
+
+  // Determine which month indices to use (0=Ene,1=Feb,2=Mar) based on objective months 2026-01..03
+  const idxMap = {todo:[0,1,2],mes_actual:[2],mes_anterior:[1],ultimos_3m:[0,1,2],ultimos_6m:[0,1,2],ytd:[0,1,2]};
+  let idxs;
+  if(STATE.periodo==="custom"){
+    const allObj=["2026-01","2026-02","2026-03"];
+    const cm=getCustomMeses();
+    idxs=allObj.map((m,i)=>cm.includes(m)?i:-1).filter(i=>i>=0);
+    if(!idxs.length) idxs=[0,1,2];
+  } else {
+    idxs=idxMap[STATE.periodo]||[0,1,2];
+  }
+
+  // Filter by brand
+  let rows = LOCALES_OBJ;
+  if (STATE.marca === "Feriado") {
+    tbl.innerHTML = '<tr><td colspan="8" style="padding:20px;color:#6e7681;font-size:12px;text-align:center">Feriado no tiene objetivos cargados.</td></tr>';
+    sub.textContent = "Sin datos"; nota.textContent = ""; return;
+  }
+  if (STATE.marca !== "todas") {
+    const bCode = STATE.marca === "Patagonia" ? "P" : "T";
+    rows = rows.filter(r => r.b === bCode);
+  }
+
+  // Aggregate selected months
+  const computed = rows.map(row => {
+    let sumR = 0, sumO = 0, valid = false;
+    idxs.forEach(i => {
+      if (row.d[i] && row.d[i][1] > 0) { sumR += row.d[i][0]; sumO += row.d[i][1]; valid = true; }
+    });
+    if (!valid || sumO === 0) return null;
+    const pct = sumR / sumO;
+    return {b:row.b, l:row.l, sumR, sumO, pct, dif:sumR-sumO};
+  }).filter(Boolean);
+
+  // Sort
+  if (STATE.locSort === "pct") computed.sort((a,b)=>b.pct-a.pct);
+  else                          computed.sort((a,b)=>b.sumR-a.sumR);
+
+  const isPartialMar = idxs.includes(2);
+  const periodoLabel = STATE.periodo==="mes_actual"  ? "Mar 26*" :
+                       STATE.periodo==="mes_anterior"? "Feb 26" :
+                       STATE.periodo==="ytd"         ? "YTD 2026 (Ene-Mar*)" :
+                       STATE.periodo==="todo"         ? "YTD 2026 (Ene-Mar*)" :
+                       idxs.map(i=>MN[i]).join(", ")+" 26*";
+
+  // Build table
+  const th = s => `<th style="padding:7px 8px;text-align:left;color:#8b949e;font-weight:600;font-size:10px;border-bottom:1px solid #30363d;white-space:nowrap">${s}</th>`;
+  let html = `<thead><tr>${th("#")}${th("Local")}${th("Marca")}${th("Real Fac.")}${th("Obj. Fac.")}${th("Diferencia")}${th("% Cumpl.")}${th("Progreso")}</tr></thead><tbody>`;
+
+  computed.forEach((row, i) => {
+    const mc  = MC[row.b];
+    const col = row.pct >= 1 ? "#6ee7b7" : row.pct >= 0.85 ? "#fbbf24" : "#f87171";
+    const bar = Math.min(row.pct * 100, 100).toFixed(0);
+    const dif = row.dif >= 0
+      ? `<span style="color:#6ee7b7">+$${fmtN(Math.round(row.dif))}M</span>`
+      : `<span style="color:#f87171">-$${fmtN(Math.round(Math.abs(row.dif)))}M</span>`;
+    const pctBadge = `<span style="font-weight:800;font-size:12px;color:${col};background:${col}22;padding:2px 7px;border-radius:99px">${(row.pct*100).toFixed(1)}%</span>`;
+    const barHtml  = `<div style="display:flex;align-items:center;gap:5px;min-width:90px">
+      <div style="flex:1;background:#21262d;border-radius:3px;height:6px">
+        <div style="background:${col};border-radius:3px;height:6px;width:${bar}%"></div>
+      </div>
+      <span style="font-size:9px;color:#6e7681;width:26px">${bar}%</span></div>`;
+    const stripe = i%2===0 ? "" : "background:rgba(13,17,23,.4)";
+    html += `<tr style="${stripe}">
+      <td style="padding:8px 8px;color:#6e7681;font-weight:700">${i+1}</td>
+      <td style="padding:8px 8px;font-weight:600">${row.l}</td>
+      <td style="padding:8px 8px"><span style="font-size:10px;font-weight:700;background:${mc.bg};color:${mc.col};padding:2px 7px;border-radius:99px">${mc.name}</span></td>
+      <td style="padding:8px 8px;font-weight:700;color:#58a6ff">$${fmtN(Math.round(row.sumR))}M</td>
+      <td style="padding:8px 8px;color:#6e7681">$${fmtN(Math.round(row.sumO))}M</td>
+      <td style="padding:8px 8px">${dif}</td>
+      <td style="padding:8px 8px">${pctBadge}</td>
+      <td style="padding:8px 8px">${barHtml}</td>
+    </tr>`;
+  });
+  html += "</tbody>";
+  tbl.innerHTML = html;
+
+  // Stats
+  const over  = computed.filter(r=>r.pct>=1).length;
+  const near  = computed.filter(r=>r.pct>=0.85&&r.pct<1).length;
+  const under = computed.filter(r=>r.pct<0.85).length;
+  const mLabel = STATE.marca==="todas"?"Patagonia + Temple":STATE.marca;
+  sub.textContent = `${computed.length} locales · ${mLabel} · ${periodoLabel}`;
+  nota.textContent = `✅ ${over} sobre objetivo   🟡 ${near} cerca (≥85%)   🔴 ${under} por debajo (<85%)${isPartialMar?" · *Mar 26 parcial al 18/03":""}`;
+}
+
+function setLocSort(s, btn) {
+  STATE.locSort = s;
+  document.getElementById("btnSortFac").className = "fb" + (s==="fac"?" active-per":"");
+  document.getElementById("btnSortPct").className = "fb" + (s==="pct"?" active-per":"");
+  buildLocalesTable();
+}
+
+function fmtYoyLoc(cur, prev) {
+  if(!prev) return '<span class="na2">sin datos</span>';
+  const d = cur - prev;
+  const sign = d > 0 ? "+" : "";
+  const css = d > 0 ? "up2" : d < 0 ? "dn2" : "na2";
+  const arrow = d > 0 ? "▲" : d < 0 ? "▼" : "=";
+  return '<span class="'+css+'">'+arrow+' '+sign+d+'</span> vs '+prev+' en 2025';
+}
+function buildObjetivosResumen(){
+  const el=document.getElementById("objResumen");
+  if(!el) return;
+
+  const allObjMarcas=Object.keys(OBJETIVOS).filter(k=>Object.keys(OBJETIVOS[k]||{}).length>0);
+  const marcasFiltro=STATE.marca==="todas"?allObjMarcas:(OBJETIVOS[STATE.marca]?[STATE.marca]:[]);
+  if(!marcasFiltro.length){el.innerHTML="";return;}
+
+  const allMonths=[...new Set(marcasFiltro.flatMap(k=>Object.keys(OBJETIVOS[k])))].sort();
+  if(!allMonths.length){el.innerHTML="";return;}
+
+  // FIX: usar el último mes con datos REALES en MENSUAL (no el último en OBJETIVOS que puede ser futuro)
+  const mensualMeses=new Set(MENSUAL.map(r=>r.mes));
+  const monthsWithReal=allMonths.filter(m=>mensualMeses.has(m));
+  const latestMes=monthsWithReal.length>0?monthsWithReal[monthsWithReal.length-1]:allMonths[allMonths.length-1];
+
+  const today=new Date();
+  const todayMes=today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0");
+  const [y,mo]=latestMes.split("-").map(Number);
+  const daysInMonth=new Date(y,mo,0).getDate();
+  const isCurrentMonth=latestMes===todayMes;
+  const daysElapsed=isCurrentMonth?today.getDate():daysInMonth;
+  const pace=daysElapsed/daysInMonth;
+
+  // Totales mensuales + breakdown por marca
+  let objMes=0,objOrdMes=0,realMes=0,realOrdMes=0;
+  const byMarca={};
+  marcasFiltro.forEach(marca=>{
+    const md=OBJETIVOS[marca]&&OBJETIVOS[marca][latestMes];
+    const rr=MENSUAL.find(r=>r.mes===latestMes&&r.m===marca);
+    const mObj=md?md.obj_fac:0, mReal=rr?rr.fac:0;
+    objMes+=mObj; objOrdMes+=(md?md.obj_ord:0);
+    realMes+=mReal; realOrdMes+=(rr?rr.ord:0);
+    byMarca[marca]={obj:mObj,real:mReal};
+  });
+
+  // Totales anuales: obj = todos los meses del año en el sheet; real = solo meses con datos reales
+  const currentYear=today.getFullYear().toString();
+  const yearMonthsAll=allMonths.filter(m=>m.startsWith(currentYear));
+  let objAño=0,realAño=0;
+  yearMonthsAll.forEach(mes=>{
+    marcasFiltro.forEach(marca=>{
+      const md=OBJETIVOS[marca]&&OBJETIVOS[marca][mes];
+      if(md) objAño+=md.obj_fac;
+      if(mensualMeses.has(mes)){
+        const rr=MENSUAL.find(r=>r.mes===mes&&r.m===marca);
+        if(rr) realAño+=rr.fac;
+      }
+    });
+  });
+  const mesesConDatos=yearMonthsAll.filter(m=>mensualMeses.has(m)).length;
+
+  // Proyección cierre de año: real YTD + objetivos de meses aún sin datos reales
+  const mesesPendientes=yearMonthsAll.filter(m=>!mensualMeses.has(m));
+  let objPendiente=0;
+  mesesPendientes.forEach(mes=>{
+    marcasFiltro.forEach(marca=>{
+      const md=OBJETIVOS[marca]&&OBJETIVOS[marca][mes];
+      if(md) objPendiente+=md.obj_fac;
+    });
+  });
+  const proyeccion=realAño+objPendiente;
+  const difProy=proyeccion-objAño;
+  const pctProy=objAño>0?(difProy/objAño)*100:0;
+  const proyCol=difProy>=0?"#6ee7b7":Math.abs(pctProy)<=5?"#fbbf24":"#f87171";
+  const proyIcon=difProy>=0?"▲":"▼";
+
+  const achMes=objMes>0?realMes/objMes:0;
+  const achAño=objAño>0?realAño/objAño:0;
+  const expectedReal=objMes*pace;
+  const difPace=realMes-expectedReal;
+  const onTrack=achMes>=pace;
+  const nearTrack=achMes>=pace*0.90;
+  const paceCol=onTrack?"#6ee7b7":nearTrack?"#fbbf24":"#f87171";
+  const paceTxt=onTrack?"✓ En ritmo":nearTrack?"⚠ Ligeramente bajo":"✗ Bajo ritmo";
+
+  const MN=["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  const mesLabel=MN[mo]+" "+String(y).slice(2);
+  const realBarW=Math.min(Math.round(achMes*100),100);
+  const paceMarker=Math.min(Math.round(pace*100),98);
+  const añoBarW=Math.min(Math.round(achAño*100),100);
+
+  // Breakdown por marca visible (para confirmar que Feriado está incluido)
+  const breakdownObj=marcasFiltro.map(m=>{
+    const d=byMarca[m]||{obj:0,real:0};
+    return `<span style="color:${BCOLOR[m]||'#8b949e'};font-size:9px;white-space:nowrap">${m} ${fmtM(d.obj)}</span>`;
+  }).join('<span style="color:#30363d;margin:0 4px">·</span>');
+
+  const breakdownReal=marcasFiltro.map(m=>{
+    const d=byMarca[m]||{obj:0,real:0};
+    const pct=d.obj>0?(d.real/d.obj*100).toFixed(0):0;
+    return `<span style="color:${BCOLOR[m]||'#8b949e'};font-size:9px;white-space:nowrap">${m} ${fmtM(d.real)}<span style="color:#6e7681"> (${pct}%)</span></span>`;
+  }).join('<span style="color:#30363d;margin:0 4px">·</span>');
+
+  el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:10px;margin-bottom:16px">
+
+    <div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:14px 16px">
+      <div style="font-size:9px;color:#8b949e;font-weight:700;letter-spacing:.5px;margin-bottom:7px">🎯 OBJ. MENSUAL · ${mesLabel.toUpperCase()}</div>
+      <div style="font-size:23px;font-weight:800;color:#e6edf3">${fmtM(objMes)}</div>
+      <div style="font-size:10px;color:#6e7681;margin-top:3px">${fmtN(objOrdMes)} órdenes objetivo</div>
+      <div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:3px">${breakdownObj}</div>
+    </div>
+
+    <div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:14px 16px">
+      <div style="font-size:9px;color:#8b949e;font-weight:700;letter-spacing:.5px;margin-bottom:7px">📊 REAL ACUMULADO · ${mesLabel.toUpperCase()}</div>
+      <div style="font-size:23px;font-weight:800;color:#58a6ff">${fmtM(realMes)}</div>
+      <div style="background:#21262d;border-radius:3px;height:5px;margin-top:6px">
+        <div style="background:${achMes>=1?'#6ee7b7':achMes>=0.85?'#fbbf24':'#f87171'};border-radius:3px;height:5px;width:${realBarW}%;transition:width .4s"></div>
+      </div>
+      <div style="font-size:13px;font-weight:800;color:${achMes>=1?'#6ee7b7':achMes>=0.85?'#fbbf24':'#f87171'};margin-top:4px">${objMes>0?(achMes*100).toFixed(1):"—"}% <span style="font-size:10px;font-weight:400;color:#6e7681">del objetivo mensual</span></div>
+      <div style="font-size:10px;color:#6e7681;margin-top:3px">${fmtN(realOrdMes)} órdenes reales</div>
+      <div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:3px">${breakdownReal}</div>
+    </div>
+
+    <div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:14px 16px">
+      <div style="font-size:9px;color:#8b949e;font-weight:700;letter-spacing:.5px;margin-bottom:7px">⏱ RITMO · DÍA ${daysElapsed}/${daysInMonth}${isCurrentMonth?"":" · CERRADO"}</div>
+      <div style="font-size:18px;font-weight:800;color:${paceCol};margin-bottom:6px">${paceTxt}</div>
+      <div style="position:relative;background:#21262d;border-radius:3px;height:7px;overflow:hidden">
+        <div style="background:${paceCol};border-radius:3px;height:7px;width:${realBarW}%;transition:width .4s"></div>
+      </div>
+      <div style="position:relative;height:0">
+        <div style="position:absolute;top:-11px;left:${paceMarker}%;width:2px;height:14px;background:#c9d1d9;border-radius:1px;opacity:.7"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px">
+        <span style="font-size:9px;color:${paceCol};font-weight:700">Real ${(achMes*100).toFixed(1)}%</span>
+        <span style="font-size:9px;color:#8b949e">Esperado ${(pace*100).toFixed(0)}%</span>
+      </div>
+      <div style="font-size:10px;color:${paceCol};margin-top:3px;font-weight:600">${difPace>=0?"▲ +":"▼ "}${fmtM(Math.abs(difPace))} vs ritmo esperado</div>
+    </div>
+
+    <div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:14px 16px">
+      <div style="font-size:9px;color:#8b949e;font-weight:700;letter-spacing:.5px;margin-bottom:7px">📅 OBJ. ANUAL ${currentYear} · ${yearMonthsAll.length} MESES</div>
+      <div style="font-size:23px;font-weight:800;color:#e6edf3">${fmtM(objAño)}</div>
+      <div style="font-size:10px;margin-top:3px"><span style="color:#a78bfa;font-weight:700">${fmtM(realAño)}</span><span style="color:#6e7681"> real · ${mesesConDatos} meses con datos</span></div>
+      <div style="background:#21262d;border-radius:3px;height:5px;margin-top:6px">
+        <div style="background:#a78bfa;border-radius:3px;height:5px;width:${añoBarW}%;transition:width .4s"></div>
+      </div>
+      <div style="font-size:9px;color:#a78bfa;font-weight:700;margin-top:3px">${(achAño*100).toFixed(1)}% del objetivo anual</div>
+
+      <div style="border-top:1px solid #21262d;margin-top:10px;padding-top:10px">
+        <div style="font-size:9px;color:#8b949e;font-weight:700;letter-spacing:.4px;margin-bottom:5px">🔮 PROYECCIÓN CIERRE ${currentYear}</div>
+        <div style="font-size:20px;font-weight:800;color:${proyCol}">${fmtM(proyeccion)}</div>
+        <div style="font-size:9px;color:#6e7681;margin-top:3px;display:flex;flex-wrap:wrap;gap:3px;align-items:center">
+          <span style="color:#a78bfa">${fmtM(realAño)} real</span>
+          <span>+</span>
+          <span style="color:#8b949e">${fmtM(objPendiente)} obj. ${mesesPendientes.length}m restantes</span>
+        </div>
+        <div style="font-size:11px;font-weight:800;color:${proyCol};margin-top:5px">
+          ${proyIcon} ${difProy>=0?"+":""}${fmtM(difProy)} (${pctProy>=0?"+":""}${pctProy.toFixed(1)}%) vs objetivo anual
+        </div>
+        <div style="font-size:9px;color:#6e7681;margin-top:2px">
+          ${difProy>=0?"Proyección por encima del objetivo":"Proyección por debajo del objetivo"} · asumiendo cumplimiento 100% en meses restantes
+        </div>
+      </div>
+    </div>
+
+  </div>`;
+}
+
+function buildObjetivosPorMarca(){
+  const el=document.getElementById("objPorMarca");
+  if(!el) return;
+  const allObjMarcas=Object.keys(OBJETIVOS).filter(k=>Object.keys(OBJETIVOS[k]||{}).length>0);
+  const marcasFiltro=STATE.marca==="todas"?allObjMarcas:(OBJETIVOS[STATE.marca]?[STATE.marca]:[]);
+  if(!marcasFiltro.length){el.innerHTML="";return;}
+  // Find latest month with real data
+  const mensualMeses=new Set(MENSUAL.map(r=>r.mes));
+  const allMonths=[...new Set(marcasFiltro.flatMap(k=>Object.keys(OBJETIVOS[k])))].sort();
+  const monthsWithReal=allMonths.filter(m=>mensualMeses.has(m));
+  if(!monthsWithReal.length){el.innerHTML="";return;}
+  const latestMes=monthsWithReal[monthsWithReal.length-1];
+  // Days in month
+  const today=new Date();
+  const todayMes=today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0");
+  const [y,mo]=latestMes.split("-").map(Number);
+  const daysInMonth=new Date(y,mo,0).getDate();
+  const isCurrentMonth=latestMes===todayMes;
+  const daysElapsed=isCurrentMonth?today.getDate():daysInMonth;
+  const daysRemaining=isCurrentMonth?daysInMonth-daysElapsed:0;
+  // Historical weight: last 3 completed months (exclude current month so history is clean)
+  const allBrandsForWeight=STATE.marca==="todas"?allObjMarcas:[STATE.marca];
+  const completedMonths=isCurrentMonth?monthsWithReal.slice(0,-1):monthsWithReal;
+  const histMonths=completedMonths.slice(-3);
+  const histByMarca={};
+  let histTotal=0;
+  allBrandsForWeight.forEach(marca=>{
+    let bTotal=0;
+    histMonths.forEach(mes=>{
+      const rr=MENSUAL.find(r=>r.mes===mes&&r.m===marca);
+      if(rr) bTotal+=rr.fac;
+    });
+    histByMarca[marca]=bTotal;
+    histTotal+=bTotal;
+  });
+  // Total monthly objective for filtered brands
+  let totalObjMes=0;
+  marcasFiltro.forEach(marca=>{
+    const md=OBJETIVOS[marca]&&OBJETIVOS[marca][latestMes];
+    if(md) totalObjMes+=md.obj_fac;
+  });
+  // Always show in millones ($M) — never switch to B notation
+  const fmtML=v=>"$"+Math.round(v).toLocaleString("es-AR")+"M";
+  const currentYear=today.getFullYear().toString();
+  // Annual days remaining (from today to Dec 31)
+  const endOfYear=new Date(today.getFullYear(),11,31);
+  const daysRemainingAño=Math.max(0,Math.floor((endOfYear-today)/(1000*60*60*24)));
+  const MN=["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  const mesLabel=MN[mo]+" "+String(y).slice(2);
+  const histLabel=histMonths.length>0?MN[Number(histMonths[0].split("-")[1])]+"–"+MN[Number(histMonths[histMonths.length-1].split("-")[1])]:"";
+  // Card per brand
+  const cards=marcasFiltro.map(marca=>{
+    // ── MENSUAL (ponderado por peso histórico) ───────────────────────
+    const peso=histTotal>0?(histByMarca[marca]||0)/histTotal:(1/marcasFiltro.length);
+    const targetPonderado=totalObjMes*peso;
+    const rrMes=MENSUAL.find(r=>r.mes===latestMes&&r.m===marca);
+    const realMes=rrMes?rrMes.fac:0;
+    const faltaMes=Math.max(0,targetPonderado-realMes);
+    const pctMes=targetPonderado>0?realMes/targetPonderado:0;
+    const ritmoMes=daysRemaining>0?faltaMes/daysRemaining:0;
+    // ── ANUAL (objetivo propio de la marca) ──────────────────────────
+    const yearMonths=allMonths.filter(m=>m.startsWith(currentYear));
+    let objAño=0,realAño=0;
+    yearMonths.forEach(mes=>{
+      const md=OBJETIVOS[marca]&&OBJETIVOS[marca][mes];
+      if(md) objAño+=md.obj_fac;
+      if(mensualMeses.has(mes)){
+        const rr=MENSUAL.find(r=>r.mes===mes&&r.m===marca);
+        if(rr) realAño+=rr.fac;
+      }
+    });
+    const faltaAño=Math.max(0,objAño-realAño);
+    const ritmoAnual=daysRemainingAño>0?faltaAño/daysRemainingAño:0;
+    const pctAño=objAño>0?realAño/objAño:0;
+    const col=BCOLOR[marca]||"#8b949e";
+    const barW=Math.min(Math.round(pctMes*100),100);
+    const mesCol=pctMes>=1?"#6ee7b7":pctMes>=0.85?"#fbbf24":"#f87171";
+    const añoCol=pctAño>=1?"#6ee7b7":pctAño>=0.85?"#fbbf24":"#f87171";
+    // Footer mensual
+    const mesFooter=!isCurrentMonth
+      ?`<div style="font-size:10px;text-align:center;color:${mesCol};font-weight:600;padding-top:4px">${pctMes>=1?"✓ Objetivo mensual cumplido":"✗ "+fmtML(faltaMes)+" por debajo"}</div>`
+      :faltaMes>0
+      ?`<div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px">
+          <div>
+            <div style="font-size:9px;color:#6e7681">Falta · objetivo mensual</div>
+            <div style="font-size:14px;font-weight:700;color:#f87171">${fmtML(faltaMes)}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:9px;color:#6e7681">Ritmo diario mensual · ${daysRemaining}d rest.</div>
+            <div style="font-size:14px;font-weight:700;color:#fbbf24">${fmtML(ritmoMes)}/día</div>
+          </div>
+        </div>`
+      :`<div style="font-size:10px;text-align:center;color:#6ee7b7;font-weight:600;padding-top:4px">✓ Objetivo mensual cumplido</div>`;
+    // Sección anual
+    const añoSection=objAño>0?`
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid #21262d">
+        <div style="font-size:9px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Anual 2026 · objetivo propio de la marca</div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:6px;flex-wrap:wrap;gap:2px">
+          <span style="color:#8b949e">Objetivo: <span style="color:#f0f6fc;font-weight:600">${fmtML(objAño)}</span></span>
+          <span style="color:#8b949e">Real YTD: <span style="color:${añoCol};font-weight:600">${fmtML(realAño)}</span></span>
+          <span style="color:${añoCol};font-weight:700">${(pctAño*100).toFixed(0)}%</span>
+        </div>
+        ${faltaAño>0&&daysRemainingAño>0
+          ?`<div style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <div style="font-size:9px;color:#6e7681">Falta · objetivo anual</div>
+                <div style="font-size:13px;font-weight:700;color:#f87171">${fmtML(faltaAño)}</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:9px;color:#6e7681">Ritmo diario anual · ${daysRemainingAño}d rest.</div>
+                <div style="font-size:13px;font-weight:700;color:#fbbf24">${fmtML(ritmoAnual)}/día</div>
+              </div>
+            </div>`
+          :`<div style="font-size:10px;text-align:center;color:#6ee7b7;font-weight:600">✓ Objetivo anual cumplido</div>`}
+      </div>`:"";
+    return `<div style="background:#161b22;border:1px solid #21262d;border-radius:8px;padding:12px 14px;flex:1;min-width:155px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="color:${col};font-weight:700;font-size:13px">${marca}</span>
+        <span style="background:${col}22;color:${col};font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600">${(peso*100).toFixed(0)}% del total</span>
+      </div>
+      <div style="font-size:9px;color:#6e7681;margin-bottom:2px">Target ponderado mensual · ${mesLabel}</div>
+      <div style="font-size:20px;font-weight:700;color:#f0f6fc;margin-bottom:8px">${fmtML(targetPonderado)}</div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px">
+        <span style="color:#8b949e">Real: <span style="color:${mesCol};font-weight:600">${fmtML(realMes)}</span></span>
+        <span style="color:${mesCol};font-weight:700">${(pctMes*100).toFixed(0)}%</span>
+      </div>
+      <div style="background:#21262d;border-radius:4px;height:4px;margin-bottom:8px;overflow:hidden">
+        <div style="background:${mesCol};width:${barW}%;height:100%;border-radius:4px"></div>
+      </div>
+      ${mesFooter}
+      ${añoSection}
+    </div>`;
+  }).join("");
+  el.innerHTML=`<div style="margin-bottom:14px;padding:14px;background:#0d1117;border:1px solid #21262d;border-radius:8px">
+    <div style="font-size:10px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px">
+      Cuánto debe vender cada marca para llegar al objetivo
+    </div>
+    <div style="font-size:10px;color:#6e7681;margin-bottom:10px">
+      Target mensual ponderado por peso histórico${histLabel?" ("+histLabel+")":""} · ${mesLabel}
+      ${isCurrentMonth?"· "+daysRemaining+" días restantes en el mes":"· Mes cerrado"}
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">${cards}</div>
+  </div>`;
+}
+
+function updateAll(){
+  updateBannerKPI(); buildTend(); buildRoyalties(); buildPlanAccion(); buildTurnos(); buildDias(); buildTop10(); buildObjetivos(); buildObjetivosResumen(); buildObjetivosPorMarca(); buildLocalesTable();
+}
+
+function setMarca(m,btn){
+  STATE.marca=m;
+  document.getElementById("btnsMarca").querySelectorAll(".fb").forEach(b=>b.className="fb");
+  const cls=m==="todas"?"active-todas":m==="Patagonia"?"active-pat":m==="Temple"?"active-tmp":"active-fer";
+  btn.className="fb "+cls;
+  updateAll();
+}
+function setPeriodo(p,btn){
+  STATE.periodo=p;
+  document.getElementById("btnsPeriodo").querySelectorAll(".fb").forEach(b=>b.className="fb");
+  btn.className="fb active-per";
+  // Sincronizar date inputs con el período seleccionado
+  const presetMeses={"todo":["2023-12","2026-04"],"mes_actual":["2026-04","2026-04"],"mes_anterior":["2026-03","2026-03"],"ultimos_3m":["2026-02","2026-04"],"ultimos_6m":["2025-11","2026-04"],"ytd":["2026-01","2026-04"]};
+  if(presetMeses[p]){
+    STATE.fromMes=presetMeses[p][0]; STATE.toMes=presetMeses[p][1];
+    document.getElementById("fromMes").value=STATE.fromMes;
+    document.getElementById("toMes").value=STATE.toMes;
+  }
+  updateAll();
+}
+function applyCustomRange(){
+  const f=document.getElementById("fromMes").value, t=document.getElementById("toMes").value;
+  if(!f||!t) return;
+  STATE.fromMes=f<=t?f:t; STATE.toMes=f<=t?t:f;
+  document.getElementById("fromMes").value=STATE.fromMes;
+  document.getElementById("toMes").value=STATE.toMes;
+  STATE.periodo="custom";
+  document.getElementById("btnsPeriodo").querySelectorAll(".fb").forEach(b=>b.className="fb");
+  updateAll();
+}
+function setTendView(v,btn){
+  STATE.tendView=v;
+  document.getElementById("tendToggle").querySelectorAll(".fb").forEach(b=>b.className="fb");
+  btn.className="fb active-per"; buildTend();
+}
+</script>
+
+<script>
+function mostrarErrorKPIs(msg) {
+  const ids = ['k-fac','k-ord','k-tick'];
+  ids.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) { el.textContent = 'Error'; el.style.color = '#fca5a5'; el.style.fontSize = '14px'; }
+  });
+  var badges = ['k-fac-b','k-ord-b','k-tick-b'];
+  badges.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) { el.textContent = 'Error'; el.className = 'badge dn'; }
+  });
+  var subs = ['k-fac-s','k-ord-s','k-tick-s'];
+  subs.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) { el.textContent = msg || 'No se pudo cargar datos'; el.style.color = '#fca5a5'; }
+  });
+  console.error('[cargarKPIs]', msg);
+}
+
+async function cargarKPIs() {
+  try {
+    const res = await fetch('/api/data');
+    if (!res.ok) {
+      mostrarErrorKPIs('Error HTTP ' + res.status + ' al consultar /api/data');
+      return;
+    }
+    const json = await res.json();
+
+    if (!json.ok) {
+      mostrarErrorKPIs('BigQuery: ' + (json.error || 'error desconocido'));
+      return;
+    }
+
+    const rows = json.rows || [];
+
+    if (rows.length === 0) {
+      mostrarErrorKPIs('Sin datos en los últimos 90 días');
+      return;
+    }
+
+    const facturacion = rows.reduce((acc, r) => acc + (Number(r.facturacion) || 0), 0);
+    const ordenes = rows.reduce((acc, r) => acc + (Number(r.ordenes) || 0), 0);
+    const ticket = ordenes > 0 ? facturacion / ordenes : 0;
+
+    const facEl = document.getElementById('k-fac');
+    const ordEl = document.getElementById('k-ord');
+    const tickEl = document.getElementById('k-tick');
+    const varEl = document.getElementById('k-var');
+
+    if (facEl) facEl.textContent = '$' + Math.round(facturacion).toLocaleString('es-AR');
+    if (ordEl) ordEl.textContent = Math.round(ordenes).toLocaleString('es-AR');
+    if (tickEl) tickEl.textContent = '$' + Math.round(ticket).toLocaleString('es-AR');
+    if (varEl) varEl.textContent = 'LIVE';
+
+    const facSub = document.getElementById('k-fac-s');
+    const ordSub = document.getElementById('k-ord-s');
+    const tickSub = document.getElementById('k-tick-s');
+
+    if (facSub) facSub.textContent = 'BigQuery · últimos 90 días';
+    if (ordSub) ordSub.textContent = 'BigQuery · últimos 90 días';
+    if (tickSub) tickSub.textContent = 'Facturación / Órdenes';
+
+    const facBadge = document.getElementById('k-fac-b');
+    const ordBadge = document.getElementById('k-ord-b');
+    const tickBadge = document.getElementById('k-tick-b');
+
+    if (facBadge) { facBadge.textContent = 'LIVE'; facBadge.className = 'badge up'; }
+    if (ordBadge) { ordBadge.textContent = 'LIVE'; ordBadge.className = 'badge up'; }
+    if (tickBadge) { tickBadge.textContent = 'LIVE'; tickBadge.className = 'badge up'; }
+
+    const output = document.getElementById('data-output');
+    if (output) {
+      output.innerHTML =
+        "<h2>Facturación total</h2><p>$" + Math.round(facturacion).toLocaleString('es-AR') + "</p>";
+    }
+
+  } catch (e) {
+    mostrarErrorKPIs('Error de red: ' + e.message);
+  }
+}
+
+cargarKPIs();
+
+// Inicializar todos los gráficos al cargar la página
+loadChartJS(function() { updateAll(); });
+</script>
+</body>
+</html>

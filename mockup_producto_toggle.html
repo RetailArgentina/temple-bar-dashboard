@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Mockup — Toggle Económico / Producto</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;padding:24px}
+
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+.hdr h1{font-size:20px;font-weight:800;letter-spacing:-.5px}
+.hdr p{font-size:11px;color:#8b949e;margin-top:3px}
+
+.view-toggle{display:flex;gap:0;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:4px;width:fit-content}
+.view-btn{padding:7px 22px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .18s ease;background:transparent;color:#8b949e}
+.view-btn.active{background:#58a6ff;color:#0d1117}
+.view-btn:not(.active):hover{color:#e6edf3;background:#21262d}
+
+.filterbar{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:14px 20px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:20px;align-items:center}
+.filter-group{display:flex;flex-direction:column;gap:6px}
+.filter-label{font-size:10px;color:#8b949e;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+select,input[type=date]{background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#e6edf3;font-size:12px;padding:5px 9px;cursor:pointer;min-width:130px}
+select:focus,input:focus{outline:none;border-color:#58a6ff}
+.filter-badge-new{font-size:9px;font-weight:700;background:#1a3a1a;color:#6ee7b7;border:1px solid rgba(110,231,183,.3);border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle}
+
+.view{display:none;animation:fadeIn .2s ease}
+.view.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+.placeholder-section{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:28px 24px;margin-bottom:16px;display:flex;align-items:center;justify-content:center;gap:12px;color:#484f58;font-size:13px}
+
+/* ---- KPI Cards estilo tablero económico ---- */
+.kpi-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.kpi-card{flex:1;min-width:200px;background:#161b22;border:1px solid #30363d;border-radius:12px;padding:18px 20px;border-top:3px solid;display:flex;flex-direction:column;gap:10px}
+.kpi-card.cerveza{border-top-color:#f59e0b}
+.kpi-card.gin{border-top-color:#818cf8}
+.kpi-card.fernet{border-top-color:#34d399}
+.kpi-card.feriado{border-top-color:#f472b6}
+
+.kpi-icon-row{display:flex;align-items:center;gap:10px}
+.kpi-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.kpi-icon.cerveza{background:rgba(245,158,11,.15)}
+.kpi-icon.gin{background:rgba(129,140,248,.15)}
+.kpi-icon.fernet{background:rgba(52,211,153,.15)}
+.kpi-icon.feriado{background:rgba(244,114,182,.15)}
+.kpi-title{font-size:11px;color:#8b949e;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+.kpi-val{font-size:32px;font-weight:900;letter-spacing:-1px;line-height:1}
+.kpi-unit{font-size:13px;font-weight:600;color:#8b949e;margin-left:2px}
+
+/* Sub-card VS OBJETIVO */
+.kpi-subcard{background:#0d1117;border-radius:8px;padding:8px 12px;display:flex;flex-direction:column;gap:5px}
+.kpi-subcard-label{font-size:10px;color:#8b949e;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.kpi-subcard-val{font-size:15px;font-weight:800}
+.kpi-subcard-sub{font-size:10px;color:#8b949e}
+.kpi-subcard-val.verde{color:#6ee7b7}
+.kpi-subcard-val.rojo{color:#f87171}
+.kpi-subcard-val.placeholder{color:#484f58;font-style:italic;font-size:12px;font-weight:400}
+
+/* Comparativos fila compacta */
+.kpi-comparativos{display:flex;gap:12px}
+.kpi-comp{display:flex;flex-direction:column;gap:2px}
+.kpi-comp-label{font-size:9px;color:#6e7681;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.kpi-comp-val{font-size:12px;font-weight:700}
+.kpi-comp-val.up{color:#6ee7b7}
+.kpi-comp-val.down{color:#f87171}
+
+/* Económico cards (simplificado) */
+.kpi-card.azul{border-top-color:#58a6ff}
+.kpi-card.violeta{border-top-color:#a78bfa}
+.kpi-card.verde-k{border-top-color:#6ee7b7}
+.kpi-icon.azul{background:rgba(88,166,255,.15)}
+.kpi-icon.violeta{background:rgba(167,139,250,.15)}
+.kpi-icon.verde-k{background:rgba(110,231,183,.15)}
+
+/* ---- Sección Mix por Categoría ---- */
+.section-card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px 24px;margin-bottom:16px}
+.section-title{font-size:13px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:#8b949e;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.section-title span{color:#e6edf3}
+
+.mix-row{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.mix-label{width:90px;font-size:12px;font-weight:600;color:#e6edf3;flex-shrink:0;text-align:right}
+.mix-bar-track{flex:1;background:#21262d;border-radius:4px;height:22px;overflow:hidden;position:relative}
+.mix-bar-fill{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:8px;font-size:11px;font-weight:700;color:#0d1117;transition:width .4s ease;white-space:nowrap}
+.mix-pct{width:46px;font-size:12px;font-weight:700;text-align:right;flex-shrink:0}
+.mix-lts{width:72px;font-size:11px;color:#8b949e;text-align:right;flex-shrink:0}
+
+.mix-fill-cerveza{background:#f59e0b}
+.mix-fill-gin{background:#818cf8}
+.mix-fill-fernet{background:#34d399}
+.mix-fill-feriado{background:#f472b6}
+.mix-fill-tragos{background:#38bdf8}
+.mix-fill-burger{background:#fb923c}
+
+.mix-pct.cerveza{color:#f59e0b}
+.mix-pct.gin{color:#818cf8}
+.mix-pct.fernet{color:#34d399}
+.mix-pct.feriado{color:#f472b6}
+.mix-pct.tragos{color:#38bdf8}
+.mix-pct.burger{color:#fb923c}
+
+/* ---- Ranking de Productos ---- */
+.rank-btn{background:#21262d;border:1px solid #30363d;border-radius:6px;color:#8b949e;font-size:11px;font-weight:600;padding:5px 12px;cursor:pointer;transition:all .15s}
+.rank-btn.active{background:#58a6ff;color:#0d1117;border-color:#58a6ff}
+.rank-btn:not(.active):hover{color:#e6edf3;border-color:#484f58}
+
+.rank-table{width:100%;border-collapse:collapse;font-size:12px}
+.rank-table th{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#8b949e;padding:8px 12px;border-bottom:1px solid #30363d;text-align:right}
+.rank-table th:first-child,.rank-table th:nth-child(2){text-align:left}
+.rank-table td{padding:9px 12px;border-bottom:1px solid #21262d;text-align:right;vertical-align:middle}
+.rank-table td:first-child{text-align:left;color:#8b949e;font-weight:700;width:30px}
+.rank-table td:nth-child(2){text-align:left;color:#e6edf3;font-weight:600}
+.rank-table tbody tr:hover{background:#1c2128}
+.cat-chip{display:inline-block;font-size:10px;font-weight:700;border-radius:4px;padding:2px 7px}
+.cat-chip.cerveza{background:rgba(245,158,11,.15);color:#f59e0b}
+.cat-chip.gin{background:rgba(129,140,248,.15);color:#818cf8}
+.cat-chip.fernet{background:rgba(52,211,153,.15);color:#34d399}
+.cat-chip.feriado{background:rgba(244,114,182,.15);color:#f472b6}
+.mix-bar-mini{height:6px;border-radius:3px;display:inline-block;vertical-align:middle;margin-left:6px}
+</style>
+</head>
+<body>
+<div style="max-width:1200px;margin:0 auto">
+
+  <!-- Header -->
+  <div class="hdr">
+    <div>
+      <h1>Tablero · Ventas Corporativas</h1>
+      <p>Temple · Patagonia · Feriado &nbsp;|&nbsp; Actualizado: 21 Abr 2026 08:30</p>
+    </div>
+    <div class="view-toggle">
+      <button class="view-btn active" onclick="switchView('economico',this)">Económico</button>
+      <button class="view-btn" onclick="switchView('producto',this)">Producto</button>
+    </div>
+  </div>
+
+  <!-- Filterbar -->
+  <div class="filterbar">
+    <div class="filter-group">
+      <span class="filter-label">Desde</span>
+      <input type="date" value="2026-04-01"/>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Hasta</span>
+      <input type="date" value="2026-04-21"/>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Marca</span>
+      <select><option>Todas</option><option>Temple</option><option>Patagonia</option><option>Feriado</option></select>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Local</span>
+      <select><option>Todos</option><option>Palermo</option><option>Recoleta</option></select>
+    </div>
+    <div class="filter-group" id="filtro-establecimiento" style="display:none">
+      <span class="filter-label">Establecimiento <span class="filter-badge-new">NUEVO</span></span>
+      <select>
+        <option>Todos los establecimientos</option>
+        <option>Temple Palermo</option>
+        <option>Temple Recoleta</option>
+        <option>Patagonia CABA</option>
+        <option>Feriado Cantina</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ===== VISTA ECONÓMICA ===== -->
+  <div class="view active" id="view-economico">
+    <div class="kpi-row">
+      <div class="kpi-card azul">
+        <div class="kpi-icon-row">
+          <div class="kpi-icon azul">💰</div>
+          <span class="kpi-title">Facturación</span>
+        </div>
+        <div><span class="kpi-val">$142</span><span class="kpi-unit">M</span></div>
+        <div class="kpi-subcard">
+          <div class="kpi-subcard-label">VS OBJETIVO</div>
+          <div class="kpi-subcard-val verde">+8.3%</div>
+          <div class="kpi-subcard-sub">$131M esp. · obj mes: $156M</div>
+        </div>
+        <div class="kpi-comparativos">
+          <div class="kpi-comp"><span class="kpi-comp-label">VS MES ANT.</span><span class="kpi-comp-val up">+12.4%</span></div>
+          <div class="kpi-comp"><span class="kpi-comp-label">VS AÑO ANT.</span><span class="kpi-comp-val up">+34.1%</span></div>
+        </div>
+      </div>
+      <div class="kpi-card violeta">
+        <div class="kpi-icon-row">
+          <div class="kpi-icon violeta">🧾</div>
+          <span class="kpi-title">Órdenes</span>
+        </div>
+        <div><span class="kpi-val">18.4</span><span class="kpi-unit">K</span></div>
+        <div class="kpi-subcard">
+          <div class="kpi-subcard-label">VS OBJETIVO</div>
+          <div class="kpi-subcard-val verde">+5.1%</div>
+          <div class="kpi-subcard-sub">$17.5K esp. · obj mes: $21K</div>
+        </div>
+        <div class="kpi-comparativos">
+          <div class="kpi-comp"><span class="kpi-comp-label">VS MES ANT.</span><span class="kpi-comp-val up">+9.2%</span></div>
+          <div class="kpi-comp"><span class="kpi-comp-label">VS AÑO ANT.</span><span class="kpi-comp-val up">+28.7%</span></div>
+        </div>
+      </div>
+      <div class="kpi-card verde-k">
+        <div class="kpi-icon-row">
+          <div class="kpi-icon verde-k">🎟</div>
+          <span class="kpi-title">Ticket Promedio</span>
+        </div>
+        <div><span class="kpi-val">$7.7</span><span class="kpi-unit">K</span></div>
+        <div class="kpi-subcard">
+          <div class="kpi-subcard-label">VS OBJETIVO</div>
+          <div class="kpi-subcard-val rojo">-2.1%</div>
+          <div class="kpi-subcard-sub">$7.9K esp. · obj mes: $7.4K</div>
+        </div>
+        <div class="kpi-comparativos">
+          <div class="kpi-comp"><span class="kpi-comp-label">VS MES ANT.</span><span class="kpi-comp-val up">+3.0%</span></div>
+          <div class="kpi-comp"><span class="kpi-comp-label">VS AÑO ANT.</span><span class="kpi-comp-val up">+4.2%</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="placeholder-section">📊 Resto del contenido económico (objetivos, ranking, tendencia, etc.)</div>
+  </div>
+
+  <!-- ===== VISTA PRODUCTO ===== -->
+  <div class="view" id="view-producto">
+    <div class="kpi-row">
+
+      <!-- CERVEZA -->
+      <div class="kpi-card cerveza">
+        <div class="kpi-icon-row">
+          <div class="kpi-icon cerveza">🍺</div>
+          <span class="kpi-title">Cerveza</span>
+        </div>
+        <div><span class="kpi-val">12.4</span><span class="kpi-unit">K lts</span></div>
+        <div class="kpi-subcard">
+          <div class="kpi-subcard-label">VS OBJETIVO</div>
+          <div class="kpi-subcard-val placeholder">— Pendiente definición</div>
+        </div>
+        <div class="kpi-comparativos">
+          <div class="kpi-comp"><span class="kpi-comp-label">VS MES ANT.</span><span class="kpi-comp-val up">+11.2%</span></div>
+          <div class="kpi-comp"><span class="kpi-comp-label">VS AÑO ANT.</span><span class="kpi-comp-val up">+29.4%</span></div>
+        </div>
+      </div>
+
+      <!-- GIN -->
+      <div class="kpi-card gin">
+        <div class="kpi-icon-row">
+          <div class="kpi-icon gin">🍸</div>
+          <span class="kpi-title">Gin</span>
+        </div>
+        <div><span class="kpi-val">3.1</span><span class="kpi-unit">K lts</span></div>
+        <div class="kpi-subcard">
+          <div class="kpi-subcard-label">VS OBJETIVO</div>
+          <div class="kpi-subcard-val placeholder">— Pendiente definición</div>
+        </div>
+        <div class="kpi-comparativos">
+          <div class="kpi-comp"><span class="kpi-comp-label">VS MES ANT.</span><span class="kpi-comp-val down">-4.3%</span></div>
+          <div class="kpi-comp"><span class="kpi-comp-label">VS AÑO ANT.</span><span class="kpi-comp-val up">+18.7%</span></div>
+        </div>
+      </div>
+
+      <!-- FERNET -->
+      <div class="kpi-card fernet">
+        <div class="kpi-icon-row">
+          <div class="kpi-icon fernet">🥃</div>
+          <span class="kpi-title">Fernet</span>
+        </div>
+        <div><span class="kpi-val">2.8</span><span class="kpi-unit">K lts</span></div>
+        <div class="kpi-subcard">
+          <div class="kpi-subcard-label">VS OBJETIVO</div>
+          <div class="kpi-subcard-val placeholder">— Pendiente definición</div>
+        </div>
+        <div class="kpi-comparativos">
+          <div class="kpi-comp"><span class="kpi-comp-label">VS MES ANT.</span><span class="kpi-comp-val up">+7.8%</span></div>
+          <div class="kpi-comp"><span class="kpi-comp-label">VS AÑO ANT.</span><span class="kpi-comp-val up">+22.1%</span></div>
+        </div>
+      </div>
+
+      <!-- FERIADO -->
+      <div class="kpi-card feriado">
+        <div class="kpi-icon-row">
+          <div class="kpi-icon feriado">🍹</div>
+          <span class="kpi-title">Feriado</span>
+        </div>
+        <div><span class="kpi-val">1.6</span><span class="kpi-unit">K lts</span></div>
+        <div class="kpi-subcard">
+          <div class="kpi-subcard-label">VS OBJETIVO</div>
+          <div class="kpi-subcard-val placeholder">— Pendiente definición</div>
+        </div>
+        <div class="kpi-comparativos">
+          <div class="kpi-comp"><span class="kpi-comp-label">VS MES ANT.</span><span class="kpi-comp-val up">+15.3%</span></div>
+          <div class="kpi-comp"><span class="kpi-comp-label">VS AÑO ANT.</span><span class="kpi-comp-val placeholder">— Sin dato</span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- MIX POR CATEGORÍA -->
+    <div class="section-card">
+      <div class="section-title">🍺 <span>Mix por Categoría</span> &nbsp;·&nbsp; Litros vendidos en el período</div>
+
+      <div class="mix-row">
+        <div class="mix-label">Cerveza</div>
+        <div class="mix-bar-track">
+          <div class="mix-bar-fill mix-fill-cerveza" style="width:62%">12.4K lts</div>
+        </div>
+        <div class="mix-pct cerveza">62%</div>
+        <div class="mix-lts">12,400 lts</div>
+      </div>
+      <div class="mix-row">
+        <div class="mix-label">Gin</div>
+        <div class="mix-bar-track">
+          <div class="mix-bar-fill mix-fill-gin" style="width:16%">3.1K</div>
+        </div>
+        <div class="mix-pct gin">16%</div>
+        <div class="mix-lts">3,100 lts</div>
+      </div>
+      <div class="mix-row">
+        <div class="mix-label">Fernet</div>
+        <div class="mix-bar-track">
+          <div class="mix-bar-fill mix-fill-fernet" style="width:14%">2.8K</div>
+        </div>
+        <div class="mix-pct fernet">14%</div>
+        <div class="mix-lts">2,800 lts</div>
+      </div>
+
+      <div class="mix-row">
+        <div class="mix-label">Feriado</div>
+        <div class="mix-bar-track">
+          <div class="mix-bar-fill mix-fill-feriado" style="width:2%"></div>
+        </div>
+        <div class="mix-pct feriado">2%</div>
+        <div class="mix-lts">400 lts</div>
+      </div>
+    </div>
+
+    <!-- RANKING DE PRODUCTOS -->
+    <div class="section-card">
+      <div class="section-title" style="margin-bottom:16px">🏆 <span>Ranking de Productos</span> &nbsp;·&nbsp; Ordenado por facturación</div>
+      <div style="overflow-x:auto">
+        <table class="rank-table" id="ranking-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th style="text-align:left">Producto</th>
+              <th style="text-align:center">Categoría</th>
+              <th>Cantidad</th>
+              <th>Facturación</th>
+              <th>% Facturación</th>
+            </tr>
+          </thead>
+          <tbody id="ranking-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- COMPARATIVA POR TIPO ENTRE ESTABLECIMIENTOS -->
+    <div class="section-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div class="section-title" style="margin-bottom:0">📍 <span>Comparativa por Tipo · Establecimientos</span></div>
+        <div style="display:flex;gap:6px">
+          <button class="rank-btn active" onclick="switchCross('lts',this)">Litros</button>
+          <button class="rank-btn" onclick="switchCross('pesos',this)">Facturación</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="rank-table" id="cross-table">
+          <thead>
+            <tr>
+              <th style="text-align:left">Establecimiento</th>
+              <th style="color:#f59e0b">🍺 Cerveza</th>
+              <th style="color:#818cf8">🍸 Gin</th>
+              <th style="color:#34d399">🥃 Fernet</th>
+              <th style="color:#f472b6">🍹 Feriado</th>
+              <th style="color:#e6edf3">Total</th>
+            </tr>
+          </thead>
+          <tbody id="cross-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TORTA: MIX DE VENTA POR TIPO -->
+    <div class="section-card">
+      <div class="section-title">🥧 <span>Mix de Venta por Tipo</span> &nbsp;·&nbsp; % del total facturado</div>
+      <div style="display:flex;align-items:center;gap:48px;flex-wrap:wrap;justify-content:center">
+
+        <!-- Donut SVG -->
+        <div style="position:relative;flex-shrink:0;width:200px;height:200px">
+          <svg id="torta-svg" viewBox="0 0 200 200" width="200" height="200" style="transform:rotate(-90deg)"></svg>
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none">
+            <div style="font-size:10px;color:#8b949e;font-weight:700;letter-spacing:.5px;text-transform:uppercase">TOTAL</div>
+            <div style="font-size:22px;font-weight:900;color:#e6edf3;line-height:1.1">100%</div>
+          </div>
+        </div>
+
+        <!-- Leyenda con barras -->
+        <div id="torta-legend" style="flex:1;min-width:220px;max-width:380px"></div>
+      </div>
+    </div>
+
+    <!-- EVOLUCIÓN EN EL TIEMPO -->
+    <div class="section-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:8px">
+        <div class="section-title" style="margin-bottom:0">📈 <span>Evolución en el Tiempo</span> &nbsp;·&nbsp; Litros por día</div>
+        <div style="display:flex;gap:14px;font-size:11px;font-weight:600;flex-wrap:wrap">
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;background:#f59e0b;border-radius:3px;display:inline-block"></span>Cerveza</span>
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;background:#818cf8;border-radius:3px;display:inline-block"></span>Gin</span>
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;background:#34d399;border-radius:3px;display:inline-block"></span>Fernet</span>
+          <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:12px;background:#f472b6;border-radius:3px;display:inline-block"></span>Feriado</span>
+        </div>
+      </div>
+      <!-- Eje Y + Barras -->
+      <div style="display:flex;gap:0;align-items:stretch">
+        <!-- Eje Y -->
+        <div id="evol-yaxis" style="display:flex;flex-direction:column-reverse;justify-content:space-between;padding-right:8px;min-width:36px;text-align:right;padding-bottom:20px"></div>
+        <!-- Área de barras -->
+        <div style="flex:1;position:relative">
+          <!-- Líneas de cuadrícula -->
+          <div id="evol-grid" style="position:absolute;inset:0;bottom:20px;display:flex;flex-direction:column-reverse;justify-content:space-between;pointer-events:none"></div>
+          <!-- Barras -->
+          <div id="evol-bars" style="display:flex;gap:4px;align-items:flex-end;height:160px;padding-bottom:0;position:relative;z-index:1"></div>
+          <!-- Eje X -->
+          <div id="evol-xaxis" style="display:flex;gap:4px;margin-top:4px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOP PRODUCTOS POR CATEGORÍA -->
+    <div class="section-card">
+      <div class="section-title">🔝 <span>Top Productos por Categoría</span></div>
+      <div id="top-cat-grid" style="display:flex;gap:12px;flex-wrap:wrap"></div>
+    </div>
+
+    <!-- COMPARATIVA VS MES ANTERIOR -->
+    <div class="section-card">
+      <div class="section-title">📊 <span>Comparativa vs Mes Anterior</span> &nbsp;·&nbsp; Litros por categoría</div>
+      <div id="vsmes-grid" style="display:flex;gap:12px;flex-wrap:wrap"></div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+// Datos mock ranking
+var rankingData = [
+  {nombre:'Temple IPA 1L',        cat:'Bebida',    cantidad:3800, pesos:5700000},
+  {nombre:'Temple Lager 1L',      cat:'Bebida',    cantidad:3200, pesos:4800000},
+  {nombre:'Burger Clásica',       cat:'Comida',    cantidad:2900, pesos:4350000},
+  {nombre:'Temple Rubia 500cc',   cat:'Bebida',    cantidad:2100, pesos:3150000},
+  {nombre:'Gin Patagonia 750ml',  cat:'Bebida',    cantidad:1400, pesos:4200000},
+  {nombre:'2x1 Temple IPA',       cat:'Promoción', cantidad:1300, pesos:1950000},
+  {nombre:'Tabla de Picada',      cat:'Comida',    cantidad:1200, pesos:3600000},
+  {nombre:'Fernet Branca 750ml',  cat:'Bebida',    cantidad:820,  pesos:2460000},
+  {nombre:'Papas Fritas',         cat:'Comida',    cantidad:780,  pesos:780000},
+  {nombre:'Happy Hour Gin',       cat:'Promoción', cantidad:640,  pesos:1280000},
+  {nombre:'Feriado Cantina 750ml',cat:'Bebida',    cantidad:580,  pesos:2320000},
+  {nombre:'Empanadas x4',         cat:'Comida',    cantidad:510,  pesos:612000},
+  {nombre:'Gin Tanqueray 750ml',  cat:'Bebida',    cantidad:440,  pesos:1760000},
+  {nombre:'Combo Promo Fin de Sem',cat:'Promoción',cantidad:380,  pesos:1900000},
+  {nombre:'Feriado Reserve 750ml',cat:'Bebida',    cantidad:320,  pesos:1600000},
+];
+var totalPesos = rankingData.reduce(function(s,r){return s+r.pesos},0);
+
+function fmtPesos(n){return '$'+(n>=1000000?(n/1000000).toFixed(1)+'M':(n/1000).toFixed(0)+'K')}
+function fmtCant(n){return n>=1000?(n/1000).toFixed(1)+'K':n}
+
+var catColors={
+  'Bebida':  {bg:'rgba(88,166,255,.15)',  color:'#58a6ff'},
+  'Comida':  {bg:'rgba(251,146,60,.15)',  color:'#fb923c'},
+  'Promoción':{bg:'rgba(167,139,250,.15)',color:'#a78bfa'},
+};
+
+function renderRanking(){
+  var data=[].concat(rankingData).sort(function(a,b){return b.pesos-a.pesos});
+  var tbody=document.getElementById('ranking-body');
+  tbody.innerHTML='';
+  data.forEach(function(r,i){
+    var pct=((r.pesos/totalPesos)*100).toFixed(1);
+    var cc=catColors[r.cat]||{bg:'rgba(139,148,158,.15)',color:'#8b949e'};
+    tbody.innerHTML+='<tr>'
+      +'<td>'+(i+1)+'</td>'
+      +'<td>'+r.nombre+'</td>'
+      +'<td><span class="cat-chip" style="background:'+cc.bg+';color:'+cc.color+'">'+r.cat+'</span></td>'
+      +'<td>'+fmtCant(r.cantidad)+'</td>'
+      +'<td style="color:'+cc.color+';font-weight:700">'+fmtPesos(r.pesos)+'</td>'
+      +'<td>'
+        +'<div style="display:flex;align-items:center;gap:6px;justify-content:flex-end">'
+        +'<span style="color:#8b949e;min-width:36px;text-align:right">'+pct+'%</span>'
+        +'<div style="width:'+Math.max(parseFloat(pct)*3,4)+'px;height:6px;border-radius:3px;background:'+cc.color+';flex-shrink:0"></div>'
+        +'</div>'
+      +'</td>'
+      +'</tr>';
+  });
+}
+
+renderRanking();
+
+// Datos mock comparativa cruzada
+var crossData = [
+  {est:'Temple Palermo',    cerveza_lts:3200, gin_lts:820,  fernet_lts:640,  feriado_lts:0,
+                            cerveza_$:4800000, gin_$:2460000, fernet_$:1920000, feriado_$:0},
+  {est:'Temple Recoleta',   cerveza_lts:2800, gin_lts:610,  fernet_lts:520,  feriado_lts:0,
+                            cerveza_$:4200000, gin_$:1830000, fernet_$:1560000, feriado_$:0},
+  {est:'Temple Belgrano',   cerveza_lts:2100, gin_lts:480,  fernet_lts:390,  feriado_lts:0,
+                            cerveza_$:3150000, gin_$:1440000, fernet_$:1170000, feriado_$:0},
+  {est:'Patagonia CABA',    cerveza_lts:1900, gin_lts:720,  fernet_lts:280,  feriado_lts:0,
+                            cerveza_$:2850000, gin_$:2160000, fernet_$:840000,  feriado_$:0},
+  {est:'Patagonia GBA',     cerveza_lts:1400, gin_lts:390,  fernet_lts:210,  feriado_lts:0,
+                            cerveza_$:2100000, gin_$:1170000, fernet_$:630000,  feriado_$:0},
+  {est:'Feriado Cantina',   cerveza_lts:980,  gin_lts:110,  fernet_lts:260,  feriado_lts:580,
+                            cerveza_$:1470000, gin_$:330000,  fernet_$:780000,  feriado_$:2320000},
+];
+
+function fmtCross(n, mode){
+  if(mode==='lts') return n>0 ? (n>=1000?(n/1000).toFixed(1)+'K':n)+' lts' : '—';
+  return n>0 ? '$'+(n>=1000000?(n/1000000).toFixed(1)+'M':(n/1000).toFixed(0)+'K') : '—';
+}
+
+function renderCross(mode){
+  var tbody=document.getElementById('cross-body');
+  tbody.innerHTML='';
+  crossData.forEach(function(r){
+    var vals = mode==='lts'
+      ? [r.cerveza_lts, r.gin_lts, r.fernet_lts, r.feriado_lts]
+      : [r.cerveza_$,   r.gin_$,   r.fernet_$,   r.feriado_$];
+    var total = vals.reduce(function(s,v){return s+v},0);
+    var colors=['#f59e0b','#818cf8','#34d399','#f472b6'];
+    var maxVal = Math.max.apply(null, crossData.map(function(d){
+      return mode==='lts'
+        ? d.cerveza_lts+d.gin_lts+d.fernet_lts+d.feriado_lts
+        : d.cerveza_$+d.gin_$+d.fernet_$+d.feriado_$;
+    }));
+    var row='<tr><td style="text-align:left;font-weight:600">'+r.est+'</td>';
+    vals.forEach(function(v,i){
+      row+='<td style="color:'+colors[i]+';font-weight:'+(v>0?'700':'400')+'">'+fmtCross(v,mode)+'</td>';
+    });
+    var barW = total>0 ? Math.round((total/maxVal)*80) : 0;
+    row+='<td style="font-weight:800;color:#e6edf3">'
+      +'<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">'
+      +'<span>'+fmtCross(total,mode)+'</span>'
+      +'<div style="width:'+barW+'px;height:6px;border-radius:3px;background:#484f58;flex-shrink:0"></div>'
+      +'</div></td>';
+    row+='</tr>';
+    tbody.innerHTML+=row;
+  });
+}
+
+function switchCross(mode, btn){
+  document.querySelectorAll('.rank-btn').forEach(function(b){
+    if(b.getAttribute('onclick') && b.getAttribute('onclick').indexOf('switchCross')>-1)
+      b.classList.remove('active');
+  });
+  btn.classList.add('active');
+  renderCross(mode);
+}
+
+renderCross('lts');
+
+// ---- TORTA mix de venta (SVG donut) ----
+function renderTorta(){
+  var mix=[
+    {label:'Bebida',    pct:58, color:'#58a6ff', monto:'$67.4M'},
+    {label:'Comida',    pct:27, color:'#fb923c', monto:'$31.4M'},
+    {label:'Promoción', pct:11, color:'#a78bfa', monto:'$12.8M'},
+    {label:'Merch',     pct:4,  color:'#6ee7b7', monto:'$4.6M'},
+  ];
+  var R=80, r=52, cx=100, cy=100;
+  var svg=document.getElementById('torta-svg');
+  if(!svg) return;
+  svg.innerHTML='';
+  var startAngle=0;
+  mix.forEach(function(m){
+    var angle=(m.pct/100)*2*Math.PI;
+    var endAngle=startAngle+angle;
+    var x1=cx+R*Math.cos(startAngle), y1=cy+R*Math.sin(startAngle);
+    var x2=cx+R*Math.cos(endAngle),   y2=cy+R*Math.sin(endAngle);
+    var ix1=cx+r*Math.cos(startAngle),iy1=cy+r*Math.sin(startAngle);
+    var ix2=cx+r*Math.cos(endAngle),  iy2=cy+r*Math.sin(endAngle);
+    var large=angle>Math.PI?1:0;
+    var path='M '+ix1+' '+iy1+' L '+x1+' '+y1
+      +' A '+R+' '+R+' 0 '+large+' 1 '+x2+' '+y2
+      +' L '+ix2+' '+iy2
+      +' A '+r+' '+r+' 0 '+large+' 0 '+ix1+' '+iy1+' Z';
+    var p=document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d',path);
+    p.setAttribute('fill',m.color);
+    p.setAttribute('opacity','0.9');
+    p.style.transition='opacity .2s';
+    p.onmouseover=function(){this.setAttribute('opacity','1');this.style.filter='brightness(1.15)'};
+    p.onmouseout =function(){this.setAttribute('opacity','0.9');this.style.filter=''};
+    svg.appendChild(p);
+    // Gap entre segmentos
+    startAngle=endAngle+0.02;
+  });
+
+  var leg=document.getElementById('torta-legend');
+  if(!leg) return;
+  leg.innerHTML='';
+  mix.forEach(function(m){
+    leg.innerHTML+='<div style="margin-bottom:14px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">'
+      +'<div style="display:flex;align-items:center;gap:8px">'
+      +'<div style="width:14px;height:14px;border-radius:4px;background:'+m.color+';flex-shrink:0"></div>'
+      +'<span style="font-size:13px;font-weight:600;color:#e6edf3">'+m.label+'</span>'
+      +'</div>'
+      +'<div style="display:flex;align-items:center;gap:12px">'
+      +'<span style="font-size:12px;color:#8b949e">'+m.monto+'</span>'
+      +'<span style="font-size:16px;font-weight:900;color:'+m.color+';min-width:40px;text-align:right">'+m.pct+'%</span>'
+      +'</div>'
+      +'</div>'
+      +'<div style="background:#21262d;border-radius:4px;height:8px;overflow:hidden">'
+      +'<div style="width:'+m.pct+'%;height:100%;background:'+m.color+';border-radius:4px;opacity:.85"></div>'
+      +'</div>'
+      +'</div>';
+  });
+}
+
+// ---- Evolución en el tiempo ----
+function renderEvolucion(){
+  // Datos fijos para reproducibilidad visual
+  var base=[620,540,710,680,920,880,750,600,570,690,740,850,810,920,780,640,590,720,810,870,750];
+  var days=base.map(function(total,i){
+    return {
+      label: i+1,
+      cerveza: Math.round(total*0.60),
+      gin:     Math.round(total*0.17),
+      fernet:  Math.round(total*0.15),
+      feriado: Math.round(total*0.08),
+    };
+  });
+  var maxTotal=Math.max.apply(null,days.map(function(d){return d.cerveza+d.gin+d.fernet+d.feriado}));
+  var CHART_H=150;
+  var ticks=[0,0.25,0.5,0.75,1].map(function(t){return Math.round(maxTotal*t)});
+
+  // Eje Y
+  var yAxis=document.getElementById('evol-yaxis');
+  if(yAxis){
+    yAxis.innerHTML='';
+    ticks.slice().reverse().forEach(function(v){
+      yAxis.innerHTML+='<div style="font-size:10px;color:#6e7681;line-height:1">'+(v>=1000?(v/1000).toFixed(1)+'K':v)+'</div>';
+    });
+  }
+
+  // Grid lines
+  var grid=document.getElementById('evol-grid');
+  if(grid){
+    grid.innerHTML='';
+    ticks.forEach(function(){
+      grid.innerHTML+='<div style="border-top:1px dashed #21262d;width:100%"></div>';
+    });
+  }
+
+  // Barras
+  var el=document.getElementById('evol-bars');
+  var xAxis=document.getElementById('evol-xaxis');
+  if(!el) return;
+  el.innerHTML='';
+  if(xAxis) xAxis.innerHTML='';
+
+  days.forEach(function(d){
+    var total=d.cerveza+d.gin+d.fernet+d.feriado;
+    var hC=Math.round((d.cerveza/maxTotal)*CHART_H);
+    var hG=Math.round((d.gin/maxTotal)*CHART_H);
+    var hF=Math.round((d.fernet/maxTotal)*CHART_H);
+    var hFer=Math.round((d.feriado/maxTotal)*CHART_H);
+    var tooltip='Día '+d.label+'\nCerveza: '+d.cerveza+' lts\nGin: '+d.gin+' lts\nFernet: '+d.fernet+' lts\nFeriado: '+d.feriado+' lts';
+    el.innerHTML+='<div title="'+tooltip+'" style="flex:1;min-width:0;display:flex;flex-direction:column-reverse;height:'+CHART_H+'px;border-radius:3px 3px 0 0;overflow:hidden;cursor:default;transition:filter .15s" onmouseover="this.style.filter=\'brightness(1.2)\'" onmouseout="this.style.filter=\'\'">'
+      +'<div style="width:100%;height:'+hC+'px;background:#f59e0b;flex-shrink:0"></div>'
+      +'<div style="width:100%;height:'+hG+'px;background:#818cf8;flex-shrink:0"></div>'
+      +'<div style="width:100%;height:'+hF+'px;background:#34d399;flex-shrink:0"></div>'
+      +'<div style="width:100%;height:'+hFer+'px;background:#f472b6;flex-shrink:0"></div>'
+      +'</div>';
+    if(xAxis){
+      var showLabel = d.label===1||d.label%5===0;
+      xAxis.innerHTML+='<div style="flex:1;min-width:0;font-size:9px;color:'+(showLabel?'#8b949e':'transparent')+';text-align:center;margin-top:4px">'+d.label+'</div>';
+    }
+  });
+}
+
+// ---- Top por categoría ----
+function renderTopCat(){
+  var cats={
+    'Cerveza':{color:'#f59e0b', items:['Temple IPA 1L','Temple Lager 1L','Temple Rubia 500cc','Temple Negra 1L','Temple Weizen']},
+    'Gin':    {color:'#818cf8', items:['Patagonia 750ml','Hendricks 750ml','Beefeater 750ml','Tanqueray 750ml','Bombay 750ml']},
+    'Fernet': {color:'#34d399', items:['Branca 750ml','Stock 750ml','Branca 1L','Stock 1L','Branca Mini']},
+    'Feriado':{color:'#f472b6', items:['Cantina 750ml','Reserve 750ml','Cantina 1L','Reserve 500cc','Cantina Mini']},
+  };
+  var el=document.getElementById('top-cat-grid');
+  if(!el) return;
+  el.innerHTML='';
+  Object.keys(cats).forEach(function(cat){
+    var c=cats[cat];
+    var html='<div style="background:#0d1117;border-radius:10px;padding:14px 16px;flex:1;min-width:180px">'
+      +'<div style="font-size:11px;font-weight:700;color:'+c.color+';letter-spacing:.4px;text-transform:uppercase;margin-bottom:10px">'+cat+'</div>';
+    c.items.forEach(function(item,i){
+      var w=100-(i*16);
+      html+='<div style="margin-bottom:6px">'
+        +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">'
+        +'<span style="color:#e6edf3">'+item+'</span>'
+        +'<span style="color:'+c.color+';font-weight:700">'+(100-i*18)+'%</span>'
+        +'</div>'
+        +'<div style="background:#21262d;border-radius:2px;height:4px">'
+        +'<div style="width:'+w+'%;height:100%;background:'+c.color+';border-radius:2px;opacity:'+(1-i*0.12)+'"></div>'
+        +'</div></div>';
+    });
+    html+='</div>';
+    el.innerHTML+=html;
+  });
+}
+
+// ---- Comparativa vs mes anterior ----
+function renderVsMesAnt(){
+  var cats=[
+    {label:'Cerveza', icon:'🍺', color:'#f59e0b', actual:12400, ant:11150},
+    {label:'Gin',     icon:'🍸', color:'#818cf8', actual:3100,  ant:3240},
+    {label:'Fernet',  icon:'🥃', color:'#34d399', actual:2800,  ant:2590},
+    {label:'Feriado', icon:'🍹', color:'#f472b6', actual:1600,  ant:1390},
+  ];
+  var el=document.getElementById('vsmes-grid');
+  if(!el) return;
+  el.innerHTML='';
+  cats.forEach(function(c){
+    var diff=c.actual-c.ant;
+    var pct=((diff/c.ant)*100).toFixed(1);
+    var isUp=diff>=0;
+    var arrow=isUp?'▲':'▼';
+    var col=isUp?'#6ee7b7':'#f87171';
+    el.innerHTML+='<div style="background:#0d1117;border-radius:10px;padding:16px 20px;flex:1;min-width:160px;display:flex;flex-direction:column;gap:8px">'
+      +'<div style="display:flex;align-items:center;gap:8px">'
+      +'<span style="font-size:20px">'+c.icon+'</span>'
+      +'<span style="font-size:11px;font-weight:700;color:'+c.color+';text-transform:uppercase;letter-spacing:.4px">'+c.label+'</span>'
+      +'</div>'
+      +'<div style="font-size:22px;font-weight:900;color:#e6edf3">'+(c.actual/1000).toFixed(1)+'K <span style="font-size:12px;color:#8b949e;font-weight:400">lts</span></div>'
+      +'<div style="display:flex;align-items:center;gap:6px">'
+      +'<span style="font-size:16px;font-weight:800;color:'+col+'">'+arrow+' '+Math.abs(pct)+'%</span>'
+      +'<span style="font-size:11px;color:#8b949e">vs mes ant.</span>'
+      +'</div>'
+      +'<div style="font-size:11px;color:#6e7681">Mes ant: '+(c.ant/1000).toFixed(1)+'K lts</div>'
+      +'</div>';
+  });
+}
+
+renderTorta();
+renderEvolucion();
+renderTopCat();
+renderVsMesAnt();
+
+function switchView(view, btn){
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + view).classList.add('active');
+  document.getElementById('filtro-establecimiento').style.display = view === 'producto' ? 'flex' : 'none';
+}
+</script>
+</body>
+</html>

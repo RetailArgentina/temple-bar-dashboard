@@ -1,0 +1,71 @@
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Secrets / credentials — excluir todos los JSON excepto datos no sensibles
+*.json
+temple-bar-*.json
+!processed_data.json
+!economic_context.json
+service_account*.json
+credentials*.json
+
+# Legacy / large files (not deleted, but not tracked)
+super_dashboard_temple.html
+dashboard_ventas_temple.html
+tablero_ventas.html
+tablero-ventas-corregido.html
+index.html
+processed_data.json
+*.docx
+*.png
+
+# Generated dashboards
+destileria_dashboard.html
+
+# Subprojects
+Proyecto_ERP/
+
+# Logs & cache
+*.log
+logs/
+dashboard_run.log
+refresh_log.txt
+dashboard_refresh_status.txt
+.pytest_cache/
+
+# Images with credentials
+*.jpg
+
+# PDFs
+*.pdf
+
+# Claude local settings
+.claude/
+
+# Docker
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
