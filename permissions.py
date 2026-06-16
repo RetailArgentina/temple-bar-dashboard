@@ -29,7 +29,7 @@ BRAND_FAMILIES = {
     "merch":   ["merch"],
 }
 
-VALID_ROLES = ("superadmin", "editor", "viewer")
+VALID_ROLES = ("superadmin", "gerencia", "editor", "viewer")
 
 COLLECTION = "users_config"
 
@@ -156,7 +156,7 @@ def create_user(db, email: str, role: str, brands: "list[str]") -> dict:
     data = {
         "role": role,
         "brands": brands,
-        "can_edit_objectives": role == "editor",
+        "can_edit_objectives": role in ("editor", "gerencia"),
         "created_at": now,
         "updated_at": now,
     }
@@ -204,7 +204,7 @@ def update_user(db, email: str, role: str = None, brands: "list[str]" = None) ->
     updates = {"updated_at": datetime.now(timezone.utc)}
     if role is not None:
         updates["role"] = role
-        updates["can_edit_objectives"] = role == "editor"
+        updates["can_edit_objectives"] = role in ("editor", "gerencia")
     if brands is not None:
         updates["brands"] = brands
 
@@ -276,3 +276,132 @@ def delete_cluster_override(db, client: str) -> dict:
     doc_ref.delete()
     logger.info("Cluster override eliminado: '%s'", client)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Objectives
+# ---------------------------------------------------------------------------
+
+OBJECTIVES_COLLECTION = "objetivos_destileria"
+_VALID_MARCAS = {"bosque", "feriado", "cerveza"}
+_MONTH_NAMES = ["ene", "feb", "mar", "abr", "may", "jun",
+                "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+def parse_flat_objectives(rows: "list[list]") -> "tuple[list[dict], list[str]]":
+    """
+    Parsea filas en formato plano:
+      marca | dimension | nombre | ene | feb | mar | abr | may | jun | jul | ago | sep | oct | nov | dic
+
+    Returns:
+        (docs, errors) — docs son dicts listos para Firestore, errors son strings descriptivos.
+    """
+    header_idx: Optional[int] = None
+    col_idx: dict = {}
+    for i, row in enumerate(rows):
+        row_lower = [str(c).strip().lower() for c in row]
+        if "marca" in row_lower:
+            header_idx = i
+            for j, name in enumerate(row_lower):
+                if name not in col_idx:
+                    col_idx[name] = j
+            break
+
+    if header_idx is None:
+        return [], ["No se encontró fila de encabezado (debe contener 'marca')"]
+
+    required = ["marca", "dimension", "nombre"] + _MONTH_NAMES
+    missing = [c for c in required if c not in col_idx]
+    if missing:
+        return [], [f"Faltan columnas: {', '.join(missing)}"]
+
+    docs: list = []
+    errors: list = []
+    seen: set = set()
+
+    def _cell(row, col_name):
+        idx = col_idx.get(col_name, -1)
+        return str(row[idx]).strip() if 0 <= idx < len(row) else ""
+
+    for i, row in enumerate(rows[header_idx + 1:], start=header_idx + 2):
+        if not any(str(c).strip() for c in row):
+            continue
+
+        marca = _cell(row, "marca").lower()
+        dimension = _cell(row, "dimension").lower()
+        nombre = _cell(row, "nombre")
+
+        if not marca and not dimension and not nombre:
+            continue
+
+        if marca not in _VALID_MARCAS:
+            errors.append(f"Fila {i}: marca desconocida '{marca}'")
+            continue
+
+        valores: list = []
+        row_err = False
+        for m in _MONTH_NAMES:
+            raw = _cell(row, m)
+            if raw in ("", "-"):
+                valores.append(0)
+            else:
+                try:
+                    valores.append(round(float(raw.replace(",", "."))))
+                except ValueError:
+                    errors.append(f"Fila {i}: valor no numérico en '{m}': '{raw}'")
+                    row_err = True
+                    break
+
+        if row_err:
+            continue
+
+        key = (marca, dimension, nombre)
+        if key in seen:
+            errors.append(f"Fila {i}: duplicado '{marca}/{dimension}/{nombre}'")
+            continue
+        seen.add(key)
+
+        docs.append({
+            "marca": marca,
+            "dimension": dimension,
+            "nombre": nombre,
+            "valores": valores,
+        })
+
+    return docs, errors
+
+
+def list_objectives(db) -> "list[dict]":
+    """Devuelve todos los objetivos de Firestore, ordenados por marca/dimension/nombre."""
+    docs = db.collection(OBJECTIVES_COLLECTION).stream()
+    result = [doc.to_dict() for doc in docs]
+    return sorted(
+        result,
+        key=lambda x: (x.get("marca", ""), x.get("dimension", ""), x.get("nombre", "")),
+    )
+
+
+def save_objectives(db, docs: "list[dict]", updated_by: str) -> dict:
+    """
+    Reemplaza todos los objetivos en Firestore (replace completo).
+
+    Returns:
+        {"ok": True, "count": N} o {"ok": False, "error": "..."}
+    """
+    if not docs:
+        return {"ok": False, "error": "No hay datos para guardar"}
+
+    for existing in db.collection(OBJECTIVES_COLLECTION).stream():
+        existing.reference.delete()
+
+    now = datetime.now(timezone.utc)
+    for row in docs:
+        doc_id = f"{row['marca']}__{row['dimension']}__{row['nombre']}"
+        db.collection(OBJECTIVES_COLLECTION).document(doc_id).set({
+            **row,
+            "updated_at": now,
+            "updated_by": updated_by,
+        })
+
+    logger.info("Objetivos guardados: %d filas por %s", len(docs), updated_by)
+    return {"ok": True, "count": len(docs)}

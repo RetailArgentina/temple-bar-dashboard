@@ -316,3 +316,164 @@ def test_delete_user_cannot_delete_superadmin():
     result = delete_user(db, "admin@temple.com.ar", actor_email="darwin@temple.com.ar")
     assert result["ok"] is False
     assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# Rol gerencia
+# ---------------------------------------------------------------------------
+
+def test_gerencia_in_valid_roles():
+    from permissions import VALID_ROLES
+    assert "gerencia" in VALID_ROLES
+
+
+def test_create_gerencia_user_sets_can_edit_objectives_true():
+    from permissions import create_user
+    doc_ref = MagicMock()
+    doc_ref.get.return_value.exists = False
+    db = MagicMock()
+    db.collection.return_value.document.return_value = doc_ref
+    result = create_user(db, "gerencia@temple.com.ar", "gerencia", ["*"])
+    assert result["ok"] is True
+    call_args = doc_ref.set.call_args[0][0]
+    assert call_args["can_edit_objectives"] is True
+
+
+# ---------------------------------------------------------------------------
+# parse_flat_objectives
+# ---------------------------------------------------------------------------
+
+_HEADER = ["marca", "dimension", "nombre",
+           "ene", "feb", "mar", "abr", "may", "jun",
+           "jul", "ago", "sep", "oct", "nov", "dic"]
+
+def _obj_row(marca="bosque", dim="product", nombre="bosque_nativo", vals=None):
+    if vals is None:
+        vals = ["100"] * 12
+    return [marca, dim, nombre] + vals
+
+
+def test_parse_flat_objectives_valid():
+    from permissions import parse_flat_objectives
+    rows = [_HEADER, _obj_row(vals=["100","110","120","130","140","150",
+                                     "160","170","180","190","200","210"])]
+    docs, errors = parse_flat_objectives(rows)
+    assert errors == []
+    assert len(docs) == 1
+    assert docs[0]["marca"] == "bosque"
+    assert docs[0]["nombre"] == "bosque_nativo"
+    assert docs[0]["valores"] == [100,110,120,130,140,150,160,170,180,190,200,210]
+
+
+def test_parse_flat_objectives_missing_column():
+    from permissions import parse_flat_objectives
+    rows = [["marca", "dimension", "nombre", "ene", "feb"], _obj_row(vals=["100","110"])]
+    docs, errors = parse_flat_objectives(rows)
+    assert docs == []
+    assert any("Faltan columnas" in e for e in errors)
+
+
+def test_parse_flat_objectives_unknown_marca():
+    from permissions import parse_flat_objectives
+    rows = [_HEADER, _obj_row(marca="desconocida")]
+    docs, errors = parse_flat_objectives(rows)
+    assert docs == []
+    assert any("marca desconocida" in e for e in errors)
+
+
+def test_parse_flat_objectives_duplicate_row():
+    from permissions import parse_flat_objectives
+    rows = [_HEADER, _obj_row(), _obj_row()]
+    docs, errors = parse_flat_objectives(rows)
+    assert len(docs) == 1
+    assert any("duplicado" in e for e in errors)
+
+
+def test_parse_flat_objectives_nonnumeric_value():
+    from permissions import parse_flat_objectives
+    rows = [_HEADER, _obj_row(vals=["ABC"] + ["100"] * 11)]
+    docs, errors = parse_flat_objectives(rows)
+    assert docs == []
+    assert any("no numérico" in e for e in errors)
+
+
+def test_parse_flat_objectives_no_header():
+    from permissions import parse_flat_objectives
+    rows = [_obj_row()]
+    docs, errors = parse_flat_objectives(rows)
+    assert docs == []
+    assert any("encabezado" in e for e in errors)
+
+
+def test_parse_flat_objectives_empty_values_become_zero():
+    from permissions import parse_flat_objectives
+    rows = [_HEADER, _obj_row(vals=["","110","120","130","140","150",
+                                      "160","170","180","190","200","210"])]
+    docs, errors = parse_flat_objectives(rows)
+    assert errors == []
+    assert docs[0]["valores"][0] == 0
+
+
+def test_parse_flat_objectives_skips_empty_rows():
+    from permissions import parse_flat_objectives
+    rows = [_HEADER, ["","","","","","","","","","","","","","",""], _obj_row()]
+    docs, errors = parse_flat_objectives(rows)
+    assert len(docs) == 1
+    assert errors == []
+
+
+# ---------------------------------------------------------------------------
+# list_objectives / save_objectives
+# ---------------------------------------------------------------------------
+
+def _make_stream_db(docs_data):
+    mock_docs = []
+    for doc_id, data in docs_data.items():
+        d = MagicMock()
+        d.id = doc_id
+        d.to_dict.return_value = data
+        d.reference = MagicMock()
+        mock_docs.append(d)
+    db = MagicMock()
+    db.collection.return_value.stream.return_value = iter(mock_docs)
+    return db
+
+
+def test_list_objectives_returns_sorted_list():
+    from permissions import list_objectives
+    db = _make_stream_db({
+        "feriado__product__feriado_rojo": {
+            "marca": "feriado", "dimension": "product",
+            "nombre": "feriado_rojo", "valores": [1]*12,
+        },
+        "bosque__product__bosque_nativo": {
+            "marca": "bosque", "dimension": "product",
+            "nombre": "bosque_nativo", "valores": [2]*12,
+        },
+    })
+    result = list_objectives(db)
+    assert len(result) == 2
+    assert result[0]["marca"] == "bosque"
+    assert result[1]["marca"] == "feriado"
+
+
+def test_save_objectives_deletes_existing_and_writes_new():
+    from permissions import save_objectives
+    existing_doc = MagicMock()
+    existing_doc.reference = MagicMock()
+    db = MagicMock()
+    db.collection.return_value.stream.return_value = iter([existing_doc])
+    docs = [{"marca": "bosque", "dimension": "product",
+             "nombre": "bosque_nativo", "valores": [100]*12}]
+    result = save_objectives(db, docs, updated_by="test@temple.com.ar")
+    assert result["ok"] is True
+    assert result["count"] == 1
+    existing_doc.reference.delete.assert_called_once()
+    db.collection.return_value.document.return_value.set.assert_called_once()
+
+
+def test_save_objectives_rejects_empty_docs():
+    from permissions import save_objectives
+    db = MagicMock()
+    result = save_objectives(db, [], updated_by="test@temple.com.ar")
+    assert result["ok"] is False
