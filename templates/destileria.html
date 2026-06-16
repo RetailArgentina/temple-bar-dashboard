@@ -962,6 +962,12 @@ __PERMISSIONS_INJECT__
 // DATOS (inyectados por Python)
 // ============================================================
 const ROWS = __ROWS_JSON__;
+// Apply cluster overrides from admin panel
+if (window.__CLUSTER_OVERRIDES__) {
+  ROWS.forEach(function(r) {
+    if (window.__CLUSTER_OVERRIDES__[r.nd]) r.cl = window.__CLUSTER_OVERRIDES__[r.nd];
+  });
+}
 const OBJ  = __OBJ_JSON__;
 
 // ============================================================

@@ -242,3 +242,37 @@ def delete_user(db, email: str, actor_email: str) -> dict:
     doc_ref.delete()
     logger.info("Usuario eliminado: %s por %s", normalized, actor_normalized)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Cluster overrides
+# ---------------------------------------------------------------------------
+
+CLUSTER_OVERRIDES_COLLECTION = "cluster_overrides"
+
+
+def list_cluster_overrides(db) -> dict:
+    """Devuelve {nombre_cliente: cluster} para todos los overrides guardados."""
+    docs = db.collection(CLUSTER_OVERRIDES_COLLECTION).stream()
+    return {doc.id: doc.to_dict().get("cluster", "") for doc in docs}
+
+
+def set_cluster_override(db, client: str, cluster: str) -> dict:
+    """Asigna un cluster a un cliente (override manual)."""
+    if not client or not cluster:
+        return {"ok": False, "error": "Cliente y cluster son requeridos"}
+    doc_ref = db.collection(CLUSTER_OVERRIDES_COLLECTION).document(client)
+    doc_ref.set({
+        "cluster": cluster,
+        "updated_at": datetime.now(timezone.utc),
+    })
+    logger.info("Cluster override: '%s' → '%s'", client, cluster)
+    return {"ok": True}
+
+
+def delete_cluster_override(db, client: str) -> dict:
+    """Elimina el override de cluster para un cliente (vuelve al valor de BQ)."""
+    doc_ref = db.collection(CLUSTER_OVERRIDES_COLLECTION).document(client)
+    doc_ref.delete()
+    logger.info("Cluster override eliminado: '%s'", client)
+    return {"ok": True}

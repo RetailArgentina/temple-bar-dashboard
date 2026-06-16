@@ -380,6 +380,14 @@ def destileria():
 
     perms_script = f'<script>window.__USER_PERMISSIONS__={perms_json};</script>'
 
+    # Inject cluster overrides for all users
+    db = _get_firestore_client()
+    overrides = permissions.list_cluster_overrides(db)
+    overrides_script = ''
+    if overrides:
+        overrides_json = json.dumps(overrides, ensure_ascii=False)
+        overrides_script = f'<script>window.__CLUSTER_OVERRIDES__={overrides_json};</script>'
+
     admin_link = ''
     if user["role"] == "superadmin":
         admin_link = (
@@ -391,7 +399,7 @@ def destileria():
 
     html = _dest_cache["html"].replace(
         "__PERMISSIONS_INJECT__",
-        perms_script + admin_link,
+        perms_script + overrides_script + admin_link,
     )
 
     return html, 200, {
@@ -457,6 +465,127 @@ def api_admin_delete_user(email):
     result = permissions.delete_user(db, email, actor_email=actor)
     status = 200 if result["ok"] else 400
     return jsonify(result), status
+
+
+# ---------------------------------------------------------------------------
+# Admin: Cluster management
+# ---------------------------------------------------------------------------
+import re as _re
+
+_clients_parsed: dict = {"data": None, "html_id": None}
+
+
+def _extract_clients_from_dashboard():
+    """Extrae clientes únicos y sus clusters del JSON embebido en el dashboard."""
+    global _clients_parsed
+    if _dest_cache["html"] is None:
+        return None
+
+    # Avoid re-parsing if HTML hasn't changed
+    html_id = id(_dest_cache["html"])
+    if _clients_parsed["html_id"] == html_id and _clients_parsed["data"] is not None:
+        return _clients_parsed["data"]
+
+    match = _re.search(r'const ROWS = (\[.*?\]);\n', _dest_cache["html"], _re.DOTALL)
+    if not match:
+        return None
+
+    rows = json.loads(match.group(1))
+    # Build unique client → cluster + last purchase date
+    client_map = {}
+    for r in rows:
+        nd = r.get("nd", "")
+        cl = r.get("cl", "Sin clasificar")
+        f = r.get("f", "")
+        if nd:
+            prev = client_map.get(nd)
+            if prev is None or f > prev["f"]:
+                client_map[nd] = {"cl": cl, "f": f}
+            elif prev["cl"] == "Sin clasificar" and cl != "Sin clasificar":
+                client_map[nd]["cl"] = cl
+
+    data = sorted(
+        [{"cliente": k, "cluster_bq": v["cl"], "ultima_compra": v["f"]}
+         for k, v in client_map.items()],
+        key=lambda x: (x["cluster_bq"], x["cliente"]),
+    )
+    _clients_parsed["data"] = data
+    _clients_parsed["html_id"] = html_id
+    return data
+
+
+@app.route("/api/admin/clients", methods=["GET"])
+@require_superadmin
+def api_admin_clients():
+    """Lista clientes únicos con su cluster actual (dashboard + overrides Firestore)."""
+    # Ensure dashboard is loaded
+    global _dest_cache
+    if _dest_cache["html"] is None:
+        try:
+            gcs = storage.Client()
+            blob = gcs.bucket(config.CACHE_BUCKET).blob("destileria_dashboard.html")
+            _dest_cache["html"] = blob.download_as_text(encoding="utf-8")
+            _dest_cache["ts"] = time.time()
+        except Exception as exc:
+            logger.error("Error loading dashboard for client list: %s", exc)
+            return jsonify({"ok": False, "error": "Dashboard no disponible"}), 503
+
+    base_data = _extract_clients_from_dashboard()
+    if base_data is None:
+        return jsonify({"ok": False, "error": "No se pudieron extraer clientes del dashboard"}), 500
+
+    # Merge with Firestore overrides
+    db = _get_firestore_client()
+    overrides = permissions.list_cluster_overrides(db)
+
+    clients = []
+    clusters_set = set()
+    for c in base_data:
+        name = c["cliente"]
+        override = overrides.get(name)
+        cluster = override if override else c["cluster_bq"]
+        clients.append({
+            "cliente": name,
+            "cluster_bq": c["cluster_bq"],
+            "cluster": cluster,
+            "override": override is not None,
+            "ultima_compra": c.get("ultima_compra", ""),
+        })
+        clusters_set.add(cluster)
+        clusters_set.add(c["cluster_bq"])
+
+    clusters_set.discard("Sin clasificar")
+    clusters = sorted(clusters_set)
+
+    return jsonify({"ok": True, "clients": clients, "clusters": clusters})
+
+
+@app.route("/api/admin/cluster-overrides", methods=["GET"])
+@require_superadmin
+def api_admin_list_overrides():
+    db = _get_firestore_client()
+    overrides = permissions.list_cluster_overrides(db)
+    return jsonify({"ok": True, "overrides": overrides})
+
+
+@app.route("/api/admin/cluster-overrides", methods=["POST"])
+@require_superadmin
+def api_admin_set_override():
+    data = request.get_json(silent=True) or {}
+    client = data.get("client", "").strip()
+    cluster = data.get("cluster", "").strip()
+    db = _get_firestore_client()
+    result = permissions.set_cluster_override(db, client, cluster)
+    status = 200 if result["ok"] else 400
+    return jsonify(result), status
+
+
+@app.route("/api/admin/cluster-overrides/<path:client>", methods=["DELETE"])
+@require_superadmin
+def api_admin_delete_override(client):
+    db = _get_firestore_client()
+    result = permissions.delete_cluster_override(db, client)
+    return jsonify(result)
 
 
 # ---------------------------------------------------------------------------

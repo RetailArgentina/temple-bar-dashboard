@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gestion de Usuarios</title>
+  <title>Panel de Administracion</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -28,7 +28,7 @@
       margin-bottom: 20px;
     }
     .back-link:hover { color: #c9a227; text-decoration: none; }
-    .back-link::before { content: "←"; }
+    .back-link::before { content: "\2190"; }
 
     h1 {
       font-size: 22px;
@@ -36,6 +36,29 @@
       color: #e6edf3;
       margin-bottom: 20px;
     }
+
+    /* Tabs */
+    .tab-nav {
+      display: flex;
+      gap: 0;
+      margin-bottom: 24px;
+      border-bottom: 1px solid #21262d;
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: #8b949e;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .tab-btn:hover { color: #e6edf3; }
+    .tab-btn.active { color: #c9a227; border-bottom-color: #c9a227; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
 
     /* Message */
     #msg {
@@ -280,35 +303,277 @@
       color: #484f58;
       padding: 32px;
     }
+
+    /* ── Cluster section ── */
+    .cl-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .cl-toolbar .search-box {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e6edf3;
+      padding: 7px 12px;
+      font-size: 13px;
+      outline: none;
+      width: 260px;
+    }
+    .cl-toolbar .search-box:focus { border-color: #c9a227; }
+    .cl-toolbar select {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e6edf3;
+      padding: 7px 10px;
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+    }
+    .cl-toolbar select:focus { border-color: #c9a227; }
+    .cl-toolbar select option { background: #161b22; }
+
+    .cl-stats {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .cl-stat {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-size: 12px;
+      color: #8b949e;
+    }
+    .cl-stat strong {
+      display: block;
+      font-size: 22px;
+      font-weight: 800;
+      color: #e6edf3;
+      margin-bottom: 2px;
+    }
+    .cl-stat.warn strong { color: #f59e0b; }
+
+    .cl-new-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 16px;
+      padding: 12px 16px;
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+    }
+    .cl-new-row input {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e6edf3;
+      padding: 7px 12px;
+      font-size: 13px;
+      outline: none;
+      width: 220px;
+    }
+    .cl-new-row input:focus { border-color: #c9a227; }
+    .cl-new-row span { font-size: 13px; color: #8b949e; }
+
+    .cl-select {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 5px;
+      color: #e6edf3;
+      padding: 4px 8px;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+      max-width: 200px;
+    }
+    .cl-select:focus { border-color: #c9a227; }
+    .cl-select option { background: #161b22; }
+
+    .btn-assign {
+      border: none;
+      border-radius: 5px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      background: #052e16;
+      color: #4ade80;
+      border: 1px solid #166534;
+    }
+    .btn-assign:hover { background: #166534; }
+
+    .btn-undo {
+      border: none;
+      border-radius: 5px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      background: #21262d;
+      color: #8b949e;
+      border: 1px solid #30363d;
+    }
+    .btn-undo:hover { background: #30363d; color: #e6edf3; }
+
+    .override-badge {
+      display: inline-block;
+      background: rgba(56,139,253,0.15);
+      color: #58a6ff;
+      border: 1px solid rgba(56,139,253,0.3);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    .cl-pag {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 12px;
+      font-size: 12px;
+      color: #8b949e;
+    }
+    .cl-pag button {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 5px;
+      color: #8b949e;
+      padding: 5px 12px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .cl-pag button:hover { color: #e6edf3; border-color: #8b949e; }
+    .cl-pag button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-download {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #21262d;
+      color: #8b949e;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-download:hover { background: #30363d; color: #e6edf3; border-color: #8b949e; }
   </style>
 </head>
 <body>
 
   <a href="/destileria" class="back-link">Volver al Dashboard</a>
 
-  <h1>Gestion de Usuarios</h1>
+  <h1>Panel de Administracion</h1>
+
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('usuarios')">Usuarios</button>
+    <button class="tab-btn" onclick="switchTab('clusters')">Clusterizacion</button>
+  </div>
 
   <div id="msg"></div>
 
-  <button class="btn-add" onclick="openModal('create')">+ Agregar usuario</button>
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- TAB: Usuarios                                               -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <div id="tab-usuarios" class="tab-panel active">
 
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Email</th>
-          <th>Rol</th>
-          <th>Marcas</th>
-          <th>Acciones</th>
-        </tr>
-      </thead>
-      <tbody id="users-body">
-        <tr class="empty-row"><td colspan="4">Cargando...</td></tr>
-      </tbody>
-    </table>
+    <button class="btn-add" onclick="openModal('create')">+ Agregar usuario</button>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Rol</th>
+            <th>Marcas</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="users-body">
+          <tr class="empty-row"><td colspan="4">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
   </div>
 
-  <!-- Modal -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- TAB: Clusterizacion                                         -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <div id="tab-clusters" class="tab-panel">
+
+    <div class="cl-stats" id="cl-stats">
+      <div class="cl-stat"><strong id="cl-total">-</strong>Clientes totales</div>
+      <div class="cl-stat warn"><strong id="cl-unassigned">-</strong>Sin clasificar</div>
+      <div class="cl-stat"><strong id="cl-overrides">-</strong>Overrides manuales</div>
+    </div>
+
+    <div class="cl-new-row">
+      <span>Crear cluster nuevo:</span>
+      <input type="text" id="cl-new-name" placeholder="Nombre del cluster...">
+      <button class="btn-add" onclick="createCluster()" style="margin-bottom:0">+ Crear</button>
+    </div>
+
+    <div class="cl-toolbar">
+      <select id="cl-filter" onchange="renderClients()">
+        <option value="all">Todos los clientes</option>
+        <option value="unassigned">Sin clasificar (recientes)</option>
+        <option value="overrides">Con override manual</option>
+      </select>
+      <select id="cl-periodo" onchange="renderClients()">
+        <option value="6">Ultimos 6 meses</option>
+        <option value="3">Ultimos 3 meses</option>
+        <option value="12">Ultimo ano</option>
+        <option value="0">Sin filtro de fecha</option>
+      </select>
+      <input type="text" class="search-box" id="cl-search" placeholder="Buscar cliente..." oninput="renderClients()">
+      <select id="cl-bulk-cluster" style="margin-left:auto">
+        <option value="">-- Asignar cluster masivo --</option>
+      </select>
+      <button class="btn-assign" onclick="bulkAssign()">Aplicar a seleccion</button>
+      <button class="btn-download" onclick="downloadCSV()">&#8615; Descargar CSV</button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:30px"><input type="checkbox" id="cl-check-all" onchange="toggleCheckAll(this)"></th>
+            <th>Cliente</th>
+            <th>Cluster (BQ)</th>
+            <th>Cluster actual</th>
+            <th>Ultima compra</th>
+            <th>Asignar</th>
+          </tr>
+        </thead>
+        <tbody id="cl-body">
+          <tr class="empty-row"><td colspan="6">Cargando clientes...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cl-pag">
+      <span id="cl-pag-info">-</span>
+      <div>
+        <button id="cl-prev" onclick="clPage(-1)" disabled>&lt; Anterior</button>
+        <button id="cl-next" onclick="clPage(1)" disabled>Siguiente &gt;</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Modal (usuarios) -->
   <div class="modal-overlay" id="modal-overlay">
     <div class="modal">
       <h2 id="modal-title">Agregar usuario</h2>
@@ -352,6 +617,26 @@
 
   <script>
     var CSRF_TOKEN = '{{ csrf_token() }}';
+
+    // ── Tab switching ──
+    function switchTab(tab) {
+      var btns = document.querySelectorAll('.tab-btn');
+      var panels = document.querySelectorAll('.tab-panel');
+      for (var i = 0; i < btns.length; i++) { btns[i].classList.remove('active'); }
+      for (var j = 0; j < panels.length; j++) { panels[j].classList.remove('active'); }
+      if (tab === 'usuarios') {
+        btns[0].classList.add('active');
+        document.getElementById('tab-usuarios').classList.add('active');
+      } else {
+        btns[1].classList.add('active');
+        document.getElementById('tab-clusters').classList.add('active');
+        if (!clDataLoaded) loadClients();
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // USUARIOS (existing logic)
+    // ═══════════════════════════════════════════════════════════════
     var currentMode = 'create';
     var currentEmail = '';
 
@@ -361,7 +646,7 @@
     }
 
     function brandsHtml(brands) {
-      if (!brands || brands.length === 0) return '<span style="color:#484f58">—</span>';
+      if (!brands || brands.length === 0) return '<span style="color:#484f58">\u2014</span>';
       if (brands.indexOf('*') !== -1) return '<span class="brand-tag">Todas</span>';
       var out = '';
       for (var i = 0; i < brands.length; i++) {
@@ -393,7 +678,7 @@
             var u = users[i];
             var actions;
             if (u.role === 'superadmin') {
-              actions = '<span class="no-actions">—</span>';
+              actions = '<span class="no-actions">\u2014</span>';
             } else {
               var brandsJson = escHtml(JSON.stringify(u.brands || []));
               actions = '<button class="btn-edit" onclick="openModal(\'edit\',\'' + escHtml(u.email) + '\',\'' + escHtml(u.role) + '\',\'' + brandsJson + '\')">Editar</button>'
@@ -518,6 +803,300 @@
           showMsg(err.message || 'Error inesperado.', false);
         });
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // CLUSTERIZACION
+    // ═══════════════════════════════════════════════════════════════
+    var clDataLoaded = false;
+    var clAllClients = [];
+    var clAllClusters = [];
+    var clCustomClusters = [];
+    var clPage_ = 0;
+    var CL_PAGE_SIZE = 50;
+
+    function loadClients() {
+      document.getElementById('cl-body').innerHTML = '<tr class="empty-row"><td colspan="5">Cargando clientes...</td></tr>';
+      fetch('/api/admin/clients')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data.ok) { showMsg(data.error || 'Error cargando clientes', false); return; }
+          clAllClients = data.clients || [];
+          clAllClusters = data.clusters || [];
+          clDataLoaded = true;
+          clPage_ = 0;
+          updateClStats();
+          populateClusterSelects();
+          renderClients();
+        })
+        .catch(function() {
+          document.getElementById('cl-body').innerHTML = '<tr class="empty-row"><td colspan="5">Error al cargar clientes.</td></tr>';
+        });
+    }
+
+    function updateClStats() {
+      document.getElementById('cl-total').textContent = clAllClients.length;
+      var unassigned = 0, overrides = 0;
+      for (var i = 0; i < clAllClients.length; i++) {
+        if (clAllClients[i].cluster === 'Sin clasificar') unassigned++;
+        if (clAllClients[i].override) overrides++;
+      }
+      document.getElementById('cl-unassigned').textContent = unassigned;
+      document.getElementById('cl-overrides').textContent = overrides;
+    }
+
+    function getAllClusters() {
+      var set = {};
+      for (var i = 0; i < clAllClusters.length; i++) set[clAllClusters[i]] = true;
+      for (var j = 0; j < clCustomClusters.length; j++) set[clCustomClusters[j]] = true;
+      return Object.keys(set).sort();
+    }
+
+    function populateClusterSelects() {
+      var clusters = getAllClusters();
+      var bulkSel = document.getElementById('cl-bulk-cluster');
+      bulkSel.innerHTML = '<option value="">-- Asignar cluster masivo --</option>';
+      for (var i = 0; i < clusters.length; i++) {
+        bulkSel.innerHTML += '<option value="' + escHtml(clusters[i]) + '">' + escHtml(clusters[i]) + '</option>';
+      }
+    }
+
+    function getCutoffDate() {
+      var meses = parseInt(document.getElementById('cl-periodo').value, 10);
+      if (!meses) return null;
+      var d = new Date();
+      d.setMonth(d.getMonth() - meses);
+      return d.toISOString().slice(0, 10);
+    }
+
+    function getFilteredClients() {
+      var filter = document.getElementById('cl-filter').value;
+      var search = document.getElementById('cl-search').value.toLowerCase().trim();
+      var cutoff = getCutoffDate();
+      var result = [];
+      for (var i = 0; i < clAllClients.length; i++) {
+        var c = clAllClients[i];
+        if (filter === 'unassigned') {
+          if (c.cluster !== 'Sin clasificar') continue;
+          // Ocultar clientes inactivos (sin compras recientes)
+          if (cutoff && c.ultima_compra && c.ultima_compra < cutoff) continue;
+        }
+        if (filter === 'overrides' && !c.override) continue;
+        if (search && c.cliente.toLowerCase().indexOf(search) === -1) continue;
+        result.push(c);
+      }
+      return result;
+    }
+
+    function renderClients() {
+      clPage_ = 0;
+      renderClientsPage();
+    }
+
+    function renderClientsPage() {
+      var filtered = getFilteredClients();
+      var start = clPage_ * CL_PAGE_SIZE;
+      var end = Math.min(start + CL_PAGE_SIZE, filtered.length);
+      var page = filtered.slice(start, end);
+
+      var tbody = document.getElementById('cl-body');
+      if (page.length === 0) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No hay clientes con ese filtro.</td></tr>';
+        document.getElementById('cl-pag-info').textContent = '0 de ' + filtered.length;
+        document.getElementById('cl-prev').disabled = true;
+        document.getElementById('cl-next').disabled = true;
+        return;
+      }
+
+      var clusters = getAllClusters();
+      var clOptions = '<option value="">--</option>';
+      for (var k = 0; k < clusters.length; k++) {
+        clOptions += '<option value="' + escHtml(clusters[k]) + '">' + escHtml(clusters[k]) + '</option>';
+      }
+
+      var html = '';
+      for (var i = 0; i < page.length; i++) {
+        var c = page[i];
+        var clientEsc = escHtml(c.cliente);
+        var clusterDisplay = escHtml(c.cluster);
+        if (c.override) {
+          clusterDisplay += '<span class="override-badge">manual</span>';
+        }
+
+        var actions = '<select class="cl-select" id="cl-sel-' + i + '">' + clOptions + '</select> '
+          + '<button class="btn-assign" onclick="assignSingle(' + i + ')">Guardar</button>';
+        if (c.override) {
+          actions += ' <button class="btn-undo" onclick="undoOverride(\'' + clientEsc.replace(/'/g, "\\'") + '\')">Quitar</button>';
+        }
+
+        var fechaDisplay = c.ultima_compra ? c.ultima_compra.split('-').reverse().join('/') : '-';
+
+        html += '<tr>'
+          + '<td><input type="checkbox" class="cl-check" data-client="' + clientEsc + '"></td>'
+          + '<td>' + clientEsc + '</td>'
+          + '<td style="color:#6e7681;font-size:12px">' + escHtml(c.cluster_bq) + '</td>'
+          + '<td>' + clusterDisplay + '</td>'
+          + '<td style="color:#6e7681;font-size:12px">' + fechaDisplay + '</td>'
+          + '<td>' + actions + '</td>'
+          + '</tr>';
+      }
+      tbody.innerHTML = html;
+
+      tbody._pageData = page;
+
+      document.getElementById('cl-pag-info').textContent = (start + 1) + '-' + end + ' de ' + filtered.length;
+      document.getElementById('cl-prev').disabled = (clPage_ === 0);
+      document.getElementById('cl-next').disabled = (end >= filtered.length);
+    }
+
+    function clPage(dir) {
+      clPage_ += dir;
+      if (clPage_ < 0) clPage_ = 0;
+      renderClientsPage();
+      document.getElementById('cl-check-all').checked = false;
+    }
+
+    function toggleCheckAll(master) {
+      var cbs = document.querySelectorAll('.cl-check');
+      for (var i = 0; i < cbs.length; i++) { cbs[i].checked = master.checked; }
+    }
+
+    function createCluster() {
+      var input = document.getElementById('cl-new-name');
+      var name = input.value.trim();
+      if (!name) { showMsg('Ingresa un nombre para el cluster.', false); return; }
+      var existing = getAllClusters();
+      for (var i = 0; i < existing.length; i++) {
+        if (existing[i].toLowerCase() === name.toLowerCase()) {
+          showMsg('El cluster "' + name + '" ya existe.', false);
+          return;
+        }
+      }
+      clCustomClusters.push(name);
+      populateClusterSelects();
+      renderClientsPage();
+      input.value = '';
+      showMsg('Cluster "' + name + '" creado. Ya esta disponible en los selectores.', true);
+    }
+
+    function assignSingle(rowIdx) {
+      var tbody = document.getElementById('cl-body');
+      var c = tbody._pageData[rowIdx];
+      var sel = document.getElementById('cl-sel-' + rowIdx);
+      var cluster = sel.value;
+      if (!cluster) { showMsg('Selecciona un cluster primero.', false); return; }
+      doAssign(c.cliente, cluster);
+    }
+
+    function bulkAssign() {
+      var cluster = document.getElementById('cl-bulk-cluster').value;
+      if (!cluster) { showMsg('Selecciona un cluster para asignacion masiva.', false); return; }
+      var cbs = document.querySelectorAll('.cl-check:checked');
+      if (cbs.length === 0) { showMsg('Selecciona al menos un cliente.', false); return; }
+      var pending = cbs.length;
+      var errors = [];
+      for (var i = 0; i < cbs.length; i++) {
+        (function(clientName) {
+          fetch('/api/admin/cluster-overrides', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+            body: JSON.stringify({ client: clientName, cluster: cluster })
+          })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (!d.ok) errors.push(clientName + ': ' + (d.error || 'Error'));
+          })
+          .catch(function() { errors.push(clientName + ': Error de red'); })
+          .finally(function() {
+            pending--;
+            if (pending === 0) {
+              if (errors.length > 0) {
+                showMsg('Errores: ' + errors.join(', '), false);
+              } else {
+                showMsg(cbs.length + ' clientes asignados a "' + cluster + '".', true);
+              }
+              loadClients();
+            }
+          });
+        })(cbs[i].getAttribute('data-client'));
+      }
+    }
+
+    function doAssign(client, cluster) {
+      fetch('/api/admin/cluster-overrides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+        body: JSON.stringify({ client: client, cluster: cluster })
+      })
+      .then(function(r) {
+        if (r.ok) return r.json();
+        return r.json().then(function(d) { throw new Error(d.error || 'Error'); });
+      })
+      .then(function() {
+        showMsg('"' + client + '" asignado a "' + cluster + '".', true);
+        for (var i = 0; i < clAllClients.length; i++) {
+          if (clAllClients[i].cliente === client) {
+            clAllClients[i].cluster = cluster;
+            clAllClients[i].override = true;
+            break;
+          }
+        }
+        updateClStats();
+        renderClientsPage();
+      })
+      .catch(function(err) {
+        showMsg(err.message || 'Error inesperado.', false);
+      });
+    }
+
+    function undoOverride(client) {
+      if (!confirm('Quitar override manual de "' + client + '"? Volvera al cluster original de BigQuery.')) return;
+      fetch('/api/admin/cluster-overrides/' + encodeURIComponent(client), {
+        method: 'DELETE',
+        headers: { 'X-CSRFToken': CSRF_TOKEN }
+      })
+      .then(function(r) {
+        if (r.ok) return r.json();
+        return r.json().then(function(d) { throw new Error(d.error || 'Error'); });
+      })
+      .then(function() {
+        showMsg('Override eliminado para "' + client + '".', true);
+        for (var i = 0; i < clAllClients.length; i++) {
+          if (clAllClients[i].cliente === client) {
+            clAllClients[i].cluster = clAllClients[i].cluster_bq;
+            clAllClients[i].override = false;
+            break;
+          }
+        }
+        updateClStats();
+        renderClientsPage();
+      })
+      .catch(function(err) {
+        showMsg(err.message || 'Error inesperado.', false);
+      });
+    }
+
+    function downloadCSV() {
+      var data = getFilteredClients();
+      if (data.length === 0) { showMsg('No hay clientes para descargar con el filtro actual.', false); return; }
+      var lines = ['Cliente,Cluster BQ,Cluster Actual,Override,Ultima Compra'];
+      for (var i = 0; i < data.length; i++) {
+        var c = data[i];
+        var nombre = '"' + c.cliente.replace(/"/g, '""') + '"';
+        lines.push(nombre + ',' + c.cluster_bq + ',' + c.cluster + ',' + (c.override ? 'Si' : 'No') + ',' + (c.ultima_compra || ''));
+      }
+      var csv = lines.join('\n');
+      var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'clientes_clusters_' + new Date().toISOString().slice(0,10) + '.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // SHARED
+    // ═══════════════════════════════════════════════════════════════
 
     function showMsg(text, ok) {
       var el = document.getElementById('msg');
