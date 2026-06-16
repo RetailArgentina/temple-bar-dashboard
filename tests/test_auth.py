@@ -305,3 +305,82 @@ def test_destileria_requires_login(client):
     resp = c.get("/destileria")
     assert resp.status_code == 302
     assert "/login" in resp.headers["Location"]
+
+
+# ---------------------------------------------------------------------------
+# require_admin — gerencia y superadmin pueden acceder a /admin
+# ---------------------------------------------------------------------------
+
+def _set_session(c, app, role="viewer"):
+    with c.session_transaction() as sess:
+        sess["user"] = {
+            "email": f"{role}@temple.com.ar",
+            "name": "Test",
+            "picture": "",
+            "role": role,
+            "brands": ["*"],
+            "can_edit_objectives": role in ("superadmin", "editor", "gerencia"),
+        }
+
+
+def test_admin_panel_allows_superadmin(client):
+    c, app = client
+    _set_session(c, app, role="superadmin")
+    resp = c.get("/admin")
+    assert resp.status_code == 200
+
+
+def test_admin_panel_allows_gerencia(client):
+    c, app = client
+    _set_session(c, app, role="gerencia")
+    resp = c.get("/admin")
+    assert resp.status_code == 200
+
+
+def test_admin_panel_blocks_viewer(client):
+    c, app = client
+    _set_session(c, app, role="viewer")
+    resp = c.get("/admin")
+    assert resp.status_code == 403
+
+
+def test_objectives_list_allows_gerencia(client):
+    c, app = client
+    _set_session(c, app, role="gerencia")
+    import app as flask_app
+    mock_db = MagicMock()
+    mock_db.collection.return_value.stream.return_value = iter([])
+    with patch.object(flask_app, "_get_firestore_client", return_value=mock_db):
+        resp = c.get("/api/admin/objectives")
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+
+def test_objectives_list_blocks_viewer(client):
+    c, app = client
+    _set_session(c, app, role="viewer")
+    resp = c.get("/api/admin/objectives")
+    assert resp.status_code == 403
+
+
+def test_objectives_save_allows_gerencia(client):
+    c, app = client
+    _set_session(c, app, role="gerencia")
+    import app as flask_app
+    mock_db = MagicMock()
+    mock_db.collection.return_value.stream.return_value = iter([])
+    docs = [{"marca": "bosque", "dimension": "product",
+             "nombre": "bosque_nativo", "valores": [100]*12}]
+    with patch.object(flask_app, "_get_firestore_client", return_value=mock_db):
+        resp = c.post("/api/admin/objectives",
+                      json={"rows": docs},
+                      headers={"Content-Type": "application/json"})
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+
+def test_objectives_save_blocks_editor(client):
+    c, app = client
+    _set_session(c, app, role="editor")
+    resp = c.post("/api/admin/objectives", json={"rows": []})
+    assert resp.status_code == 403

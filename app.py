@@ -43,6 +43,8 @@ _DASH_CACHE_TTL = 300  # seconds — refreshes at most every 5 min
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+SA_KEY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "temple-bar-439715-da51b292ce5d.json")
+
 # ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
@@ -112,6 +114,23 @@ def require_superadmin(f):
             abort(403)
         return f(*args, **kwargs)
     return decorated_sa
+
+
+def require_admin(f):
+    """Permite acceso a superadmin o gerencia."""
+    @wraps(f)
+    def decorated_adm(*args, **kwargs):
+        user = session.get("user")
+        if not user:
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "unauthorized"}), 401
+            return redirect(url_for("login"))
+        if user.get("role") not in ("superadmin", "gerencia"):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "forbidden"}), 403
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_adm
 
 
 def require_scheduler(f):
@@ -389,7 +408,7 @@ def destileria():
         overrides_script = f'<script>window.__CLUSTER_OVERRIDES__={overrides_json};</script>'
 
     admin_link = ''
-    if user["role"] == "superadmin":
+    if user["role"] in ("superadmin", "gerencia"):
         admin_link = (
             '<a href="/admin" style="position:fixed;bottom:16px;right:16px;z-index:9999;'
             'background:#2d2000;border:1px solid #c9a227;color:#c9a227;padding:8px 14px;'
@@ -413,10 +432,11 @@ def destileria():
 # ---------------------------------------------------------------------------
 
 @app.route("/admin")
-@require_superadmin
+@require_admin
 def admin_panel():
+    user = session["user"]
     brands = permissions.get_available_brands()
-    return render_template("admin.html", brands=brands)
+    return render_template("admin.html", brands=brands, user_role=user["role"])
 
 
 @app.route("/api/admin/users", methods=["GET"])
@@ -586,6 +606,111 @@ def api_admin_delete_override(client):
     db = _get_firestore_client()
     result = permissions.delete_cluster_override(db, client)
     return jsonify(result)
+
+
+# ---------------------------------------------------------------------------
+# Objectives helpers
+# ---------------------------------------------------------------------------
+
+def _parse_xlsx_to_rows(file_bytes: bytes) -> "list[list]":
+    """Parsea bytes de un .xlsx y devuelve lista de listas de strings."""
+    import io
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
+    ws = wb.active
+    return [
+        [str(c) if c is not None else "" for c in row]
+        for row in ws.iter_rows(values_only=True)
+    ]
+
+
+def _fetch_sheet_rows(sheet_url: str) -> "list[list]":
+    """
+    Lee filas de un Google Sheet via Sheets API v4.
+    Usa SA key si está disponible, sino ADC.
+    """
+    import re
+    import googleapiclient.discovery as disc
+
+    match = re.search(r"spreadsheets/d/([a-zA-Z0-9-_]+)", sheet_url)
+    if not match:
+        raise ValueError("URL inválida — debe contener 'spreadsheets/d/<ID>'")
+    sheet_id = match.group(1)
+
+    creds = None
+    if os.path.exists(SA_KEY):
+        from google.oauth2 import service_account
+        creds = service_account.Credentials.from_service_account_file(
+            SA_KEY,
+            scopes=["https://www.googleapis.com/auth/spreadsheets.readonly"],
+        )
+
+    svc = disc.build("sheets", "v4", credentials=creds, cache_discovery=False)
+    result = svc.spreadsheets().values().get(
+        spreadsheetId=sheet_id, range="A:P"
+    ).execute()
+    return result.get("values", [])
+
+
+# ---------------------------------------------------------------------------
+# Admin: Objectives management
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/objectives", methods=["GET"])
+@require_admin
+def api_admin_list_objectives():
+    """Lista todos los objetivos guardados en Firestore."""
+    db = _get_firestore_client()
+    objectives = permissions.list_objectives(db)
+    return jsonify({"ok": True, "objectives": objectives})
+
+
+@app.route("/api/admin/objectives/preview", methods=["POST"])
+@require_admin
+def api_admin_preview_objectives():
+    """
+    Parsea Excel o Sheets URL y devuelve preview + errores sin guardar.
+
+    multipart/form-data → campo 'file' con el .xlsx
+    application/json   → {"sheet_url": "..."}
+    """
+    content_type = request.content_type or ""
+
+    if "multipart/form-data" in content_type:
+        f = request.files.get("file")
+        if not f:
+            return jsonify({"ok": False, "error": "No se recibió archivo"}), 400
+        try:
+            rows = _parse_xlsx_to_rows(f.read())
+        except Exception as exc:
+            return jsonify({"ok": False, "error": f"Error al leer Excel: {exc}"}), 400
+    else:
+        data = request.get_json(silent=True) or {}
+        sheet_url = data.get("sheet_url", "").strip()
+        if not sheet_url:
+            return jsonify({"ok": False, "error": "sheet_url es requerido"}), 400
+        try:
+            rows = _fetch_sheet_rows(sheet_url)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": f"Error al leer Sheet: {exc}"}), 400
+
+    docs, errors = permissions.parse_flat_objectives(rows)
+    return jsonify({"ok": True, "rows": docs, "errors": errors})
+
+
+@app.route("/api/admin/objectives", methods=["POST"])
+@require_admin
+def api_admin_save_objectives():
+    """Guarda filas de objetivos en Firestore (replace completo)."""
+    data = request.get_json(silent=True) or {}
+    rows = data.get("rows", [])
+    if not rows:
+        return jsonify({"ok": False, "error": "No hay filas para guardar"}), 400
+    user_email = session["user"]["email"]
+    db = _get_firestore_client()
+    result = permissions.save_objectives(db, rows, updated_by=user_email)
+    status = 200 if result["ok"] else 400
+    return jsonify(result), status
 
 
 # ---------------------------------------------------------------------------
