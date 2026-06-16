@@ -664,11 +664,11 @@
             <th>Marca</th><th>Dim.</th><th>Nombre</th>
             <th>Ene</th><th>Feb</th><th>Mar</th><th>Abr</th><th>May</th><th>Jun</th>
             <th>Jul</th><th>Ago</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dic</th>
-            <th>Actualizado por</th>
+            <th>Última actualiz.</th><th>Actualizado por</th>
           </tr>
         </thead>
         <tbody id="obj-current-body">
-          <tr><td colspan="17" style="color:#8b949e;text-align:center">Cargando...</td></tr>
+          <tr><td colspan="18" style="color:#8b949e;text-align:center">Cargando...</td></tr>
         </tbody>
       </table>
     </div>
@@ -840,24 +840,26 @@
       .then(function(r) { return r.json(); })
       .then(function(d) {
         if (!d.ok || !d.objectives || d.objectives.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="17" style="color:#8b949e;text-align:center">Sin objetivos cargados.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="18" style="color:#8b949e;text-align:center">Sin objetivos cargados.</td></tr>';
           return;
         }
         var html = '';
         d.objectives.forEach(function(obj) {
           var vals = obj.valores || [];
+          var updatedAtFormatted = obj.updated_at ? new Date(obj.updated_at).toLocaleDateString('es-AR') : '';
           html += '<tr>'
             + '<td style="color:#c9a227">' + (obj.marca||'') + '</td>'
             + '<td style="color:#8b949e">' + (obj.dimension||'') + '</td>'
             + '<td>' + (obj.nombre||'') + '</td>'
             + vals.map(function(v) { return '<td style="text-align:right">' + (v||0).toLocaleString() + '</td>'; }).join('')
+            + '<td style="color:#8b949e;font-size:11px">' + updatedAtFormatted + '</td>'
             + '<td style="color:#8b949e;font-size:11px">' + (obj.updated_by||'-') + '</td>'
             + '</tr>';
         });
         tbody.innerHTML = html;
       })
       .catch(function() {
-        tbody.innerHTML = '<tr><td colspan="17" style="color:#f87171;text-align:center">Error al cargar objetivos.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="18" style="color:#f87171;text-align:center">Error al cargar objetivos.</td></tr>';
       });
     }
 
