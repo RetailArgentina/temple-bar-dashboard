@@ -668,7 +668,7 @@
           </tr>
         </thead>
         <tbody id="obj-current-body">
-          <tr><td colspan="18" style="color:#8b949e;text-align:center">Cargando...</td></tr>
+          <tr><td colspan="17" style="color:#8b949e;text-align:center">Cargando...</td></tr>
         </tbody>
       </table>
     </div>
@@ -840,7 +840,7 @@
       .then(function(r) { return r.json(); })
       .then(function(d) {
         if (!d.ok || !d.objectives || d.objectives.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="18" style="color:#8b949e;text-align:center">Sin objetivos cargados.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="17" style="color:#8b949e;text-align:center">Sin objetivos cargados.</td></tr>';
           return;
         }
         var html = '';
@@ -859,7 +859,7 @@
         tbody.innerHTML = html;
       })
       .catch(function() {
-        tbody.innerHTML = '<tr><td colspan="18" style="color:#f87171;text-align:center">Error al cargar objetivos.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="17" style="color:#f87171;text-align:center">Error al cargar objetivos.</td></tr>';
       });
     }
 
