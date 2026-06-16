@@ -105,6 +105,41 @@ def upload_to_gcs(local_path, bucket_name, blob_name="destileria_dashboard.html"
 
 
 # ---------------------------------------------------------------------------
+# Firestore — objetivos (fuente primaria)
+# ---------------------------------------------------------------------------
+
+def load_objectives_from_firestore(db):
+    """
+    Carga objetivos desde la colección 'objetivos_destileria' en Firestore.
+    Cada documento tiene la forma:
+        {marca, dimension, nombre, valores: [12 ints], updated_at, updated_by}
+    Devuelve dict {marca: {dimension: {nombre: [12 valores]}}} o {} si vacío/error.
+    """
+    try:
+        result = {}
+        docs = list(db.collection("objetivos_destileria").stream())
+        if not docs:
+            return {}
+        for doc in docs:
+            d = doc.to_dict()
+            marca     = d.get("marca")
+            dimension = d.get("dimension")
+            nombre    = d.get("nombre")
+            valores   = d.get("valores")
+            if not (marca and dimension and nombre and isinstance(valores, list) and len(valores) == 12):
+                print(
+                    f"WARN: Firestore doc '{doc.id}' ignorado — campos incompletos o valores inválidos",
+                    file=__import__('sys').stderr,
+                )
+                continue
+            result.setdefault(marca, {}).setdefault(dimension, {})[nombre] = valores
+        return result
+    except Exception as _fs_err:
+        print(f"WARN: Firestore objetivos falló: {_fs_err}", file=__import__('sys').stderr)
+        return {}
+
+
+# ---------------------------------------------------------------------------
 # GCS cache de objetivos (persiste entre runs de Cloud Run)
 # ---------------------------------------------------------------------------
 
@@ -597,7 +632,7 @@ def main():
     with open(TEMPLATE, encoding="utf-8") as fh:
         template = fh.read()
 
-    print(f"[{ts()}] Leyendo objetivos (Drive → GCS cache → JSON local → vacío)...")
+    print(f"[{ts()}] Leyendo objetivos (Firestore → Drive → GCS cache → JSON local → vacío)...")
 
     # Cargar caché anterior para comparar después del fetch
     _prev_obj = None
@@ -628,30 +663,43 @@ def main():
     obj = None
     _obj_source = "none"
 
-    # ── 1. Intentar desde Drive ──────────────────────────────────────────────
+    # ── 0. Intentar desde Firestore ──────────────────────────────────────────
     try:
-        obj = fetch_objectives(creds)
-        _obj_source = "drive"
-        print(f"[{ts()}] Objetivos OK (desde Drive)")
-        _to_save = {**obj, "_meta": {
-            "source": "drive",
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
-            "file_id": SHEET_OBJ_ID,
-        }}
-        # Guardar en local
-        with open(OBJ_JSON_FILE, "w", encoding="utf-8") as fh:
-            json.dump(_to_save, fh, ensure_ascii=False, indent=2)
-        print(f"[{ts()}] JSON local de objetivos actualizado")
-        # Guardar en GCS (persiste entre runs de Cloud Run)
-        if args.gcs_bucket:
-            try:
-                save_objectives_to_gcs(_to_save, args.gcs_bucket)
-            except Exception as _gcs_save_err:
-                print(f"WARN: No se pudo guardar objetivos en GCS: {_gcs_save_err}", file=sys.stderr)
-    except Exception as exc:
-        import traceback
-        print(f"WARN: Drive falló: {exc}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
+        from google.cloud import firestore as _firestore
+        _fs_client = _firestore.Client(project=PROJECT)
+        _fs_obj = load_objectives_from_firestore(_fs_client)
+        if _fs_obj:
+            obj = _fs_obj
+            _obj_source = "firestore"
+            print(f"[{ts()}] Objetivos OK (desde Firestore)")
+    except Exception as _fs_init_err:
+        print(f"WARN: Firestore init falló: {_fs_init_err}", file=sys.stderr)
+
+    # ── 1. Intentar desde Drive ──────────────────────────────────────────────
+    if obj is None:
+        try:
+            obj = fetch_objectives(creds)
+            _obj_source = "drive"
+            print(f"[{ts()}] Objetivos OK (desde Drive)")
+            _to_save = {**obj, "_meta": {
+                "source": "drive",
+                "fetched_at": datetime.now().isoformat(timespec="seconds"),
+                "file_id": SHEET_OBJ_ID,
+            }}
+            # Guardar en local
+            with open(OBJ_JSON_FILE, "w", encoding="utf-8") as fh:
+                json.dump(_to_save, fh, ensure_ascii=False, indent=2)
+            print(f"[{ts()}] JSON local de objetivos actualizado")
+            # Guardar en GCS (persiste entre runs de Cloud Run)
+            if args.gcs_bucket:
+                try:
+                    save_objectives_to_gcs(_to_save, args.gcs_bucket)
+                except Exception as _gcs_save_err:
+                    print(f"WARN: No se pudo guardar objetivos en GCS: {_gcs_save_err}", file=sys.stderr)
+        except Exception as exc:
+            import traceback
+            print(f"WARN: Drive falló: {exc}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
 
     # ── 2. Fallback: GCS cache (sobrevive reinicios de Cloud Run) ───────────
     if obj is None and args.gcs_bucket:
