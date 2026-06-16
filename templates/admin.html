@@ -139,6 +139,7 @@
     .badge-superadmin { background: rgba(201,162,39,0.18); color: #c9a227; border: 1px solid rgba(201,162,39,0.4); }
     .badge-editor      { background: rgba(56,139,253,0.18); color: #58a6ff; border: 1px solid rgba(56,139,253,0.4); }
     .badge-viewer      { background: rgba(139,148,158,0.18); color: #8b949e; border: 1px solid rgba(139,148,158,0.4); }
+    .badge-gerencia  { background: rgba(52,211,153,0.18); color: #34d399; border: 1px solid rgba(52,211,153,0.4); }
 
     /* Brand tags */
     .brand-tag {
@@ -468,6 +469,43 @@
       cursor: pointer;
     }
     .btn-download:hover { background: #30363d; color: #e6edf3; border-color: #8b949e; }
+
+    /* Objectives tab */
+    .obj-import-section { display: flex; gap: 24px; margin-bottom: 28px; flex-wrap: wrap; }
+    .obj-import-box {
+      flex: 1; min-width: 260px;
+      background: #161b22; border: 1px solid #21262d;
+      border-radius: 8px; padding: 20px;
+    }
+    .obj-import-box h3 { font-size: 14px; font-weight: 600; color: #e6edf3; margin-bottom: 14px; }
+    .obj-input {
+      width: 100%; background: #0d1117; border: 1px solid #21262d;
+      border-radius: 6px; color: #e6edf3; padding: 8px 12px;
+      font-size: 13px; margin-bottom: 10px; box-sizing: border-box;
+    }
+    .obj-input:focus { outline: none; border-color: #58a6ff; }
+    .btn-preview {
+      background: #21262d; border: 1px solid #30363d; border-radius: 6px;
+      color: #58a6ff; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-preview:hover { background: #30363d; }
+    .btn-save-obj {
+      display: none; background: #1a7f37; border: none; border-radius: 6px;
+      color: #fff; padding: 8px 18px; font-size: 13px; font-weight: 600;
+      cursor: pointer; margin-top: 10px;
+    }
+    .btn-save-obj:hover { background: #238636; }
+    .obj-preview-area { margin-top: 16px; overflow-x: auto; }
+    .obj-preview-errors {
+      background: #450a0a; border: 1px solid #7f1d1d; border-radius: 6px;
+      color: #f87171; padding: 10px 14px; font-size: 12px; margin-top: 10px; display: none;
+    }
+    .obj-msg {
+      display: none; padding: 10px 14px; border-radius: 6px;
+      font-size: 13px; border: 1px solid transparent; margin-bottom: 12px;
+    }
+    .obj-msg.ok  { background: #052e16; border-color: #166534; color: #4ade80; }
+    .obj-msg.err { background: #450a0a; border-color: #7f1d1d; color: #f87171; }
   </style>
 </head>
 <body>
@@ -477,12 +515,16 @@
   <h1>Panel de Administracion</h1>
 
   <div class="tab-nav">
+    {% if user_role == 'superadmin' %}
     <button class="tab-btn active" onclick="switchTab('usuarios')">Usuarios</button>
     <button class="tab-btn" onclick="switchTab('clusters')">Clusterizacion</button>
+    {% endif %}
+    <button class="tab-btn {% if user_role == 'gerencia' %}active{% endif %}" onclick="switchTab('objetivos')">Objetivos</button>
   </div>
 
   <div id="msg"></div>
 
+  {% if user_role == 'superadmin' %}
   <!-- ════════════════════════════════════════════════════════════ -->
   <!-- TAB: Usuarios                                               -->
   <!-- ════════════════════════════════════════════════════════════ -->
@@ -572,6 +614,66 @@
     </div>
 
   </div>
+  {% endif %}
+
+  <!-- TAB: Objetivos -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <div id="tab-objetivos" class="tab-panel {% if user_role == 'gerencia' %}active{% endif %}">
+
+    <div id="obj-msg" class="obj-msg"></div>
+
+    <div class="obj-import-section">
+
+      <!-- Sub-flujo 1: Excel -->
+      <div class="obj-import-box">
+        <h3>Importar desde Excel (.xlsx)</h3>
+        <p style="color:#8b949e;font-size:12px;margin-bottom:12px;">
+          Formato de columnas:<br>
+          <code style="color:#c9a227">marca | dimension | nombre | ene | feb | ... | dic</code>
+        </p>
+        <input type="file" id="obj-file-input" accept=".xlsx" class="obj-input" style="padding:6px;">
+        <button class="btn-preview" onclick="previewExcel()">Vista previa</button>
+        <button class="btn-save-obj" id="btn-save-file" onclick="saveObjectives('file')">Guardar en Firestore</button>
+        <div class="obj-preview-errors" id="obj-file-errors"></div>
+        <div class="obj-preview-area" id="obj-file-preview"></div>
+      </div>
+
+      <!-- Sub-flujo 2: Google Sheets -->
+      <div class="obj-import-box">
+        <h3>Importar desde Google Sheets</h3>
+        <p style="color:#8b949e;font-size:12px;margin-bottom:12px;">
+          Pegá la URL del Sheet con el mismo formato de columnas.
+        </p>
+        <input type="text" id="obj-sheet-url" class="obj-input"
+               placeholder="https://docs.google.com/spreadsheets/d/...">
+        <button class="btn-preview" onclick="previewSheet()">Leer Sheet</button>
+        <button class="btn-save-obj" id="btn-save-sheet" onclick="saveObjectives('sheet')">Guardar en Firestore</button>
+        <div class="obj-preview-errors" id="obj-sheet-errors"></div>
+        <div class="obj-preview-area" id="obj-sheet-preview"></div>
+      </div>
+
+    </div>
+
+    <h3 style="font-size:14px;font-weight:600;color:#8b949e;margin-bottom:12px;">
+      Objetivos actuales en Firestore
+    </h3>
+    <div class="table-wrap" style="overflow-x:auto">
+      <table id="obj-current-table">
+        <thead>
+          <tr>
+            <th>Marca</th><th>Dim.</th><th>Nombre</th>
+            <th>Ene</th><th>Feb</th><th>Mar</th><th>Abr</th><th>May</th><th>Jun</th>
+            <th>Jul</th><th>Ago</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dic</th>
+            <th>Actualizado por</th>
+          </tr>
+        </thead>
+        <tbody id="obj-current-body">
+          <tr><td colspan="17" style="color:#8b949e;text-align:center">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
 
   <!-- Modal (usuarios) -->
   <div class="modal-overlay" id="modal-overlay">
@@ -617,6 +719,152 @@
 
   <script>
     var CSRF_TOKEN = '{{ csrf_token() }}';
+
+    // ── Objectives tab ──────────────────────────────────────────────────────
+    var _pendingRows = { file: null, sheet: null };
+
+    function showObjMsg(text, type) {
+      var el = document.getElementById('obj-msg');
+      el.textContent = text;
+      el.className = 'obj-msg ' + type;
+      el.style.display = 'block';
+      setTimeout(function() { el.style.display = 'none'; }, 5000);
+    }
+
+    function _renderPreview(rows, errorsEl, previewEl, saveBtn) {
+      errorsEl.style.display = 'none';
+      previewEl.innerHTML = '';
+      saveBtn.style.display = 'none';
+      if (!rows || rows.length === 0) {
+        previewEl.innerHTML = '<p style="color:#8b949e;font-size:13px;margin-top:8px">Sin filas válidas.</p>';
+        return;
+      }
+      var html = '<table style="font-size:12px;border-collapse:collapse;min-width:100%">'
+        + '<thead><tr style="background:#161b22">'
+        + '<th style="padding:6px 10px;text-align:left;color:#8b949e">Marca</th>'
+        + '<th style="padding:6px 10px;text-align:left;color:#8b949e">Dim.</th>'
+        + '<th style="padding:6px 10px;text-align:left;color:#8b949e">Nombre</th>'
+        + '<th style="padding:6px 10px;text-align:right;color:#8b949e">Total año</th>'
+        + '</tr></thead><tbody>';
+      rows.forEach(function(r) {
+        var total = (r.valores || []).reduce(function(a, b) { return a + b; }, 0);
+        html += '<tr style="border-bottom:1px solid #21262d">'
+          + '<td style="padding:5px 10px;color:#c9a227">' + (r.marca || '') + '</td>'
+          + '<td style="padding:5px 10px;color:#8b949e">' + (r.dimension || '') + '</td>'
+          + '<td style="padding:5px 10px">' + (r.nombre || '') + '</td>'
+          + '<td style="padding:5px 10px;text-align:right">' + total.toLocaleString() + '</td>'
+          + '</tr>';
+      });
+      html += '</tbody></table>';
+      previewEl.innerHTML = html;
+      saveBtn.style.display = 'inline-block';
+    }
+
+    function _renderErrors(errors, errorsEl) {
+      if (!errors || errors.length === 0) { errorsEl.style.display = 'none'; return; }
+      errorsEl.innerHTML = errors.map(function(e) { return '&#9888; ' + e; }).join('<br>');
+      errorsEl.style.display = 'block';
+    }
+
+    function previewExcel() {
+      var fi = document.getElementById('obj-file-input');
+      var errEl = document.getElementById('obj-file-errors');
+      var preEl = document.getElementById('obj-file-preview');
+      var btn = document.getElementById('btn-save-file');
+      if (!fi.files || !fi.files[0]) {
+        errEl.innerHTML = 'Seleccioná un archivo .xlsx primero.';
+        errEl.style.display = 'block';
+        return;
+      }
+      var fd = new FormData();
+      fd.append('file', fi.files[0]);
+      fetch('/api/admin/objectives/preview', {
+        method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN }, body: fd
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.ok) { errEl.innerHTML = '&#9888; ' + d.error; errEl.style.display = 'block'; return; }
+        _pendingRows.file = d.rows;
+        _renderErrors(d.errors, errEl);
+        _renderPreview(d.rows, errEl, preEl, btn);
+      })
+      .catch(function(e) { errEl.innerHTML = '&#9888; Error: ' + e; errEl.style.display = 'block'; });
+    }
+
+    function previewSheet() {
+      var url = document.getElementById('obj-sheet-url').value.trim();
+      var errEl = document.getElementById('obj-sheet-errors');
+      var preEl = document.getElementById('obj-sheet-preview');
+      var btn = document.getElementById('btn-save-sheet');
+      if (!url) { errEl.innerHTML = '&#9888; Ingresá la URL del Sheet.'; errEl.style.display = 'block'; return; }
+      fetch('/api/admin/objectives/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+        body: JSON.stringify({ sheet_url: url })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.ok) { errEl.innerHTML = '&#9888; ' + d.error; errEl.style.display = 'block'; return; }
+        _pendingRows.sheet = d.rows;
+        _renderErrors(d.errors, errEl);
+        _renderPreview(d.rows, errEl, preEl, btn);
+      })
+      .catch(function(e) { errEl.innerHTML = '&#9888; Error: ' + e; errEl.style.display = 'block'; });
+    }
+
+    function saveObjectives(source) {
+      var rows = _pendingRows[source];
+      if (!rows || rows.length === 0) { showObjMsg('No hay datos en el preview para guardar.', 'err'); return; }
+      fetch('/api/admin/objectives', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+        body: JSON.stringify({ rows: rows })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.ok) {
+          showObjMsg('✓ ' + d.count + ' objetivos guardados en Firestore.', 'ok');
+          _pendingRows[source] = null;
+          loadCurrentObjectives();
+        } else {
+          showObjMsg('Error: ' + d.error, 'err');
+        }
+      })
+      .catch(function(e) { showObjMsg('Error de red: ' + e, 'err'); });
+    }
+
+    function loadCurrentObjectives() {
+      var tbody = document.getElementById('obj-current-body');
+      if (!tbody) return;
+      fetch('/api/admin/objectives', { headers: { 'X-CSRFToken': CSRF_TOKEN } })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.ok || !d.objectives || d.objectives.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="17" style="color:#8b949e;text-align:center">Sin objetivos cargados.</td></tr>';
+          return;
+        }
+        var html = '';
+        d.objectives.forEach(function(obj) {
+          var vals = obj.valores || [];
+          html += '<tr>'
+            + '<td style="color:#c9a227">' + (obj.marca||'') + '</td>'
+            + '<td style="color:#8b949e">' + (obj.dimension||'') + '</td>'
+            + '<td>' + (obj.nombre||'') + '</td>'
+            + vals.map(function(v) { return '<td style="text-align:right">' + (v||0).toLocaleString() + '</td>'; }).join('')
+            + '<td style="color:#8b949e;font-size:11px">' + (obj.updated_by||'-') + '</td>'
+            + '</tr>';
+        });
+        tbody.innerHTML = html;
+      })
+      .catch(function() {
+        tbody.innerHTML = '<tr><td colspan="17" style="color:#f87171;text-align:center">Error al cargar objetivos.</td></tr>';
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      loadCurrentObjectives();
+    });
+    // ── fin Objectives tab ──────────────────────────────────────────────────
 
     // ── Tab switching ──
     function switchTab(tab) {
