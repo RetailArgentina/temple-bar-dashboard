@@ -749,9 +749,9 @@
       rows.forEach(function(r) {
         var total = (r.valores || []).reduce(function(a, b) { return a + b; }, 0);
         html += '<tr style="border-bottom:1px solid #21262d">'
-          + '<td style="padding:5px 10px;color:#c9a227">' + (r.marca || '') + '</td>'
-          + '<td style="padding:5px 10px;color:#8b949e">' + (r.dimension || '') + '</td>'
-          + '<td style="padding:5px 10px">' + (r.nombre || '') + '</td>'
+          + '<td style="padding:5px 10px;color:#c9a227">' + escHtml(r.marca || '') + '</td>'
+          + '<td style="padding:5px 10px;color:#8b949e">' + escHtml(r.dimension || '') + '</td>'
+          + '<td style="padding:5px 10px">' + escHtml(r.nombre || '') + '</td>'
           + '<td style="padding:5px 10px;text-align:right">' + total.toLocaleString() + '</td>'
           + '</tr>';
       });
@@ -848,12 +848,12 @@
           var vals = obj.valores || [];
           var updatedAtFormatted = obj.updated_at ? new Date(obj.updated_at).toLocaleDateString('es-AR') : '';
           html += '<tr>'
-            + '<td style="color:#c9a227">' + (obj.marca||'') + '</td>'
-            + '<td style="color:#8b949e">' + (obj.dimension||'') + '</td>'
-            + '<td>' + (obj.nombre||'') + '</td>'
+            + '<td style="color:#c9a227">' + escHtml(obj.marca||'') + '</td>'
+            + '<td style="color:#8b949e">' + escHtml(obj.dimension||'') + '</td>'
+            + '<td>' + escHtml(obj.nombre||'') + '</td>'
             + vals.map(function(v) { return '<td style="text-align:right">' + (v||0).toLocaleString() + '</td>'; }).join('')
-            + '<td style="color:#8b949e;font-size:11px">' + updatedAtFormatted + '</td>'
-            + '<td style="color:#8b949e;font-size:11px">' + (obj.updated_by||'-') + '</td>'
+            + '<td style="color:#8b949e;font-size:11px">' + escHtml(updatedAtFormatted) + '</td>'
+            + '<td style="color:#8b949e;font-size:11px">' + escHtml(obj.updated_by||'-') + '</td>'
             + '</tr>';
         });
         tbody.innerHTML = html;
@@ -877,6 +877,10 @@
       if (tab === 'usuarios') {
         btns[0].classList.add('active');
         document.getElementById('tab-usuarios').classList.add('active');
+      } else if (tab === 'objetivos') {
+        var objBtn = document.querySelector('.tab-btn[onclick*="objetivos"]');
+        if (objBtn) objBtn.classList.add('active');
+        document.getElementById('tab-objetivos').classList.add('active');
       } else {
         btns[1].classList.add('active');
         document.getElementById('tab-clusters').classList.add('active');
