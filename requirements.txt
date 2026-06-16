@@ -12,3 +12,4 @@ flask-wtf>=1.2
 twilio>=9.0.0
 anthropic>=0.40.0
 google-cloud-firestore>=2.16.0
+openpyxl>=3.1
