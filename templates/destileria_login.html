@@ -1,12 +1,145 @@
 <!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><title>Destilería — Ingresar</title></head>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="theme-color" content="#0d1117"/>
+  <title>Destilería — Ingresar</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0d1117; color: #e6edf3;
+      min-height: 100vh; display: flex;
+    }
+    .brand-panel {
+      width: 40%; min-height: 100vh;
+      background: linear-gradient(160deg, #0d1117 0%, #1a1200 100%);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 48px;
+      border-right: 1px solid rgba(201,162,39,0.15);
+      position: relative; overflow: hidden;
+    }
+    .brand-panel::before {
+      content: '';
+      position: absolute; width: 320px; height: 320px;
+      background: radial-gradient(circle, rgba(201,162,39,0.07) 0%, transparent 70%);
+      top: 50%; left: 50%; transform: translate(-50%, -50%);
+    }
+    .brand-icon {
+      width: 76px; height: 76px;
+      background: linear-gradient(135deg, #c9a227, #a07800);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 34px; margin-bottom: 22px;
+      box-shadow: 0 0 36px rgba(201,162,39,0.2);
+      position: relative;
+    }
+    .brand-name {
+      font-size: 22px; font-weight: 800;
+      letter-spacing: 3px; text-transform: uppercase;
+      color: #fff; margin-bottom: 6px; position: relative;
+    }
+    .brand-sub {
+      font-size: 11px; letter-spacing: 3px; color: #c9a227;
+      text-transform: uppercase; margin-bottom: 28px; position: relative;
+    }
+    .brand-desc {
+      font-size: 12px; color: #4a5568;
+      text-align: center; line-height: 1.7;
+      max-width: 210px; position: relative;
+    }
+    .form-panel {
+      flex: 1; display: flex;
+      align-items: center; justify-content: center;
+      padding: 48px;
+    }
+    .form-box { width: 100%; max-width: 360px; }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+    .form-sub { font-size: 13px; color: #8b949e; margin-bottom: 28px; }
+    .notice {
+      border-radius: 8px; padding: 11px 14px;
+      font-size: 13px; margin-bottom: 20px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .notice-err {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.4);
+      color: #f87171;
+    }
+    .notice-warn {
+      background: rgba(234,179,8,0.1);
+      border: 1px solid rgba(234,179,8,0.35);
+      color: #facc15;
+    }
+    .field { margin-bottom: 18px; }
+    .field label {
+      display: block; font-size: 11px; font-weight: 600;
+      color: #8b949e; text-transform: uppercase;
+      letter-spacing: 1px; margin-bottom: 7px;
+    }
+    .field input {
+      width: 100%; background: #161b22;
+      border: 1px solid rgba(201,162,39,0.2);
+      border-radius: 8px; padding: 12px 14px;
+      font-size: 14px; color: #e6edf3; outline: none;
+      transition: border-color .2s;
+    }
+    .field input:focus { border-color: #c9a227; }
+    .field input.error { border-color: rgba(239,68,68,0.5); }
+    .btn-login {
+      width: 100%;
+      background: linear-gradient(90deg, #c9a227, #a07800);
+      color: #0d1117; border: none; border-radius: 8px;
+      padding: 13px; font-size: 13px; font-weight: 800;
+      letter-spacing: 1px; text-transform: uppercase;
+      cursor: pointer; margin-top: 6px;
+      transition: opacity .2s;
+    }
+    .btn-login:hover { opacity: .9; }
+    @media (max-width: 640px) { .brand-panel { display: none; } }
+  </style>
+</head>
 <body>
-  <form method="POST">
-    {% if error %}<p>{{ error }}</p>{% endif %}
-    <label>Email <input type="email" name="email"></label>
-    <label>Contraseña <input type="password" name="password"></label>
-    <button type="submit">Ingresar</button>
-  </form>
+  <div class="brand-panel">
+    <div class="brand-icon">🥃</div>
+    <div class="brand-name">Destilería</div>
+    <div class="brand-sub">Patagónica</div>
+    <p class="brand-desc">Acceso restringido al equipo comercial de destilería</p>
+  </div>
+  <div class="form-panel">
+    <div class="form-box">
+      <h1>Bienvenido</h1>
+      <p class="form-sub">Ingresá con tu email y contraseña</p>
+
+      {% if reason == 'expired' %}
+      <div class="notice notice-warn">⏱ Tu sesión expiró, volvé a ingresar</div>
+      {% endif %}
+
+      {% if error %}
+      <div class="notice notice-err">⚠ {{ error }}</div>
+      {% endif %}
+
+      <form method="POST" action="/destileria/login" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email"
+            placeholder="usuario@empresa.com"
+            autocomplete="email" required
+            {% if error %}class="error"{% endif %}/>
+        </div>
+        <div class="field">
+          <label for="password">Contraseña</label>
+          <input type="password" id="password" name="password"
+            placeholder="••••••••"
+            autocomplete="current-password" required
+            {% if error %}class="error"{% endif %}/>
+        </div>
+        <button type="submit" class="btn-login">Ingresar</button>
+      </form>
+    </div>
+  </div>
 </body>
 </html>
