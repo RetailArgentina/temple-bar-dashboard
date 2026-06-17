@@ -42,6 +42,10 @@ BQ_TABLE = "vw_Ventas_Corporativo_Base"
 # An empty string here causes the decorator to return 503 immediately (safer than
 # calling verify_token with an empty audience, which would skip audience validation).
 CLOUD_RUN_URL: str = _optional("CLOUD_RUN_URL", "")
+SCHEDULER_SA_EMAIL: str = _optional(
+    "SCHEDULER_SA_EMAIL",
+    "scheduler-invoker@temple-bar-439715.iam.gserviceaccount.com",
+)
 
 # ---------------------------------------------------------------------------
 # Whitelist — REMOVED
