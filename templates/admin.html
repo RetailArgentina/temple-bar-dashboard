@@ -520,6 +520,7 @@
     <button class="tab-btn" onclick="switchTab('clusters')">Clusterizacion</button>
     {% endif %}
     <button class="tab-btn {% if user_role == 'gerencia' %}active{% endif %}" onclick="switchTab('objetivos')">Objetivos</button>
+    <button class="tab-btn" onclick="switchTab('destileria')">Destilería</button>
   </div>
 
   <div id="msg"></div>
@@ -674,6 +675,94 @@
     </div>
 
   </div>
+
+  <div id="tab-destileria" class="tab-panel">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:28px;height:28px;background:linear-gradient(135deg,#c9a227,#a07800);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px">🥃</div>
+        <div>
+          <strong style="font-size:14px">Usuarios Destilería</strong>
+          <span id="dest-count" style="font-size:11px;color:#8b949e;margin-left:8px"></span>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="openDestModal()">+ Nuevo usuario</button>
+    </div>
+
+    <div id="dest-msg" style="display:none;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px"></div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Nombre</th><th>Email</th><th>Rol</th>
+            <th>Marcas</th><th>Estado</th><th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="dest-tbody">
+          <tr><td colspan="6" style="text-align:center;color:#8b949e;padding:24px">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Modal crear/editar -->
+    <div id="dest-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
+      <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:28px;width:440px;max-width:95vw">
+        <h3 id="dest-modal-title" style="margin-bottom:20px;font-size:16px">Nuevo usuario destilería</h3>
+        <input type="hidden" id="dest-edit-email"/>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div>
+            <label style="display:block;font-size:10px;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Nombre</label>
+            <input id="dest-name" type="text" placeholder="Nombre completo" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;color:#e6edf3"/>
+          </div>
+          <div>
+            <label style="display:block;font-size:10px;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Email</label>
+            <input id="dest-email" type="email" placeholder="usuario@empresa.com" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;color:#e6edf3"/>
+          </div>
+          <div id="dest-pass-field">
+            <label style="display:block;font-size:10px;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Contraseña temporal</label>
+            <input id="dest-password" type="text" placeholder="Ej: Dest2026!" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;color:#e6edf3"/>
+          </div>
+          <div>
+            <label style="display:block;font-size:10px;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Rol</label>
+            <select id="dest-role" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;color:#e6edf3">
+              <option value="gerencia">Gerencia</option>
+              <option value="editor">Editor</option>
+              <option value="viewer" selected>Viewer</option>
+            </select>
+          </div>
+          <div style="grid-column:1/-1">
+            <label style="display:block;font-size:10px;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Marcas</label>
+            <select id="dest-brands" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;color:#e6edf3">
+              <option value="*">Todas</option>
+              <option value="bosque">Bosque</option>
+              <option value="feriado">Feriado</option>
+              <option value="bosque,feriado">Bosque + Feriado</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+          <button onclick="closeDestModal()" style="background:transparent;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:8px 18px;font-size:13px;cursor:pointer">Cancelar</button>
+          <button onclick="saveDestUser()" style="background:linear-gradient(90deg,#c9a227,#a07800);color:#0d1117;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer">Guardar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal reset password -->
+    <div id="dest-reset-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
+      <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:28px;width:360px;max-width:95vw">
+        <h3 style="margin-bottom:16px;font-size:15px">Resetear contraseña</h3>
+        <input type="hidden" id="dest-reset-email"/>
+        <label style="display:block;font-size:10px;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Nueva contraseña temporal</label>
+        <input id="dest-reset-pass" type="text" placeholder="Ej: NuevoPass2026!" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;color:#e6edf3;margin-bottom:18px"/>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button onclick="closeResetModal()" style="background:transparent;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:8px 18px;font-size:13px;cursor:pointer">Cancelar</button>
+          <button onclick="confirmReset()" style="background:linear-gradient(90deg,#c9a227,#a07800);color:#0d1117;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer">Resetear</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /tab-destileria -->
 
   <!-- Modal (usuarios) -->
   <div class="modal-overlay" id="modal-overlay">
@@ -1366,6 +1455,180 @@
     });
 
     loadUsers();
+
+    // ═══════════════════════════════════════════════════════════════
+    // TAB DESTILERÍA — CRUD de usuarios
+    // ═══════════════════════════════════════════════════════════════
+
+    var destUsers = [];
+
+    function loadDestUsers() {
+      fetch('/admin/destileria/users')
+        .then(function(r) { return r.json(); })
+        .then(function(users) {
+          destUsers = users;
+          renderDestTable(users);
+          var el = document.getElementById('dest-count');
+          if (el) el.textContent = users.length + ' usuario' + (users.length !== 1 ? 's' : '');
+        })
+        .catch(function() { showDestMsg('Error cargando usuarios', false); });
+    }
+
+    function renderDestTable(users) {
+      var tbody = document.getElementById('dest-tbody');
+      if (!users.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#8b949e;padding:24px">Sin usuarios registrados</td></tr>';
+        return;
+      }
+      var ROLE_STYLE = {
+        gerencia: 'background:rgba(201,162,39,0.15);color:#c9a227;border:1px solid rgba(201,162,39,0.3)',
+        editor:   'background:rgba(59,130,246,0.15);color:#60a5fa;border:1px solid rgba(59,130,246,0.3)',
+        viewer:   'background:rgba(107,114,128,0.15);color:#9ca3af;border:1px solid rgba(107,114,128,0.3)'
+      };
+      tbody.innerHTML = users.map(function(u) {
+        var rs = ROLE_STYLE[u.role] || '';
+        var as = u.active
+          ? 'background:rgba(34,197,94,0.12);color:#4ade80;border:1px solid rgba(34,197,94,0.25)'
+          : 'background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.25)';
+        var brands = Array.isArray(u.brands) && u.brands[0] === '*' ? 'Todas' : (u.brands||[]).join(', ');
+        var toggleBtn = u.active
+          ? '<button onclick="toggleDestActive(\''+u.email+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(239,68,68,0.35);color:#f87171;background:transparent;cursor:pointer">Desactivar</button>'
+          : '<button onclick="toggleDestActive(\''+u.email+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(34,197,94,0.35);color:#4ade80;background:transparent;cursor:pointer">Activar</button>';
+        return '<tr>'+
+          '<td><strong>'+u.name+'</strong></td>'+
+          '<td style="font-size:12px;color:#8b949e">'+u.email+'</td>'+
+          '<td><span style="display:inline-flex;font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;'+rs+'">'+u.role+'</span></td>'+
+          '<td style="font-size:11px;color:#8b949e">'+brands+'</td>'+
+          '<td><span style="display:inline-flex;font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;'+as+'">'+(u.active?'Activo':'Inactivo')+'</span></td>'+
+          '<td><div style="display:flex;gap:6px">'+
+            '<button onclick="openEditDest(\''+u.email+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(59,130,246,0.35);color:#60a5fa;background:transparent;cursor:pointer">Editar</button>'+
+            '<button onclick="openResetModal(\''+u.email+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(201,162,39,0.35);color:#c9a227;background:transparent;cursor:pointer">Reset pass</button>'+
+            toggleBtn+
+          '</div></td>'+
+        '</tr>';
+      }).join('');
+    }
+
+    function openDestModal() {
+      document.getElementById('dest-modal-title').textContent = 'Nuevo usuario destilería';
+      document.getElementById('dest-edit-email').value = '';
+      document.getElementById('dest-name').value = '';
+      document.getElementById('dest-email').value = '';
+      document.getElementById('dest-email').disabled = false;
+      document.getElementById('dest-password').value = '';
+      document.getElementById('dest-pass-field').style.display = '';
+      document.getElementById('dest-role').value = 'viewer';
+      document.getElementById('dest-brands').value = '*';
+      document.getElementById('dest-modal-overlay').style.display = 'flex';
+    }
+
+    function openEditDest(email) {
+      var u = destUsers.find(function(x){ return x.email === email; });
+      if (!u) return;
+      document.getElementById('dest-modal-title').textContent = 'Editar usuario';
+      document.getElementById('dest-edit-email').value = email;
+      document.getElementById('dest-name').value = u.name;
+      document.getElementById('dest-email').value = email;
+      document.getElementById('dest-email').disabled = true;
+      document.getElementById('dest-pass-field').style.display = 'none';
+      document.getElementById('dest-role').value = u.role;
+      var bv = Array.isArray(u.brands) && u.brands[0]==='*' ? '*' : (u.brands||[]).join(',');
+      document.getElementById('dest-brands').value = bv;
+      document.getElementById('dest-modal-overlay').style.display = 'flex';
+    }
+
+    function closeDestModal() {
+      document.getElementById('dest-modal-overlay').style.display = 'none';
+    }
+
+    function saveDestUser() {
+      var editEmail = document.getElementById('dest-edit-email').value;
+      var isEdit = !!editEmail;
+      var bv = document.getElementById('dest-brands').value;
+      var brands = bv === '*' ? ['*'] : bv.split(',');
+      var body = {
+        name: document.getElementById('dest-name').value.trim(),
+        role: document.getElementById('dest-role').value,
+        brands: brands,
+        can_edit_objectives: document.getElementById('dest-role').value === 'gerencia'
+      };
+      var url, method;
+      if (isEdit) {
+        url = '/admin/destileria/users/' + encodeURIComponent(editEmail);
+        method = 'PUT';
+      } else {
+        url = '/admin/destileria/users';
+        method = 'POST';
+        body.email = document.getElementById('dest-email').value.trim();
+        body.password = document.getElementById('dest-password').value;
+      }
+      fetch(url, {
+        method: method,
+        headers: {'Content-Type':'application/json','X-CSRFToken':getCsrfToken()},
+        body: JSON.stringify(body)
+      }).then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d.ok) { closeDestModal(); loadDestUsers(); showDestMsg(isEdit?'Usuario actualizado':'Usuario creado', true); }
+          else { showDestMsg(d.error||'Error', false); }
+        }).catch(function(){ showDestMsg('Error de red', false); });
+    }
+
+    function openResetModal(email) {
+      document.getElementById('dest-reset-email').value = email;
+      document.getElementById('dest-reset-pass').value = '';
+      document.getElementById('dest-reset-overlay').style.display = 'flex';
+    }
+
+    function closeResetModal() {
+      document.getElementById('dest-reset-overlay').style.display = 'none';
+    }
+
+    function confirmReset() {
+      var email = document.getElementById('dest-reset-email').value;
+      var pass = document.getElementById('dest-reset-pass').value;
+      fetch('/admin/destileria/users/'+encodeURIComponent(email)+'/reset-password', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json','X-CSRFToken':getCsrfToken()},
+        body: JSON.stringify({password: pass})
+      }).then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d.ok) { closeResetModal(); showDestMsg('Contraseña reseteada', true); }
+          else { showDestMsg('Error', false); }
+        });
+    }
+
+    function toggleDestActive(email) {
+      fetch('/admin/destileria/users/'+encodeURIComponent(email)+'/toggle-active', {
+        method: 'POST',
+        headers: {'X-CSRFToken':getCsrfToken()}
+      }).then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d.ok) { loadDestUsers(); showDestMsg(d.active?'Usuario activado':'Usuario desactivado', true); }
+        });
+    }
+
+    function showDestMsg(text, ok) {
+      var el = document.getElementById('dest-msg');
+      el.textContent = text;
+      el.style.cssText = 'display:block;padding:10px 14px;border-radius:6px;margin-bottom:16px;font-size:13px;' +
+        (ok ? 'background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:#4ade80'
+            : 'background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#f87171');
+      setTimeout(function(){ el.style.display='none'; }, 4000);
+    }
+
+    function getCsrfToken() {
+      var m = document.cookie.match(/csrf_token=([^;]+)/);
+      return m ? decodeURIComponent(m[1]) : '';
+    }
+
+    // Cargar usuarios cuando se activa la tab destilería
+    (function(){
+      var orig = switchTab;
+      switchTab = function(tab) {
+        orig(tab);
+        if (tab === 'destileria') loadDestUsers();
+      };
+    })();
   </script>
 
 </body>
