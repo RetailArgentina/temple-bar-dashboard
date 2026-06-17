@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><title>Destilería — Ingresar</title></head>
+<body>
+  <form method="POST">
+    {% if error %}<p>{{ error }}</p>{% endif %}
+    <label>Email <input type="email" name="email"></label>
+    <label>Contraseña <input type="password" name="password"></label>
+    <button type="submit">Ingresar</button>
+  </form>
+</body>
+</html>

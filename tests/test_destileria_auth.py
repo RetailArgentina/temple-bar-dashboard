@@ -102,3 +102,107 @@ def test_list_users_excludes_password_hash():
     assert len(users) == 1
     assert "password_hash" not in users[0]
     assert users[0]["email"] == "ana@empresa.com"
+
+
+# ── Fixtures para tests de rutas ──────────────────────────────────────────
+
+import sys
+
+
+@pytest.fixture
+def client():
+    env_vars = {
+        "FLASK_SECRET_KEY": "test-secret-key-for-testing-only-x",
+        "OAUTH_CLIENT_ID": "test-client-id.apps.googleusercontent.com",
+        "OAUTH_CLIENT_SECRET": "test-client-secret",
+        "CACHE_BUCKET": "test-bucket",
+        "CLOUD_RUN_URL": "https://test.run.app",
+        "SCHEDULER_SA_EMAIL": "scheduler@test.iam.gserviceaccount.com",
+    }
+    with patch.dict("os.environ", env_vars):
+        for mod in list(sys.modules.keys()):
+            if mod in ("config", "app", "cache", "pipeline", "permissions", "destileria_auth"):
+                del sys.modules[mod]
+        with patch("google.cloud.bigquery.Client"), \
+             patch("google.cloud.firestore.Client"), \
+             patch("twilio.rest.Client"), \
+             patch("twilio.request_validator.RequestValidator"):
+            import app as flask_app
+            flask_app.app.config["TESTING"] = True
+            flask_app.app.config["WTF_CSRF_ENABLED"] = False
+            flask_app.app.config["SESSION_COOKIE_SECURE"] = False
+            with flask_app.app.test_client() as c:
+                yield c, flask_app.app
+
+
+def test_destileria_redirects_to_login_unauthenticated(client):
+    c, _ = client
+    resp = c.get("/destileria")
+    assert resp.status_code == 302
+    assert "/destileria/login" in resp.headers["Location"]
+
+
+def test_destileria_login_get_shows_form(client):
+    c, _ = client
+    resp = c.get("/destileria/login")
+    assert resp.status_code == 200
+    assert b"Ingresar" in resp.data or b"INGRESAR" in resp.data
+
+
+def test_destileria_login_already_authenticated_redirects(client):
+    c, _ = client
+    with c.session_transaction() as sess:
+        sess["dest_user"] = {"email": "ana@empresa.com", "role": "viewer"}
+    resp = c.get("/destileria/login")
+    assert resp.status_code == 302
+    assert "/destileria" in resp.headers["Location"]
+
+
+def test_destileria_login_post_valid_credentials(client):
+    c, _ = client
+    db = _mock_db(password="mipass")
+    with patch("app._get_firestore_client", return_value=db):
+        resp = c.post("/destileria/login", data={
+            "email": "ana@empresa.com",
+            "password": "mipass",
+        })
+    assert resp.status_code == 302
+    assert "/destileria" in resp.headers["Location"]
+    with c.session_transaction() as sess:
+        assert "dest_user" in sess
+        assert sess["dest_user"]["email"] == "ana@empresa.com"
+
+
+def test_destileria_login_post_invalid_credentials(client):
+    c, _ = client
+    db = _mock_db(password="realpass")
+    with patch("app._get_firestore_client", return_value=db):
+        resp = c.post("/destileria/login", data={
+            "email": "ana@empresa.com",
+            "password": "wrongpass",
+        })
+    assert resp.status_code == 200
+    assert b"incorrectos" in resp.data
+
+
+def test_destileria_login_post_inactive_user(client):
+    c, _ = client
+    db = _mock_db(active=False, password="testpass")
+    with patch("app._get_firestore_client", return_value=db):
+        resp = c.post("/destileria/login", data={
+            "email": "ana@empresa.com",
+            "password": "testpass",
+        })
+    assert resp.status_code == 200
+    assert b"incorrectos" in resp.data
+
+
+def test_destileria_logout_clears_session(client):
+    c, _ = client
+    with c.session_transaction() as sess:
+        sess["dest_user"] = {"email": "ana@empresa.com", "role": "viewer"}
+    resp = c.post("/destileria/logout")
+    assert resp.status_code == 302
+    assert "/destileria/login" in resp.headers["Location"]
+    with c.session_transaction() as sess:
+        assert "dest_user" not in sess

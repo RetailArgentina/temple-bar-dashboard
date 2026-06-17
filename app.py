@@ -33,6 +33,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 import config
 import permissions
+import destileria_auth
 from whatsapp_agent import get_user, get_session, save_session, run_agent
 from weekly_report import run_weekly_report
 
@@ -95,6 +96,16 @@ def login_required(f):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "unauthorized"}), 401
             return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def destileria_login_required(f):
+    """Protege rutas que requieren sesión de destilería (email/password)."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "dest_user" not in session:
+            return redirect(url_for("destileria_login"))
         return f(*args, **kwargs)
     return decorated
 
@@ -369,12 +380,48 @@ def dashboard():
 
 
 # ---------------------------------------------------------------------------
+# Destileria auth — login/logout por email y contraseña
+# ---------------------------------------------------------------------------
+
+@app.route("/destileria/login", methods=["GET", "POST"])
+def destileria_login():
+    if "dest_user" in session:
+        return redirect(url_for("destileria"))
+
+    error = None
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
+        db = _get_firestore_client()
+        user = destileria_auth.verify_destileria_password(db, email, password)
+        if user:
+            session["dest_user"] = {
+                "email": user["email"],
+                "name": user["name"],
+                "role": user["role"],
+                "brands": user["brands"],
+                "can_edit_objectives": user["can_edit_objectives"],
+            }
+            return redirect(url_for("destileria"))
+        error = "Email o contraseña incorrectos"
+
+    reason = request.args.get("reason")
+    return render_template("destileria_login.html", error=error, reason=reason)
+
+
+@app.route("/destileria/logout", methods=["POST"])
+def destileria_logout():
+    session.pop("dest_user", None)
+    return redirect(url_for("destileria_login"))
+
+
+# ---------------------------------------------------------------------------
 # Destileria dashboard — sirve HTML desde GCS con inyeccion de permisos
 # ---------------------------------------------------------------------------
 _dest_cache: dict = {"html": None, "ts": 0.0}
 
 @app.route("/destileria")
-@login_required
+@destileria_login_required
 def destileria():
     global _dest_cache
     now = time.time()
@@ -390,7 +437,7 @@ def destileria():
             if _dest_cache["html"] is None:
                 return "Tablero temporalmente no disponible.", 503
 
-    user = session["user"]
+    user = session["dest_user"]
     perms_json = json.dumps({
         "role": user["role"],
         "brands": user["brands"],
@@ -416,10 +463,12 @@ def destileria():
             'font-family:system-ui,sans-serif">&#9881; Admin</a>'
         )
 
-    html = _dest_cache["html"].replace(
-        "__PERMISSIONS_INJECT__",
-        perms_script + overrides_script + admin_link,
-    )
+    inject = perms_script + overrides_script + admin_link
+    if "__PERMISSIONS_INJECT__" in _dest_cache["html"]:
+        html = _dest_cache["html"].replace("__PERMISSIONS_INJECT__", inject)
+    else:
+        # Fallback: placeholder missing from generated HTML (e.g. Drive sync race)
+        html = _dest_cache["html"].replace("<body>", f"<body>{inject}", 1)
 
     return html, 200, {
         "Content-Type": "text/html; charset=utf-8",
@@ -506,7 +555,7 @@ def _extract_clients_from_dashboard():
     if _clients_parsed["html_id"] == html_id and _clients_parsed["data"] is not None:
         return _clients_parsed["data"]
 
-    match = _re.search(r'const ROWS = (\[.*?\]);\n', _dest_cache["html"], _re.DOTALL)
+    match = _re.search(r'const ROWS = (\[.*?\]);\r?\n', _dest_cache["html"], _re.DOTALL)
     if not match:
         return None
 
@@ -701,7 +750,7 @@ def api_admin_preview_objectives():
 @app.route("/api/admin/objectives", methods=["POST"])
 @require_admin
 def api_admin_save_objectives():
-    """Guarda filas de objetivos en Firestore (replace completo)."""
+    """Guarda filas de objetivos en Firestore (replace completo) y exporta a GCS."""
     data = request.get_json(silent=True) or {}
     rows = data.get("rows", [])
     if not rows:
@@ -709,6 +758,26 @@ def api_admin_save_objectives():
     user_email = session["user"]["email"]
     db = _get_firestore_client()
     result = permissions.save_objectives(db, rows, updated_by=user_email)
+    if result["ok"]:
+        # Exportar a GCS para que el generador diario los tome sin pasar por Drive
+        try:
+            nested = {}
+            for row in rows:
+                m, d, n, v = row.get("marca"), row.get("dimension"), row.get("nombre"), row.get("valores")
+                if m and d and n and isinstance(v, list) and len(v) == 12:
+                    nested.setdefault(m, {}).setdefault(d, {})[n] = v
+            if nested:
+                gcs = storage.Client()
+                blob = gcs.bucket(config.CACHE_BUCKET).blob("objetivos_destileria.json")
+                blob.upload_from_string(
+                    json.dumps(nested, ensure_ascii=False, indent=2).encode("utf-8"),
+                    content_type="application/json; charset=utf-8",
+                )
+                blob.cache_control = "no-cache, no-store, must-revalidate"
+                blob.patch()
+                logger.info("Objetivos exportados a GCS (%d entradas)", len(rows))
+        except Exception as gcs_err:
+            logger.warning("No se pudo exportar objetivos a GCS: %s", gcs_err)
     status = 200 if result["ok"] else 400
     return jsonify(result), status
 
