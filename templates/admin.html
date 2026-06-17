@@ -723,7 +723,7 @@
           </div>
           <div id="dest-pass-field">
             <label style="display:block;font-size:10px;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Contraseña temporal</label>
-            <input id="dest-password" type="text" placeholder="Ej: Dest2026!" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;color:#e6edf3"/>
+            <input id="dest-password" type="password" autocomplete="new-password" placeholder="Ej: Dest2026!" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;color:#e6edf3"/>
           </div>
           <div>
             <label style="display:block;font-size:10px;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Rol</label>
@@ -756,7 +756,7 @@
         <h3 style="margin-bottom:16px;font-size:15px">Resetear contraseña</h3>
         <input type="hidden" id="dest-reset-email"/>
         <label style="display:block;font-size:10px;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Nueva contraseña temporal</label>
-        <input id="dest-reset-pass" type="text" placeholder="Ej: NuevoPass2026!" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;color:#e6edf3;margin-bottom:18px"/>
+        <input id="dest-reset-pass" type="password" autocomplete="new-password" placeholder="Ej: NuevoPass2026!" style="width:100%;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px 10px;font-size:13px;color:#e6edf3;margin-bottom:18px"/>
         <div style="display:flex;gap:8px;justify-content:flex-end">
           <button onclick="closeResetModal()" style="background:transparent;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:8px 18px;font-size:13px;cursor:pointer">Cancelar</button>
           <button onclick="confirmReset()" style="background:linear-gradient(90deg,#c9a227,#a07800);color:#0d1117;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer">Resetear</button>
@@ -1480,6 +1480,13 @@
         .catch(function() { showDestMsg('Error cargando usuarios', false); });
     }
 
+    function hesc(s) {
+      return String(s||'')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;');
+    }
+
     function renderDestTable(users) {
       var tbody = document.getElementById('dest-tbody');
       if (!users.length) {
@@ -1498,17 +1505,17 @@
           : 'background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.25)';
         var brands = Array.isArray(u.brands) && u.brands[0] === '*' ? 'Todas' : (u.brands||[]).join(', ');
         var toggleBtn = u.active
-          ? '<button onclick="toggleDestActive(\''+u.email+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(239,68,68,0.35);color:#f87171;background:transparent;cursor:pointer">Desactivar</button>'
-          : '<button onclick="toggleDestActive(\''+u.email+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(34,197,94,0.35);color:#4ade80;background:transparent;cursor:pointer">Activar</button>';
+          ? '<button onclick="toggleDestActive(\''+hesc(u.email)+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(239,68,68,0.35);color:#f87171;background:transparent;cursor:pointer">Desactivar</button>'
+          : '<button onclick="toggleDestActive(\''+hesc(u.email)+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(34,197,94,0.35);color:#4ade80;background:transparent;cursor:pointer">Activar</button>';
         return '<tr>'+
-          '<td><strong>'+u.name+'</strong></td>'+
-          '<td style="font-size:12px;color:#8b949e">'+u.email+'</td>'+
-          '<td><span style="display:inline-flex;font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;'+rs+'">'+u.role+'</span></td>'+
-          '<td style="font-size:11px;color:#8b949e">'+brands+'</td>'+
+          '<td><strong>'+hesc(u.name)+'</strong></td>'+
+          '<td style="font-size:12px;color:#8b949e">'+hesc(u.email)+'</td>'+
+          '<td><span style="display:inline-flex;font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;'+rs+'">'+hesc(u.role)+'</span></td>'+
+          '<td style="font-size:11px;color:#8b949e">'+hesc(brands)+'</td>'+
           '<td><span style="display:inline-flex;font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;'+as+'">'+(u.active?'Activo':'Inactivo')+'</span></td>'+
           '<td><div style="display:flex;gap:6px">'+
-            (u.active ? '<button onclick="openEditDest(\''+u.email+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(59,130,246,0.35);color:#60a5fa;background:transparent;cursor:pointer">Editar</button>' : '')+
-            (u.active ? '<button onclick="openResetModal(\''+u.email+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(201,162,39,0.35);color:#c9a227;background:transparent;cursor:pointer">Reset pass</button>' : '')+
+            (u.active ? '<button onclick="openEditDest(\''+hesc(u.email)+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(59,130,246,0.35);color:#60a5fa;background:transparent;cursor:pointer">Editar</button>' : '')+
+            (u.active ? '<button onclick="openResetModal(\''+hesc(u.email)+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(201,162,39,0.35);color:#c9a227;background:transparent;cursor:pointer">Reset pass</button>' : '')+
             toggleBtn+
           '</div></td>'+
         '</tr>';
@@ -1600,7 +1607,8 @@
         .then(function(d){
           if (d.ok) { closeResetModal(); showDestMsg('Contraseña reseteada', true); }
           else { showDestMsg('Error', false); }
-        });
+        })
+        .catch(function() { showDestMsg('Error de red al resetear contraseña', false); });
     }
 
     function toggleDestActive(email) {
@@ -1631,6 +1639,8 @@
     (function(){
       var orig = switchTab;
       switchTab = function(tab) {
+        closeDestModal();
+        closeResetModal();
         if (tab === 'destileria') {
           orig(tab);
           loadDestUsers();
