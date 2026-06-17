@@ -1627,8 +1627,7 @@
     }
 
     function getCsrfToken() {
-      var m = document.cookie.match(/csrf_token=([^;]+)/);
-      return m ? decodeURIComponent(m[1]) : '';
+      return CSRF_TOKEN;
     }
 
     // Close modals on tab switch
