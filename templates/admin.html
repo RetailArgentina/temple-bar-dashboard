@@ -520,7 +520,9 @@
     <button class="tab-btn" onclick="switchTab('clusters')">Clusterizacion</button>
     {% endif %}
     <button class="tab-btn {% if user_role == 'gerencia' %}active{% endif %}" onclick="switchTab('objetivos')">Objetivos</button>
+    {% if user_role in ('superadmin', 'gerencia') %}
     <button class="tab-btn" onclick="switchTab('destileria')">Destilería</button>
+    {% endif %}
   </div>
 
   <div id="msg"></div>
@@ -970,6 +972,10 @@
         var objBtn = document.querySelector('.tab-btn[onclick*="objetivos"]');
         if (objBtn) objBtn.classList.add('active');
         document.getElementById('tab-objetivos').classList.add('active');
+      } else if (tab === 'destileria') {
+        var destBtn = document.querySelector('.tab-btn[onclick*="destileria"]');
+        if (destBtn) destBtn.classList.add('active');
+        document.getElementById('tab-destileria').classList.add('active');
       } else {
         btns[1].classList.add('active');
         document.getElementById('tab-clusters').classList.add('active');
@@ -1501,8 +1507,8 @@
           '<td style="font-size:11px;color:#8b949e">'+brands+'</td>'+
           '<td><span style="display:inline-flex;font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;'+as+'">'+(u.active?'Activo':'Inactivo')+'</span></td>'+
           '<td><div style="display:flex;gap:6px">'+
-            '<button onclick="openEditDest(\''+u.email+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(59,130,246,0.35);color:#60a5fa;background:transparent;cursor:pointer">Editar</button>'+
-            '<button onclick="openResetModal(\''+u.email+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(201,162,39,0.35);color:#c9a227;background:transparent;cursor:pointer">Reset pass</button>'+
+            (u.active ? '<button onclick="openEditDest(\''+u.email+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(59,130,246,0.35);color:#60a5fa;background:transparent;cursor:pointer">Editar</button>' : '')+
+            (u.active ? '<button onclick="openResetModal(\''+u.email+'\')" style="font-size:10px;font-weight:600;padding:4px 10px;border-radius:5px;border:1px solid rgba(201,162,39,0.35);color:#c9a227;background:transparent;cursor:pointer">Reset pass</button>' : '')+
             toggleBtn+
           '</div></td>'+
         '</tr>';
@@ -1625,8 +1631,12 @@
     (function(){
       var orig = switchTab;
       switchTab = function(tab) {
-        orig(tab);
-        if (tab === 'destileria') loadDestUsers();
+        if (tab === 'destileria') {
+          orig(tab);
+          loadDestUsers();
+        } else {
+          orig(tab);
+        }
       };
     })();
   </script>
