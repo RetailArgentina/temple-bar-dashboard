@@ -206,3 +206,89 @@ def test_destileria_logout_clears_session(client):
     assert "/destileria/login" in resp.headers["Location"]
     with c.session_transaction() as sess:
         assert "dest_user" not in sess
+
+
+# ── Admin API tests ───────────────────────────────────────────────────────
+
+def _admin_session(c, role="superadmin"):
+    with c.session_transaction() as sess:
+        sess["user"] = {
+            "email": "darwin.salinas@temple.com.ar",
+            "name": "Darwin Salinas",
+            "role": role,
+            "brands": ["*"],
+            "can_edit_objectives": True,
+        }
+
+
+def test_admin_list_destileria_users(client):
+    c, _ = client
+    _admin_session(c)
+    doc = MagicMock()
+    doc.id = "ana@empresa.com"
+    doc.to_dict.return_value = {"name": "Ana", "role": "viewer", "brands": ["*"],
+                                "can_edit_objectives": False, "active": True,
+                                "password_hash": "secreto"}
+    db = MagicMock()
+    db.collection.return_value.stream.return_value = [doc]
+    with patch("app._get_firestore_client", return_value=db):
+        resp = c.get("/admin/destileria/users")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data) == 1
+    assert "password_hash" not in data[0]
+
+
+def test_admin_create_destileria_user(client):
+    c, _ = client
+    _admin_session(c)
+    db = MagicMock()
+    with patch("app._get_firestore_client", return_value=db):
+        resp = c.post("/admin/destileria/users", json={
+            "email": "nuevo@empresa.com", "name": "Nuevo",
+            "password": "Temp2026!", "role": "viewer",
+            "brands": ["bosque"], "can_edit_objectives": False,
+        })
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+    db.collection.return_value.document.return_value.set.assert_called_once()
+
+
+def test_admin_create_user_forbidden_for_viewer(client):
+    c, _ = client
+    _admin_session(c, role="viewer")
+    with patch("app._get_firestore_client", return_value=MagicMock()):
+        resp = c.post("/admin/destileria/users", json={
+            "email": "x@x.com", "name": "X",
+            "password": "p", "role": "viewer",
+            "brands": ["*"], "can_edit_objectives": False,
+        })
+    assert resp.status_code == 403
+
+
+def test_admin_reset_password(client):
+    c, _ = client
+    _admin_session(c)
+    db = MagicMock()
+    with patch("app._get_firestore_client", return_value=db):
+        resp = c.post(
+            "/admin/destileria/users/ana@empresa.com/reset-password",
+            json={"password": "NuevoPass2026!"}
+        )
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+
+def test_admin_toggle_active(client):
+    c, _ = client
+    _admin_session(c)
+    doc = MagicMock()
+    doc.to_dict.return_value = {"active": True}
+    db = MagicMock()
+    db.collection.return_value.document.return_value.get.return_value = doc
+    with patch("app._get_firestore_client", return_value=db):
+        resp = c.post("/admin/destileria/users/ana@empresa.com/toggle-active")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is True
+    assert body["active"] is False

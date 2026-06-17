@@ -783,6 +783,78 @@ def api_admin_save_objectives():
 
 
 # ---------------------------------------------------------------------------
+# Admin API — gestión de usuarios destilería
+# Requiere sesión Google OAuth con rol superadmin o gerencia
+# ---------------------------------------------------------------------------
+
+@app.route("/admin/destileria/users", methods=["GET"])
+@login_required
+def admin_list_destileria_users():
+    if session["user"]["role"] not in ("superadmin", "gerencia"):
+        abort(403)
+    db = _get_firestore_client()
+    return jsonify(destileria_auth.list_destileria_users(db))
+
+
+@app.route("/admin/destileria/users", methods=["POST"])
+@login_required
+def admin_create_destileria_user():
+    if session["user"]["role"] not in ("superadmin", "gerencia"):
+        abort(403)
+    data = request.get_json()
+    db = _get_firestore_client()
+    destileria_auth.create_destileria_user(
+        db,
+        email=data["email"],
+        name=data["name"],
+        password=data["password"],
+        role=data["role"],
+        brands=data["brands"],
+        can_edit_objectives=data.get("can_edit_objectives", False),
+        created_by=session["user"]["email"],
+    )
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/destileria/users/<path:email>", methods=["PUT"])
+@login_required
+def admin_update_destileria_user(email):
+    if session["user"]["role"] not in ("superadmin", "gerencia"):
+        abort(403)
+    data = request.get_json()
+    db = _get_firestore_client()
+    destileria_auth.update_destileria_user(
+        db, email,
+        name=data["name"],
+        role=data["role"],
+        brands=data["brands"],
+        can_edit_objectives=data.get("can_edit_objectives", False),
+    )
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/destileria/users/<path:email>/reset-password", methods=["POST"])
+@login_required
+def admin_reset_destileria_password(email):
+    if session["user"]["role"] not in ("superadmin", "gerencia"):
+        abort(403)
+    data = request.get_json()
+    db = _get_firestore_client()
+    destileria_auth.reset_destileria_password(db, email, data["password"])
+    return jsonify({"ok": True})
+
+
+@app.route("/admin/destileria/users/<path:email>/toggle-active", methods=["POST"])
+@login_required
+def admin_toggle_destileria_user(email):
+    if session["user"]["role"] not in ("superadmin", "gerencia"):
+        abort(403)
+    db = _get_firestore_client()
+    new_active = destileria_auth.toggle_destileria_user_active(db, email)
+    return jsonify({"ok": True, "active": new_active})
+
+
+# ---------------------------------------------------------------------------
 # Helpers for WhatsApp agent endpoints
 # ---------------------------------------------------------------------------
 
