@@ -564,7 +564,7 @@ def _extract_clients_from_dashboard():
     client_map = {}
     for r in rows:
         nd = r.get("nd", "")
-        cl = r.get("cl", "Sin clasificar")
+        cl = r.get("cl", "Sin Cluster")
         f = r.get("f", "")
         if nd:
             prev = client_map.get(nd)
@@ -625,7 +625,7 @@ def api_admin_clients():
         clusters_set.add(cluster)
         clusters_set.add(c["cluster_bq"])
 
-    clusters_set.discard("Sin clasificar")
+    clusters_set.discard("Sin Cluster")
     clusters = sorted(clusters_set)
 
     return jsonify({"ok": True, "clients": clients, "clusters": clusters})

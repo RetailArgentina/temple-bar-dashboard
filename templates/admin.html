@@ -1182,7 +1182,7 @@
       document.getElementById('cl-total').textContent = clAllClients.length;
       var unassigned = 0, overrides = 0;
       for (var i = 0; i < clAllClients.length; i++) {
-        if (clAllClients[i].cluster === 'Sin clasificar') unassigned++;
+        if (clAllClients[i].cluster === 'Sin Cluster') unassigned++;
         if (clAllClients[i].override) overrides++;
       }
       document.getElementById('cl-unassigned').textContent = unassigned;
@@ -1221,7 +1221,7 @@
       for (var i = 0; i < clAllClients.length; i++) {
         var c = clAllClients[i];
         if (filter === 'unassigned') {
-          if (c.cluster !== 'Sin clasificar') continue;
+          if (c.cluster !== 'Sin Cluster') continue;
           // Ocultar clientes inactivos (sin compras recientes)
           if (cutoff && c.ultima_compra && c.ultima_compra < cutoff) continue;
         }
