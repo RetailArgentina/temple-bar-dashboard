@@ -4,7 +4,7 @@ destileria_auth.py — Firestore helpers para la colección destileria_users.
 Estructura de cada documento (doc_id = email en minúsculas):
     name: str
     password_hash: str          — bcrypt via werkzeug.security
-    role: str                   — "gerencia" | "editor" | "viewer"
+    role: str                   — "superadmin" | "gerencia" | "editor" | "viewer"
     brands: list[str]           — ["*"] o ["bosque", "feriado"]
     can_edit_objectives: bool
     active: bool

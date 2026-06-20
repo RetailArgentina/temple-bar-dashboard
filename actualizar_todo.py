@@ -51,14 +51,8 @@ SCRIPTS = [
             "--output",     os.path.join(_OUT_DIR, "preview_producto.html"),
         ],
     },
-    {
-        "label": "Destilería",
-        "cmd":   [
-            sys.executable, "-X", "utf8", "generar_destileria_dashboard.py",
-            "--gcs-bucket", "temple-bar-dashboard-cache",
-            "--output",     os.path.join(_OUT_DIR, "destileria_dashboard.html"),
-        ],
-    },
+    # Destilería: actualización MANUAL únicamente — no corre en el pipeline automático.
+    # Para actualizar: correr generar_destileria_dashboard.py directamente.
 ]
 
 
