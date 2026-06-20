@@ -1,0 +1,46 @@
+name: Update Destilería Dashboard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'templates/destileria.html'
+      - 'generar_destileria_dashboard.py'
+
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Autenticar con GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configurar gcloud / gsutil
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Generar dashboard
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python generar_destileria_dashboard.py
+
+      - name: Subir a GCS
+        run: |
+          gsutil -h "Cache-Control:no-cache, no-store, must-revalidate" \
+            cp destileria_dashboard.html \
+            gs://temple-bar-dashboard-cache/destileria_dashboard.html
+
+      - name: Listo
+        run: echo "Dashboard actualizado en GCS correctamente"
