@@ -570,8 +570,6 @@ def _extract_clients_from_dashboard():
             prev = client_map.get(nd)
             if prev is None or f > prev["f"]:
                 client_map[nd] = {"cl": cl, "f": f}
-            elif prev["cl"] == "Sin clasificar" and cl != "Sin clasificar":
-                client_map[nd]["cl"] = cl
 
     data = sorted(
         [{"cliente": k, "cluster_bq": v["cl"], "ultima_compra": v["f"]}
