@@ -587,17 +587,21 @@ def _extract_clients_from_dashboard():
 @require_superadmin
 def api_admin_clients():
     """Lista clientes únicos con su cluster actual (dashboard + overrides Firestore)."""
-    # Ensure dashboard is loaded
-    global _dest_cache
-    if _dest_cache["html"] is None:
-        try:
-            gcs = storage.Client()
-            blob = gcs.bucket(config.CACHE_BUCKET).blob("destileria_dashboard.html")
-            _dest_cache["html"] = blob.download_as_text(encoding="utf-8")
-            _dest_cache["ts"] = time.time()
-        except Exception as exc:
-            logger.error("Error loading dashboard for client list: %s", exc)
+    # Always fetch fresh from GCS so new/uncategorized clients appear immediately
+    global _dest_cache, _clients_parsed
+    try:
+        gcs = storage.Client()
+        blob = gcs.bucket(config.CACHE_BUCKET).blob("destileria_dashboard.html")
+        fresh_html = blob.download_as_text(encoding="utf-8")
+        _dest_cache["html"] = fresh_html
+        _dest_cache["ts"] = time.time()
+        _clients_parsed["data"] = None   # Invalidate parsed cache to force re-extract
+        _clients_parsed["html_id"] = None
+    except Exception as exc:
+        logger.error("Error loading dashboard for client list: %s", exc)
+        if _dest_cache["html"] is None:
             return jsonify({"ok": False, "error": "Dashboard no disponible"}), 503
+        logger.warning("Using cached dashboard HTML for client list")
 
     base_data = _extract_clients_from_dashboard()
     if base_data is None:
