@@ -16,7 +16,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 import anthropic
@@ -657,6 +657,191 @@ def api_admin_delete_override(client):
     db = _get_firestore_client()
     result = permissions.delete_cluster_override(db, client)
     return jsonify(result)
+
+
+# ---------------------------------------------------------------------------
+# Google Places mapping — revisión humana de candidatos (P4 reseñas Google)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/places-mapping", methods=["GET"])
+@require_superadmin
+def api_admin_list_places_mapping():
+    db = _get_firestore_client()
+    mappings = permissions.list_places_mapping(db)
+    return jsonify({"ok": True, "mappings": mappings})
+
+
+@app.route("/api/admin/places-mapping/<path:doc_id>/approve", methods=["POST"])
+@require_superadmin
+def api_admin_approve_places_mapping(doc_id):
+    db = _get_firestore_client()
+    result = permissions.update_places_mapping_status(
+        db, doc_id, status="verified", verified_by=session["user"]["email"]
+    )
+    status = 200 if result["ok"] else 400
+    return jsonify(result), status
+
+
+@app.route("/api/admin/places-mapping/<path:doc_id>/reject", methods=["POST"])
+@require_superadmin
+def api_admin_reject_places_mapping(doc_id):
+    db = _get_firestore_client()
+    result = permissions.update_places_mapping_status(
+        db, doc_id, status="rejected", verified_by=session["user"]["email"]
+    )
+    status = 200 if result["ok"] else 400
+    return jsonify(result), status
+
+
+@app.route("/api/admin/places-mapping/<path:doc_id>/edit", methods=["POST"])
+@require_superadmin
+def api_admin_edit_places_mapping(doc_id):
+    data = request.get_json(silent=True) or {}
+    place_id = (data.get("place_id") or "").strip()
+    display_name_google = data.get("display_name_google")
+    formatted_address = data.get("formatted_address")
+
+    if not place_id:
+        return jsonify({"ok": False, "error": "place_id es requerido"}), 400
+
+    db = _get_firestore_client()
+    existing = permissions.list_places_mapping(db).get(doc_id, {})
+    marca = existing.get("marca")
+    local = existing.get("local")
+    if not marca or not local:
+        marca, _, local = doc_id.partition("__")
+
+    result = permissions.set_places_mapping(
+        db,
+        marca=marca,
+        local=local,
+        place_id=place_id,
+        display_name_google=display_name_google,
+        formatted_address=formatted_address,
+        status="pending",
+    )
+    status = 200 if result["ok"] else 400
+    return jsonify(result), status
+
+
+@app.route("/api/admin/places-mapping/<path:doc_id>", methods=["DELETE"])
+@require_superadmin
+def api_admin_delete_places_mapping(doc_id):
+    db = _get_firestore_client()
+    result = permissions.delete_places_mapping(db, doc_id)
+    return jsonify(result)
+
+
+# ---------------------------------------------------------------------------
+# Reseñas Google — gestión operativa (seguimiento de reseñas)
+# ---------------------------------------------------------------------------
+
+_GESTION_ESTADO_ORDEN = {"nueva": 0, "en_curso": 1, "resuelta": 2}
+
+
+def _resenas_weekly_report(items: dict) -> dict:
+    """
+    Arma el reporte semanal (ultimos 7 dias) de la pagina de gestion de resenas:
+      - nuevas_negativas: reseñas con rating <= 2 creadas en la ultima semana (Firestore, en memoria).
+      - resueltas_semana: reseñas marcadas como 'resuelta' en la ultima semana (Firestore, en memoria).
+      - rating_por_marca: rating promedio actual por marca (BigQuery, snapshots de los ultimos 7 dias).
+      - ranking_locales: variacion de rating por local en la semana, ordenado de mayor mejora a mayor caida.
+
+    Reusa el bq_client global (evita crear un cliente BQ nuevo por request).
+    Cualquier error de BigQuery se loguea y degrada a listas/dicts vacios, sin romper la pagina.
+    """
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+
+    nuevas_negativas = []
+    resueltas_semana = []
+    for doc_id, it in items.items():
+        it = it or {}
+        creado_at = it.get("creado_at")
+        actualizado_at = it.get("actualizado_at")
+        rating = it.get("rating")
+
+        if creado_at is not None and creado_at >= week_ago and rating is not None and rating <= 2:
+            nuevas_negativas.append({"doc_id": doc_id, **it})
+
+        if it.get("estado") == "resuelta" and actualizado_at is not None and actualizado_at >= week_ago:
+            resueltas_semana.append({"doc_id": doc_id, **it})
+
+    rating_por_marca = {}
+    ranking_locales = []
+    try:
+        query = f"""
+            SELECT marca, local, fecha_snapshot, rating
+            FROM `{config.GCP_PROJECT_ID}.Corporativo.google_reviews_snapshots`
+            WHERE fecha_snapshot >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
+            ORDER BY marca, local, fecha_snapshot
+        """
+        rows = list(bq_client.query(query).result())
+
+        por_local = {}  # (marca, local) -> [(fecha_snapshot, rating), ...] ordenado por fecha
+        for row in rows:
+            key = (row["marca"], row["local"])
+            por_local.setdefault(key, []).append((row["fecha_snapshot"], row["rating"]))
+
+        marca_ratings = {}  # marca -> [ultimo rating conocido por local, ...]
+        for (marca, local), puntos in por_local.items():
+            validos = [p for p in puntos if p[1] is not None]
+            if not validos:
+                continue
+            rating_inicial = validos[0][1]
+            rating_actual = validos[-1][1]
+            marca_ratings.setdefault(marca, []).append(rating_actual)
+            if len(validos) > 1 and rating_actual != rating_inicial:
+                ranking_locales.append({
+                    "marca": marca,
+                    "local": local,
+                    "rating_inicial": rating_inicial,
+                    "rating_actual": rating_actual,
+                    "delta": round(rating_actual - rating_inicial, 2),
+                })
+
+        for marca, ratings in marca_ratings.items():
+            rating_por_marca[marca] = round(sum(ratings) / len(ratings), 2)
+
+        ranking_locales.sort(key=lambda r: r["delta"], reverse=True)
+    except Exception:
+        logger.exception("Error consultando reporte semanal de reseñas (BigQuery)")
+
+    return {
+        "nuevas_negativas": nuevas_negativas,
+        "resueltas_semana": resueltas_semana,
+        "rating_por_marca": rating_por_marca,
+        "ranking_locales": ranking_locales,
+    }
+
+
+@app.route("/resenas/gestion")
+@login_required
+def resenas_gestion_page():
+    db = _get_firestore_client()
+    items = permissions.list_gestion(db)
+    reporte = _resenas_weekly_report(items)
+    items = dict(
+        sorted(
+            items.items(),
+            key=lambda kv: _GESTION_ESTADO_ORDEN.get((kv[1] or {}).get("estado"), 99),
+        )
+    )
+    return render_template("resenas_gestion.html", items=items, reporte=reporte)
+
+
+@app.route("/api/resenas/gestion/<path:doc_id>", methods=["POST"])
+@login_required
+def api_resenas_gestion_update(doc_id):
+    data = request.get_json(silent=True) or {}
+    estado = data.get("estado")
+    nota = data.get("nota")
+
+    db = _get_firestore_client()
+    result = permissions.update_gestion_status(
+        db, doc_id, estado=estado, nota=nota, actualizado_por=session["user"]["email"]
+    )
+    status = 200 if result["ok"] else 400
+    return jsonify(result), status
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestion de Resenas Google</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    a { color: #c9a227; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #8b949e;
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
+    .back-link:hover { color: #c9a227; text-decoration: none; }
+    .back-link::before { content: "\2190"; }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      color: #e6edf3;
+      margin-bottom: 20px;
+    }
+
+    #msg {
+      display: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      border: 1px solid;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    #msg.ok  { background: #052e16; border-color: #166534; color: #4ade80; }
+    #msg.err { background: #450a0a; border-color: #7f1d1d; color: #f87171; }
+
+    .table-wrap {
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      overflow: hidden;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead { background: #161b22; }
+
+    th {
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #8b949e;
+      border-bottom: 1px solid #21262d;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #21262d;
+      vertical-align: top;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: #161b22; }
+
+    tr.row-nueva { background: rgba(245,158,11,0.06); }
+    tr.row-nueva:hover { background: rgba(245,158,11,0.11); }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .badge-nueva    { background: rgba(245,158,11,0.18); color: #f59e0b; border: 1px solid rgba(245,158,11,0.4); }
+    .badge-en_curso { background: rgba(56,139,253,0.18); color: #58a6ff; border: 1px solid rgba(56,139,253,0.4); }
+    .badge-resuelta { background: rgba(52,211,153,0.18); color: #34d399; border: 1px solid rgba(52,211,153,0.4); }
+
+    .rating {
+      font-weight: 600;
+      color: #c9a227;
+      white-space: nowrap;
+    }
+
+    .review-text {
+      max-width: 360px;
+      color: #e6edf3;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .review-meta {
+      margin-top: 4px;
+      font-size: 11px;
+      color: #8b949e;
+    }
+
+    .btn-estado, .btn-nota {
+      border: none;
+      border-radius: 5px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+    .btn-en_curso { background: #21262d; color: #58a6ff; border: 1px solid #30363d; }
+    .btn-en_curso:hover:not(:disabled) { background: #30363d; }
+    .btn-resuelta { background: #166534; color: #dcfce7; border: 1px solid #166534; }
+    .btn-resuelta:hover:not(:disabled) { background: #15803d; }
+    .btn-estado:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .nota-input {
+      width: 100%;
+      min-width: 180px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e6edf3;
+      padding: 6px 8px;
+      font-size: 12px;
+      font-family: inherit;
+      resize: vertical;
+      margin-bottom: 6px;
+      outline: none;
+    }
+    .nota-input:focus { border-color: #c9a227; }
+
+    .btn-nota { background: #21262d; color: #c9a227; border: 1px solid #30363d; }
+    .btn-nota:hover { background: #30363d; }
+
+    .empty-row td { color: #8b949e; text-align: center; padding: 24px; }
+
+    .report-section {
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      background: #0d1117;
+    }
+
+    .report-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .report-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #e6edf3;
+    }
+
+    .report-header .report-sub {
+      font-size: 12px;
+      color: #8b949e;
+      font-weight: 400;
+      margin-left: 8px;
+    }
+
+    .btn-print {
+      background: #21262d;
+      color: #c9a227;
+      border: 1px solid #30363d;
+      border-radius: 5px;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .btn-print:hover { background: #30363d; }
+
+    .report-cards {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .report-card {
+      flex: 1;
+      min-width: 160px;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 12px 14px;
+      background: #161b22;
+    }
+
+    .report-card-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #8b949e;
+      margin-bottom: 6px;
+    }
+
+    .report-card-value {
+      font-size: 22px;
+      font-weight: 600;
+      color: #e6edf3;
+    }
+
+    .report-card-value.neg { color: #f87171; }
+    .report-card-value.ok { color: #34d399; }
+
+    .report-block {
+      margin-bottom: 18px;
+    }
+    .report-block:last-child { margin-bottom: 0; }
+
+    .report-block h3 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e6edf3;
+      margin-bottom: 8px;
+    }
+
+    .report-mini-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .report-mini-table th {
+      text-align: left;
+      padding: 6px 10px;
+      color: #8b949e;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-size: 10px;
+      border-bottom: 1px solid #21262d;
+    }
+    .report-mini-table td {
+      padding: 6px 10px;
+      border-bottom: 1px solid #21262d;
+      color: #e6edf3;
+    }
+    .report-mini-table tr:last-child td { border-bottom: none; }
+
+    .delta-up { color: #34d399; font-weight: 600; }
+    .delta-down { color: #f87171; font-weight: 600; }
+
+    .report-empty { color: #8b949e; font-size: 12px; padding: 4px 10px; }
+
+    @media print {
+      body { background: #fff; color: #000; padding: 8px; }
+      a.back-link, .btn-print, .btn-estado, .btn-nota, .nota-input { display: none !important; }
+      #msg { display: none !important; }
+      .report-section, .table-wrap { border-color: #999; }
+      .report-card { background: #fff; border-color: #999; }
+      .report-mini-table th, .report-mini-table td { color: #000; border-color: #ccc; }
+      thead { background: #eee; }
+      th, td { color: #000; border-color: #ccc; }
+      tr.row-nueva, tbody tr:hover { background: transparent !important; }
+      .badge { border: 1px solid #999; }
+      th.col-actions, td.col-actions, th.col-nota, td.col-nota { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <a href="/dashboard" class="back-link">Volver al Dashboard</a>
+
+  <h1>Gestion de Resenas Google</h1>
+
+  <div id="msg"></div>
+
+  <div class="report-section" id="reporte-semanal">
+    <div class="report-header">
+      <h2>Reporte semanal <span class="report-sub">(ultimos 7 dias)</span></h2>
+      <button type="button" class="btn-print" onclick="window.print()">Imprimir / Guardar PDF</button>
+    </div>
+
+    <div class="report-cards">
+      <div class="report-card">
+        <div class="report-card-label">Nuevas negativas (rating &le;2)</div>
+        <div class="report-card-value neg">{{ reporte.nuevas_negativas | length }}</div>
+      </div>
+      <div class="report-card">
+        <div class="report-card-label">Resueltas en la semana</div>
+        <div class="report-card-value ok">{{ reporte.resueltas_semana | length }}</div>
+      </div>
+      {% for marca in ['TEMPLE', 'PATAGONIA', 'FERIADO'] %}
+      <div class="report-card">
+        <div class="report-card-label">Rating promedio {{ marca }}</div>
+        <div class="report-card-value">{{ '%.2f' % reporte.rating_por_marca[marca] if reporte.rating_por_marca.get(marca) is not none else '-' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="report-block">
+      <h3>Nuevas reseñas negativas de la semana</h3>
+      {% if reporte.nuevas_negativas %}
+      <table class="report-mini-table">
+        <thead>
+          <tr><th>Marca</th><th>Local</th><th>Rating</th><th>Autor</th><th>Fecha</th></tr>
+        </thead>
+        <tbody>
+          {% for r in reporte.nuevas_negativas %}
+          <tr>
+            <td>{{ r.marca or '' }}</td>
+            <td>{{ r.local or '' }}</td>
+            <td>{{ r.rating if r.rating is not none else '-' }}</td>
+            <td>{{ r.author_name or 'Anonimo' }}</td>
+            <td>{{ r.date_str or '' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="report-empty">Sin reseñas negativas nuevas esta semana.</div>
+      {% endif %}
+    </div>
+
+    <div class="report-block">
+      <h3>Ranking de locales — variacion de rating en la semana</h3>
+      {% if reporte.ranking_locales %}
+      <table class="report-mini-table">
+        <thead>
+          <tr><th>Marca</th><th>Local</th><th>Rating inicial</th><th>Rating actual</th><th>Variacion</th></tr>
+        </thead>
+        <tbody>
+          {% for r in reporte.ranking_locales %}
+          <tr>
+            <td>{{ r.marca or '' }}</td>
+            <td>{{ r.local or '' }}</td>
+            <td>{{ r.rating_inicial }}</td>
+            <td>{{ r.rating_actual }}</td>
+            <td class="{{ 'delta-up' if r.delta > 0 else 'delta-down' }}">{{ '+' if r.delta > 0 else '' }}{{ r.delta }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="report-empty">Sin variacion de rating registrada esta semana.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Marca</th>
+          <th>Local</th>
+          <th>Rating</th>
+          <th>Reseña</th>
+          <th>Estado</th>
+          <th class="col-actions">Cambiar estado</th>
+          <th class="col-nota" style="width:220px">Nota interna</th>
+        </tr>
+      </thead>
+      <tbody id="gestion-body">
+        {% for doc_id, it in items.items() %}
+        {% set estado = it.estado or 'nueva' %}
+        <tr class="row-{{ estado }}" data-doc-id="{{ doc_id }}">
+          <td>{{ it.marca or '' }}</td>
+          <td>{{ it.local or '' }}</td>
+          <td class="rating">{{ it.rating if it.rating is not none else '-' }}</td>
+          <td>
+            <div class="review-text">{{ it.text or '' }}</div>
+            <div class="review-meta">{{ it.author_name or 'Anonimo' }} &middot; {{ it.date_str or '' }}</div>
+          </td>
+          <td><span class="badge badge-{{ estado }}">{{ estado.replace('_', ' ') }}</span></td>
+          <td class="col-actions">
+            <button type="button" class="btn-estado btn-en_curso" data-estado="en_curso" {% if estado == 'en_curso' %}disabled{% endif %}>En curso</button>
+            <button type="button" class="btn-estado btn-resuelta" data-estado="resuelta" {% if estado == 'resuelta' %}disabled{% endif %}>Resuelta</button>
+          </td>
+          <td class="col-nota">
+            <textarea class="nota-input" rows="2" placeholder="Nota interna...">{{ it.nota or '' }}</textarea>
+            <button type="button" class="btn-nota">Guardar nota</button>
+          </td>
+        </tr>
+        {% else %}
+        <tr class="empty-row"><td colspan="7">No hay reseñas en gestion todavia.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    var CSRF_TOKEN = '{{ csrf_token() }}';
+
+    function showMsg(text, ok) {
+      var el = document.getElementById('msg');
+      el.textContent = text;
+      el.className = ok ? 'ok' : 'err';
+      el.style.display = 'block';
+      setTimeout(function() { el.style.display = 'none'; }, 4000);
+    }
+
+    function postGestion(docId, payload, onOk) {
+      fetch('/api/resenas/gestion/' + encodeURIComponent(docId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+        body: JSON.stringify(payload)
+      })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.ok) { showMsg(d.error || 'Error al guardar.', false); return; }
+          onOk();
+        })
+        .catch(function() { showMsg('Error de red al guardar.', false); });
+    }
+
+    document.getElementById('gestion-body').addEventListener('click', function(e) {
+      var target = e.target;
+
+      if (target.classList.contains('btn-estado')) {
+        var row = target.closest('tr[data-doc-id]');
+        if (!row) return;
+        var docId = row.getAttribute('data-doc-id');
+        var estado = target.getAttribute('data-estado');
+        postGestion(docId, { estado: estado }, function() {
+          showMsg('Estado actualizado a "' + estado.replace('_', ' ') + '".', true);
+          setTimeout(function() { window.location.reload(); }, 600);
+        });
+        return;
+      }
+
+      if (target.classList.contains('btn-nota')) {
+        var row2 = target.closest('tr[data-doc-id]');
+        if (!row2) return;
+        var docId2 = row2.getAttribute('data-doc-id');
+        var textarea = row2.querySelector('.nota-input');
+        postGestion(docId2, { nota: textarea.value }, function() {
+          showMsg('Nota guardada.', true);
+        });
+        return;
+      }
+    });
+  </script>
+
+</body>
+</html>

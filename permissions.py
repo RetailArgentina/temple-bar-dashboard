@@ -14,7 +14,8 @@ Estructura de cada documento en users_config (doc ID = email en minúsculas):
 from __future__ import annotations
 from typing import Optional
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from google.cloud import firestore
 
 logger = logging.getLogger(__name__)
 
@@ -405,3 +406,220 @@ def save_objectives(db, docs: "list[dict]", updated_by: str) -> dict:
 
     logger.info("Objetivos guardados: %d filas por %s", len(docs), updated_by)
     return {"ok": True, "count": len(docs)}
+
+
+# ---------------------------------------------------------------------------
+# Google Places mapping (local -> place_id)
+# ---------------------------------------------------------------------------
+
+PLACES_MAPPING_COLLECTION = "google_places_mapping"
+
+_VALID_PLACES_STATUS = ("pending", "verified", "rejected")
+
+
+def list_places_mapping(db) -> dict:
+    """Devuelve {doc_id: doc.to_dict()} para todos los mapeos local -> place_id."""
+    docs = db.collection(PLACES_MAPPING_COLLECTION).stream()
+    return {doc.id: doc.to_dict() for doc in docs}
+
+
+def set_places_mapping(
+    db,
+    marca: str,
+    local: str,
+    place_id: str,
+    display_name_google: str = None,
+    formatted_address: str = None,
+    status: str = "pending",
+    search_query_used: str = None,
+    candidates: "list" = None,
+) -> dict:
+    """Crea o actualiza (merge) el mapeo de un local a un place_id de Google."""
+    if not marca or not local or not place_id:
+        return {"ok": False, "error": "Marca, local y place_id son requeridos"}
+
+    doc_id = f"{marca}__{local}"
+    doc_ref = db.collection(PLACES_MAPPING_COLLECTION).document(doc_id)
+    doc_ref.set({
+        "marca": marca,
+        "local": local,
+        "place_id": place_id,
+        "display_name_google": display_name_google,
+        "formatted_address": formatted_address,
+        "status": status,
+        "search_query_used": search_query_used,
+        "candidates": candidates if candidates is not None else [],
+        "updated_at": firestore.SERVER_TIMESTAMP,
+    }, merge=True)
+    logger.info("Places mapping guardado: '%s' -> '%s'", doc_id, place_id)
+    return {"ok": True}
+
+
+def update_places_mapping_status(db, doc_id: str, status: str, verified_by: str = None) -> dict:
+    """Actualiza el status (pending/verified/rejected) de un mapeo existente."""
+    doc_ref = db.collection(PLACES_MAPPING_COLLECTION).document(doc_id)
+    snapshot = doc_ref.get()
+
+    if not snapshot.exists:
+        return {"ok": False, "error": "Mapping no encontrado"}
+
+    if status not in _VALID_PLACES_STATUS:
+        return {"ok": False, "error": f"Status inválido: '{status}'. Debe ser uno de: {', '.join(_VALID_PLACES_STATUS)}"}
+
+    updates = {"status": status}
+    if verified_by is not None:
+        updates["verified_by"] = verified_by
+        updates["verified_at"] = firestore.SERVER_TIMESTAMP
+
+    doc_ref.update(updates)
+    logger.info("Places mapping status actualizado: '%s' -> '%s'", doc_id, status)
+    return {"ok": True}
+
+
+def delete_places_mapping(db, doc_id: str) -> dict:
+    """Elimina un mapeo local -> place_id de Google."""
+    doc_ref = db.collection(PLACES_MAPPING_COLLECTION).document(doc_id)
+    doc_ref.delete()
+    logger.info("Places mapping eliminado: '%s'", doc_id)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Google reviews — gestión (seguimiento operativo de reseñas)
+# ---------------------------------------------------------------------------
+
+GESTION_COLLECTION = "google_reviews_gestion"
+
+_VALID_GESTION_STATUS = {"nueva", "en_curso", "resuelta"}
+
+
+def review_gestion_key(author_name: str, time=None, date_str: str = None, rating=None) -> str:
+    """
+    Genera la key estable de una reseña (usada como doc_id en GESTION_COLLECTION).
+
+    IMPORTANTE: debe mantenerse idéntica carácter a carácter a `_review_key()`
+    en google_reviews_sync.py (línea ~236), que es la fuente de verdad para
+    las keys guardadas en seen_review_keys. Si esa función cambia, replicar
+    el cambio acá.
+    """
+    author = author_name or ""
+    if time:
+        return f"{author}|{time}"
+    return f"{author}|{date_str or ''}|{rating if rating is not None else ''}"
+
+
+def list_gestion(db) -> dict:
+    """Devuelve {doc_id: doc.to_dict()} para todos los docs de gestión de reseñas."""
+    docs = db.collection(GESTION_COLLECTION).stream()
+    return {doc.id: doc.to_dict() for doc in docs}
+
+
+def create_gestion_if_not_exists(
+    db,
+    doc_id: str,
+    marca: str,
+    local: str,
+    rating,
+    text: str,
+    author_name: str,
+    date_str: str,
+) -> dict:
+    """
+    Crea el doc de gestión de una reseña, solo si no existe todavía.
+
+    Nunca pisa un doc que ya está en_curso o resuelta (guard por existencia,
+    igual que update_places_mapping_status).
+    """
+    doc_ref = db.collection(GESTION_COLLECTION).document(doc_id)
+    if doc_ref.get().exists:
+        return {"ok": True, "created": False}
+
+    doc_ref.set({
+        "marca": marca,
+        "local": local,
+        "rating": rating,
+        "text": text,
+        "author_name": author_name,
+        "date_str": date_str,
+        "estado": "nueva",
+        "nota": "",
+        "creado_at": firestore.SERVER_TIMESTAMP,
+    })
+    logger.info("Gestión de reseña creada: '%s'", doc_id)
+    return {"ok": True, "created": True}
+
+
+def update_gestion_status(
+    db,
+    doc_id: str,
+    estado: str = None,
+    nota: str = None,
+    actualizado_por: str = None,
+) -> dict:
+    """Actualiza estado y/o nota de un doc de gestión de reseñas existente."""
+    doc_ref = db.collection(GESTION_COLLECTION).document(doc_id)
+    snapshot = doc_ref.get()
+
+    if not snapshot.exists:
+        return {"ok": False, "error": "Gestión no encontrada"}
+
+    if estado is not None and estado not in _VALID_GESTION_STATUS:
+        return {
+            "ok": False,
+            "error": f"Estado inválido: '{estado}'. Debe ser uno de: {', '.join(sorted(_VALID_GESTION_STATUS))}",
+        }
+
+    updates = {}
+    if estado is not None:
+        updates["estado"] = estado
+    if nota is not None:
+        updates["nota"] = nota
+    if actualizado_por is not None:
+        updates["actualizado_por"] = actualizado_por
+
+    if not updates:
+        return {"ok": False, "error": "No hay cambios para aplicar"}
+
+    updates["actualizado_at"] = firestore.SERVER_TIMESTAMP
+
+    doc_ref.update(updates)
+    logger.info("Gestión de reseña actualizada: '%s' -> %s", doc_id, updates)
+    return {"ok": True}
+
+
+def cleanup_gestion_retention(db) -> dict:
+    """
+    Borra docs de gestión de reseñas fuera de la ventana de retención:
+      (a) estado == "resuelta" con actualizado_at > 30 días de antigüedad.
+      (b) cualquier doc (resuelto o no) con creado_at > 90 días de antigüedad.
+
+    Filtra en Python sobre .stream() completo (colección chica, evita
+    necesidad de índice compuesto en Firestore).
+    """
+    now = datetime.now(timezone.utc)
+    resuelta_cutoff = now - timedelta(days=30)
+    creado_cutoff = now - timedelta(days=90)
+
+    deleted = 0
+    for doc in db.collection(GESTION_COLLECTION).stream():
+        data = doc.to_dict() or {}
+        creado_at = data.get("creado_at")
+        actualizado_at = data.get("actualizado_at")
+
+        should_delete = False
+        if creado_at is not None and creado_at < creado_cutoff:
+            should_delete = True
+        if (
+            data.get("estado") == "resuelta"
+            and actualizado_at is not None
+            and actualizado_at < resuelta_cutoff
+        ):
+            should_delete = True
+
+        if should_delete:
+            doc.reference.delete()
+            deleted += 1
+
+    if deleted:
+        logger.info("Cleanup gestión reseñas: %d docs eliminados", deleted)
+    return {"ok": True, "deleted": deleted}

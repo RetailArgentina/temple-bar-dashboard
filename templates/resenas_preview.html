@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Preview · Reseñas Google</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px;min-height:100vh}
+.wrap{max-width:1200px;margin:0 auto}
+
+/* Header */
+.hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.hdr-title{font-size:20px;font-weight:800;color:#e6edf3;letter-spacing:-.3px}
+.hdr-sub{font-size:12px;color:#6e7681;margin-top:3px}
+.badge-preview{font-size:10px;font-weight:700;background:#1a2a1a;color:#6ee7b7;border:1px solid rgba(110,231,183,.3);border-radius:6px;padding:4px 10px;letter-spacing:.4px}
+
+/* Cards */
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px 24px}
+.card-full{grid-column:1/-1}
+.card-title{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#8b949e;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.card-title span{color:#e6edf3}
+
+/* Controles (sort / filtro) - mismo look que lts-btn del resto del tablero */
+.ctrl-row{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.ctrl-btn{padding:6px 14px;border-radius:6px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s}
+.ctrl-btn.active{background:#1f6feb;border-color:#1f6feb;color:#fff}
+.ctrl-btn:not(.active):hover{color:#e6edf3;border-color:#8b949e}
+
+/* Ranking tabla */
+.rank-table{width:100%;border-collapse:collapse;font-size:12px}
+.rank-table th{font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#8b949e;padding:7px 10px;border-bottom:1px solid #30363d;white-space:nowrap;text-align:left}
+.rank-table th:nth-child(4),.rank-table th:nth-child(5){text-align:right}
+.rank-table td{padding:8px 10px;border-bottom:1px solid #1c2128;vertical-align:middle}
+.rank-table td:first-child{color:#6e7681;font-weight:700;font-size:11px;width:28px}
+.rank-table td:nth-child(2){font-weight:600;color:#e6edf3}
+.rank-table tbody tr:hover{background:#1c2128}
+
+.marca-chip{font-size:9px;font-weight:700;border-radius:4px;padding:1px 5px;margin-left:5px;vertical-align:middle;opacity:.85;flex-shrink:0}
+
+.badge-alert{font-size:10px;font-weight:700;border-radius:5px;padding:3px 9px;background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.35);white-space:nowrap}
+.badge-alert-soft{font-size:10px;font-weight:700;border-radius:5px;padding:3px 9px;background:rgba(251,146,60,.15);color:#fb923c;border:1px solid rgba(251,146,60,.35);white-space:nowrap}
+
+/* Tarjetas de reseñas (clonado de kpis_partial.html .review-card, adaptado a tema oscuro) */
+.reviews-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.reviews-local{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.reviews-local-head{display:flex;align-items:center;font-size:12px;font-weight:800;padding:6px 10px;border-radius:8px;color:#0d1117}
+.reviews-cards-inner{display:flex;flex-direction:column;gap:10px}
+.review-card{background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.review-header{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.review-stars-best{color:#fbbf24;font-size:13px;letter-spacing:1px;white-space:nowrap}
+.review-author{font-size:12px;font-weight:700;color:#e6edf3}
+.review-time{font-size:10px;color:#6e7681;margin-left:auto;white-space:nowrap}
+.review-text{font-size:12px;color:#8b949e;line-height:1.4}
+
+/* Tendencia */
+.local-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.local-name{width:260px;font-size:12px;font-weight:600;color:#e6edf3;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center}
+.trend-up{color:#3fb950;font-weight:700}
+.trend-down{color:#f87171;font-weight:700}
+.trend-flat{color:#8b949e;font-weight:700}
+
+.main-stack{display:flex;flex-direction:column;gap:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="hdr">
+  <div>
+    <div class="hdr-title">Reseñas Google</div>
+    <div class="hdr-sub">Snapshot: <span id="snapshotLabel">—</span> · Marca: <span id="marcaLabel">TODAS</span></div>
+  </div>
+</div>
+
+<div id="sinDatosWarn" style="display:none;background:#1c1206;border:1px solid rgba(251,146,60,.3);border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#fb923c;font-size:13px">&#9888; Sin locales con reseñas para esta marca.</div>
+
+<div class="main-stack">
+
+  <!-- Sección 1: Ranking de locales por rating -->
+  <div class="card">
+    <div class="card-title">&#127942; <span>Ranking de Locales · Rating Google</span></div>
+    <div class="ctrl-row" id="sortCtrl">
+      <button class="ctrl-btn active" onclick="setSortDir('desc',this)">Mejor &#8594; Peor</button>
+      <button class="ctrl-btn" onclick="setSortDir('asc',this)">Peor &#8594; Mejor</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="rank-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Local</th>
+            <th>Rating</th>
+            <th>Total Reseñas</th>
+            <th>Alerta</th>
+          </tr>
+        </thead>
+        <tbody id="rankingBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Sección 2: Tarjetas de reseñas recientes por local -->
+  <div class="card card-full">
+    <div class="card-title">&#128172; <span>Reseñas Recientes por Local</span></div>
+    <div class="reviews-grid" id="cardsWrap"></div>
+  </div>
+
+  <!-- Sección 3: Tendencia de rating (sparkline + delta por período) -->
+  <div class="card card-full">
+    <div class="card-title">&#128200; <span>Tendencia · Evolución de Rating</span></div>
+    <div class="ctrl-row" id="tendCtrl">
+      <button class="ctrl-btn" onclick="setTendenciaPeriodo(7,this)">7 días</button>
+      <button class="ctrl-btn active" onclick="setTendenciaPeriodo(30,this)">30 días</button>
+      <button class="ctrl-btn" onclick="setTendenciaPeriodo(90,this)">90 días</button>
+    </div>
+    <div id="tendenciaBody"></div>
+  </div>
+
+</div>
+
+</div>
+
+<script>
+// Forma esperada de __RESENAS_JSON__ (inyectada por el script de build):
+// {
+//   "fecha_snapshot": "2026-07-21",
+//   "por_marca": {
+//     "TEMPLE":    [ { "marca","local","place_id","rating","total_reviews",
+//                       "rating_prev_snapshot", "is_alert": bool,
+//                       "reviews":[{"author_name","rating","relative_time_description","date_str","text"}] }, ... ],
+//     "PATAGONIA": [ ... ],
+//     "FERIADO":   [ ... ]
+//   }
+// }
+const RESENAS = __RESENAS_JSON__;
+
+var _marca   = 'TODAS';
+var _sortDir = 'desc'; // 'desc' = mejor a peor (rating), 'asc' = peor a mejor
+
+// Colores de marca — tomados de templates/dashboard.html (BCOLOR, línea ~635)
+var MARCA_COLORS = {TEMPLE:'#f472b6', PATAGONIA:'#38bdf8', FERIADO:'#fbbf24'};
+
+function getLocalesForMarca(){
+  var por = (RESENAS && RESENAS.por_marca) ? RESENAS.por_marca : {};
+  if(_marca === 'TODAS'){
+    return ['TEMPLE','PATAGONIA','FERIADO'].reduce(function(acc, k){
+      return acc.concat(por[k] || []);
+    }, []);
+  }
+  return por[_marca] || [];
+}
+
+function setMarca(m){
+  _marca = m || 'TODAS';
+  var lbl = document.getElementById('marcaLabel');
+  if(lbl) lbl.textContent = _marca;
+  render();
+}
+
+window.addEventListener('message', function(e){
+  if(!e.data) return;
+  if(e.data.type === 'setMarca'){
+    setMarca(e.data.marca || 'TODAS');
+  } else if(e.data.type === 'setPeriodo'){
+    // Reseñas no tiene dimensión de período (solo snapshot más reciente) — se ignora.
+  }
+});
+
+function updateSnapshotLabel(){
+  var el = document.getElementById('snapshotLabel');
+  if(el) el.textContent = (RESENAS && RESENAS.fecha_snapshot) ? RESENAS.fecha_snapshot : '—';
+}
+
+function starsHtml(rating){
+  var r = Math.round(Number(rating) || 0);
+  r = Math.max(0, Math.min(5, r));
+  return '★'.repeat(r) + '☆'.repeat(5 - r);
+}
+
+function fmtRating(rating){
+  var n = Number(rating);
+  return isNaN(n) ? '—' : n.toFixed(1);
+}
+
+function truncate(text, n){
+  if(!text) return '';
+  return text.length > n ? text.slice(0, n) + '…' : text;
+}
+
+function marcaChip(marca){
+  var mc = MARCA_COLORS[marca] || '#8b949e';
+  return '<span class="marca-chip" style="background:'+mc+'22;color:'+mc+'">'+(marca || '—')+'</span>';
+}
+
+function sortedLocales(locales){
+  var arr = locales.slice();
+  arr.sort(function(a, b){
+    var ra = Number(a.rating) || 0, rb = Number(b.rating) || 0;
+    return _sortDir === 'desc' ? rb - ra : ra - rb;
+  });
+  return arr;
+}
+
+function setSortDir(dir, btn){
+  _sortDir = dir;
+  document.querySelectorAll('#sortCtrl .ctrl-btn').forEach(function(b){ b.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+  renderRanking(getLocalesForMarca());
+}
+
+function renderRanking(locales){
+  var body = document.getElementById('rankingBody');
+  if(!body) return;
+  var arr = sortedLocales(locales);
+  if(!arr.length){
+    body.innerHTML = '<tr><td colspan="5" style="color:#484f58;padding:12px 0">Sin datos para esta selección</td></tr>';
+    return;
+  }
+  body.innerHTML = arr.map(function(l, i){
+    var alertCell = l.is_alert
+      ? '<span class="badge-alert">&#9888; Reseña negativa nueva</span>'
+      : '<span style="color:#484f58">—</span>';
+    return '<tr>'
+      +'<td>'+(i+1)+'</td>'
+      +'<td>'+(l.local || '—')+marcaChip(l.marca)+'</td>'
+      +'<td><span class="review-stars-best" style="font-size:12px">'+starsHtml(l.rating)+'</span> <span style="color:#8b949e">'+fmtRating(l.rating)+'</span></td>'
+      +'<td style="text-align:right;color:#8b949e">'+(l.total_reviews != null ? l.total_reviews : '—')+'</td>'
+      +'<td>'+alertCell+'</td>'
+      +'</tr>';
+  }).join('');
+}
+
+function reviewCardHtml(r){
+  var stars = starsHtml(r.rating);
+  var timeParts = [];
+  if(r.relative_time_description) timeParts.push(r.relative_time_description);
+  if(r.date_str) timeParts.push(r.date_str);
+  var timeStr = timeParts.join(' · ');
+  return '<div class="review-card">'
+    +'<div class="review-header">'
+      +'<span class="review-stars-best">'+stars+'</span>'
+      +'<span class="review-author">'+(r.author_name || 'Anónimo')+'</span>'
+      +'<span class="review-time">'+timeStr+'</span>'
+    +'</div>'
+    +(r.text ? '<p class="review-text">'+truncate(r.text, 200)+'</p>' : '')
+    +'</div>';
+}
+
+function renderCards(locales){
+  var wrap = document.getElementById('cardsWrap');
+  if(!wrap) return;
+  if(!locales.length){
+    wrap.innerHTML = '<div style="color:#484f58;font-size:12px;padding:12px 0">Sin reseñas disponibles para esta selección</div>';
+    return;
+  }
+  wrap.innerHTML = locales.map(function(l){
+    var mc = MARCA_COLORS[l.marca] || '#8b949e';
+    var reviews = (l.reviews || []).slice(0, 3);
+    var cardsHtml = reviews.length
+      ? reviews.map(reviewCardHtml).join('')
+      : '<p class="review-text" style="color:#484f58">Sin reseñas disponibles</p>';
+    return '<div class="reviews-local">'
+      +'<div class="reviews-local-head" style="background:'+mc+'">'+(l.local || '—')+'</div>'
+      +'<div class="reviews-cards-inner">'+cardsHtml+'</div>'
+      +'</div>';
+  }).join('');
+}
+
+var _tendPeriodo = 30; // días — 7 / 30 / 90
+
+function setTendenciaPeriodo(dias, btn){
+  _tendPeriodo = dias;
+  document.querySelectorAll('#tendCtrl .ctrl-btn').forEach(function(b){ b.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+  renderTendencia(getLocalesForMarca());
+}
+
+function historialKey(l){
+  return (l.marca || '') + '__' + (l.local || '');
+}
+
+function filtrarHistorialPorPeriodo(historial, dias){
+  if(!historial || !historial.length) return [];
+  var ahora = new Date();
+  var limiteMs = dias * 24 * 60 * 60 * 1000;
+  return historial.filter(function(h){
+    var f = new Date(h.fecha);
+    if(isNaN(f.getTime())) return false;
+    return (ahora.getTime() - f.getTime()) <= limiteMs;
+  });
+}
+
+function buildSparklineSvg(puntos, width, height){
+  var ratings = puntos.map(function(p){ return Number(p.rating); });
+  var min = Math.min.apply(null, ratings);
+  var max = Math.max.apply(null, ratings);
+  if(min === max){ min -= 0.5; max += 0.5; }
+  var stepX = puntos.length > 1 ? width / (puntos.length - 1) : 0;
+  var coords = ratings.map(function(r, i){
+    var x = i * stepX;
+    var y = height - ((r - min) / (max - min)) * height;
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  });
+  var first = ratings[0], last = ratings[ratings.length - 1];
+  var color = last > first ? '#3fb950' : (last < first ? '#f87171' : '#8b949e');
+  var lastCoord = coords[coords.length - 1].split(',');
+  return '<svg width="'+width+'" height="'+height+'" viewBox="0 0 '+width+' '+height+'" style="display:block">'
+    +'<polyline points="'+coords.join(' ')+'" fill="none" stroke="'+color+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
+    +'<circle cx="'+lastCoord[0]+'" cy="'+lastCoord[1]+'" r="2.5" fill="'+color+'"/>'
+    +'</svg>';
+}
+
+function deltaHtml(puntos){
+  var first = Number(puntos[0].rating), last = Number(puntos[puntos.length - 1].rating);
+  var diff = Math.round((last - first) * 100) / 100;
+  if(diff > 0)      return '<span class="trend-up">&#9650; +'+diff.toFixed(2)+'</span>';
+  if(diff < 0)       return '<span class="trend-down">&#9660; '+diff.toFixed(2)+'</span>';
+  return '<span class="trend-flat">— sin cambios</span>';
+}
+
+function renderTendencia(locales){
+  var body = document.getElementById('tendenciaBody');
+  if(!body) return;
+  if(!locales.length){
+    body.innerHTML = '<div style="color:#484f58;font-size:12px;padding:12px 0">Sin datos de tendencia para esta selección</div>';
+    return;
+  }
+  var historialMap = (RESENAS && RESENAS.historial) ? RESENAS.historial : {};
+  body.innerHTML = locales.map(function(l){
+    var hist = historialMap[historialKey(l)] || [];
+    var puntos = filtrarHistorialPorPeriodo(hist, _tendPeriodo);
+    var contenidoHtml;
+    if(puntos.length < 2){
+      contenidoHtml = '<div style="flex:1;text-align:right;color:#484f58;font-size:12px">Sin datos de tendencia</div>';
+    } else {
+      contenidoHtml = '<div style="flex:1;text-align:right">'+buildSparklineSvg(puntos, 120, 28)+'</div>'
+        +'<div style="width:130px;text-align:right;font-size:12px">'+deltaHtml(puntos)+'</div>';
+    }
+    return '<div class="local-row">'
+      +'<div class="local-name" title="'+(l.local || '')+'">'+marcaChip(l.marca)+'&nbsp;'+(l.local || '—')+'</div>'
+      +contenidoHtml
+      +'</div>';
+  }).join('');
+}
+
+function render(){
+  updateSnapshotLabel();
+  var locales = getLocalesForMarca();
+
+  var warn = document.getElementById('sinDatosWarn');
+  if(warn) warn.style.display = locales.length ? 'none' : 'block';
+
+  renderRanking(locales);
+  renderCards(locales);
+  renderTendencia(locales);
+}
+
+render();
+</script>
+</body>
+</html>
