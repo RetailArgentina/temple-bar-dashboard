@@ -62,12 +62,17 @@ a,button,.fb,.nav-btn{touch-action:manipulation}
 
 /* Nav principal */
 .main-nav{display:flex;gap:4px;margin-bottom:18px;background:#161b22;border:1px solid #30363d;border-radius:10px;padding:4px;width:fit-content}
-.nav-btn{padding:7px 22px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;background:transparent;color:#8b949e}
+.nav-btn{padding:7px 22px;border-radius:7px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .15s;background:transparent;color:#8b949e;position:relative}
 .nav-btn.active{background:#58a6ff;color:#0d1117}
 .nav-btn:not(.active):hover{color:#e6edf3;background:#21262d}
+/* Badge de alertas de reseñas (P9) — inyectado por JS, ver fetch al final del script */
+.nav-badge{position:absolute;top:-6px;right:-6px;background:#f87171;color:#450a0a;font-size:10px;font-weight:800;line-height:1;padding:2px 5px;border-radius:9px;min-width:14px;text-align:center;box-shadow:0 0 0 2px #0d1117}
 /* Vista producto iframe */
 #view-producto{display:none}
 #view-producto iframe{width:100%;height:calc(100vh - 160px);min-height:720px;border:none;border-radius:12px;background:#0d1117}
+/* Vista reseñas iframe */
+#view-resenas{display:none}
+#view-resenas iframe{width:100%;height:calc(100vh - 160px);min-height:720px;border:none;border-radius:12px;background:#0d1117}
 
 .toast{background:#1c2952;border:1px solid #388bfd;border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:12px;color:#79c0ff;display:none;gap:8px;align-items:flex-start}
 .toast.show{display:flex}
@@ -190,6 +195,8 @@ a,button,.fb,.nav-btn{touch-action:manipulation}
   .footer{font-size:9px;padding:10px 0}
   /* Iframe producto: altura correcta para mobile */
   #view-producto iframe{min-height:unset;height:calc(100dvh - 140px);border-radius:8px}
+  /* Iframe reseñas: altura correcta para mobile */
+  #view-resenas iframe{min-height:unset;height:calc(100dvh - 140px);border-radius:8px}
   /* Nav tabs */
   .main-nav{width:100%}
   .nav-btn{flex:1;padding:8px 6px;font-size:12px}
@@ -341,10 +348,19 @@ canvas{max-width:100%;display:block}
 <div class="main-nav">
   <button class="nav-btn active" id="navVentas"  onclick="switchView('economico')">&#128200; Ventas</button>
   <button class="nav-btn"        id="navProducto" onclick="switchView('producto')">&#128230; Producto</button>
+  <button class="nav-btn"        id="navResenas" onclick="switchView('resenas')">&#11088; Reseñas</button>
 </div>
 
 <div id="view-producto">
   <iframe id="productoFrame" title="Reporte de Producto" allowfullscreen
+          style="width:100%;height:calc(100dvh - 160px);min-height:600px;border:none;border-radius:12px;background:#0d1117"></iframe>
+</div>
+
+<div id="view-resenas">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+    <a href="/resenas/gestion" target="_blank" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;border-radius:8px;padding:5px 11px;border:1px solid #30363d;background:#161b22;color:#8b949e;text-decoration:none">Gestionar reseñas negativas &rarr;</a>
+  </div>
+  <iframe id="resenasFrame" title="Reseñas Google" allowfullscreen
           style="width:100%;height:calc(100dvh - 160px);min-height:600px;border:none;border-radius:12px;background:#0d1117"></iframe>
 </div>
 
@@ -581,8 +597,10 @@ canvas{max-width:100%;display:block}
 function switchView(v){
   document.getElementById('view-economico').style.display = v==='economico' ? 'block' : 'none';
   document.getElementById('view-producto').style.display  = v==='producto'  ? 'block' : 'none';
+  document.getElementById('view-resenas').style.display   = v==='resenas'   ? 'block' : 'none';
   document.getElementById('navVentas').classList.toggle('active',  v==='economico');
   document.getElementById('navProducto').classList.toggle('active', v==='producto');
+  document.getElementById('navResenas').classList.toggle('active', v==='resenas');
   if(v==='producto'){
     var fr = document.getElementById('productoFrame');
     var bm={'todas':'TODAS','Patagonia':'PATAGONIA','Temple':'TEMPLE','Feriado':'FERIADO'};
@@ -601,6 +619,22 @@ function switchView(v){
       // Ya cargado: sincronizar directo
       fr.contentWindow.postMessage({type:'setMarca',marca:marcaTarget},'*');
       fr.contentWindow.postMessage({type:'setPeriodo',periodo:periodoTarget},'*');
+    }
+  }
+  if(v==='resenas'){
+    var frR = document.getElementById('resenasFrame');
+    var bmR={'todas':'TODAS','Patagonia':'PATAGONIA','Temple':'TEMPLE','Feriado':'FERIADO'};
+    var marcaTargetR = bmR[STATE.marca]||'TODAS';
+    if(!frR.src || frR.src==='about:blank' || frR.src===''){
+      // Primera vez: asignar onload ANTES de src para no perder el postMessage
+      frR.onload = function(){
+        frR.contentWindow.postMessage({type:'setMarca',marca:marcaTargetR},'*');
+        frR.onload = null;
+      };
+      frR.src = 'https://storage.googleapis.com/temple-bar-dashboard-cache/resenas.html';
+    } else {
+      // Ya cargado: sincronizar directo
+      frR.contentWindow.postMessage({type:'setMarca',marca:marcaTargetR},'*');
     }
   }
 }
@@ -2244,10 +2278,15 @@ function setMarca(m,btn){
   }
   updateAll();
   // Sincronizar iframe de producto si ya está cargado
+  var bm={'todas':'TODAS','Patagonia':'PATAGONIA','Temple':'TEMPLE','Feriado':'FERIADO'};
   var fr=document.getElementById('productoFrame');
   if(fr && fr.src && fr.src!=='' && fr.src!=='about:blank'){
-    var bm={'todas':'TODAS','Patagonia':'PATAGONIA','Temple':'TEMPLE','Feriado':'FERIADO'};
     fr.contentWindow.postMessage({type:'setMarca',marca:bm[m]||'TODAS'},'*');
+  }
+  // Sincronizar iframe de reseñas si ya está cargado
+  var frR=document.getElementById('resenasFrame');
+  if(frR && frR.src && frR.src!=='' && frR.src!=='about:blank'){
+    frR.contentWindow.postMessage({type:'setMarca',marca:bm[m]||'TODAS'},'*');
   }
 }
 function setPeriodo(p,btn){
@@ -2305,6 +2344,21 @@ loadChartJS(function() {
     setTimeout(function(){area.style.opacity='1';},10);
   }
 });
+// Fetch liviano de alertas de reseñas Google (P9) — independiente del iframe
+// lazy-load de reseñas. No bloqueante (sin await), falla en silencio si el
+// archivo no existe todavía (nunca corrió el sync) o hay error de red.
+fetch('https://storage.googleapis.com/temple-bar-dashboard-cache/resenas_alertas.json')
+  .then(function(r){ return r.ok ? r.json() : null; })
+  .then(function(data){
+    if(!data || !data.count) return;
+    var btn = document.getElementById('navResenas');
+    if(!btn) return;
+    var badge = document.createElement('span');
+    badge.className = 'nav-badge';
+    badge.textContent = data.count;
+    btn.appendChild(badge);
+  })
+  .catch(function(){ /* silencioso: sin alertas o archivo aún no publicado */ });
 </script>
 </body>
 </html>
