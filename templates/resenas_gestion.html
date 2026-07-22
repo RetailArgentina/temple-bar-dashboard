@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gestion de Resenas Google</title>
+  <title>Gestión de Reseñas Google</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -288,13 +288,13 @@
 
   <a href="/dashboard" class="back-link">Volver al Dashboard</a>
 
-  <h1>Gestion de Resenas Google</h1>
+  <h1>Gestión de Reseñas Google</h1>
 
   <div id="msg"></div>
 
   <div class="report-section" id="reporte-semanal">
     <div class="report-header">
-      <h2>Reporte semanal <span class="report-sub">(ultimos 7 dias)</span></h2>
+      <h2>Reporte semanal <span class="report-sub">(últimos 7 días)</span></h2>
       <button type="button" class="btn-print" onclick="window.print()">Imprimir / Guardar PDF</button>
     </div>
 
@@ -328,7 +328,7 @@
             <td>{{ r.marca or '' }}</td>
             <td>{{ r.local or '' }}</td>
             <td>{{ r.rating if r.rating is not none else '-' }}</td>
-            <td>{{ r.author_name or 'Anonimo' }}</td>
+            <td>{{ r.author_name or 'Anónimo' }}</td>
             <td>{{ r.date_str or '' }}</td>
           </tr>
           {% endfor %}
@@ -340,11 +340,11 @@
     </div>
 
     <div class="report-block">
-      <h3>Ranking de locales — variacion de rating en la semana</h3>
+      <h3>Ranking de locales — variación de rating en la semana</h3>
       {% if reporte.ranking_locales %}
       <table class="report-mini-table">
         <thead>
-          <tr><th>Marca</th><th>Local</th><th>Rating inicial</th><th>Rating actual</th><th>Variacion</th></tr>
+          <tr><th>Marca</th><th>Local</th><th>Rating inicial</th><th>Rating actual</th><th>Variación</th></tr>
         </thead>
         <tbody>
           {% for r in reporte.ranking_locales %}
@@ -359,7 +359,7 @@
         </tbody>
       </table>
       {% else %}
-      <div class="report-empty">Sin variacion de rating registrada esta semana.</div>
+      <div class="report-empty">Sin variación de rating registrada esta semana.</div>
       {% endif %}
     </div>
   </div>
@@ -386,7 +386,7 @@
           <td class="rating">{{ it.rating if it.rating is not none else '-' }}</td>
           <td>
             <div class="review-text">{{ it.text or '' }}</div>
-            <div class="review-meta">{{ it.author_name or 'Anonimo' }} &middot; {{ it.date_str or '' }}</div>
+            <div class="review-meta">{{ it.author_name or 'Anónimo' }} &middot; {{ it.date_str or '' }}</div>
           </td>
           <td><span class="badge badge-{{ estado }}">{{ estado.replace('_', ' ') }}</span></td>
           <td class="col-actions">
@@ -399,7 +399,7 @@
           </td>
         </tr>
         {% else %}
-        <tr class="empty-row"><td colspan="7">No hay reseñas en gestion todavia.</td></tr>
+        <tr class="empty-row"><td colspan="7">No hay reseñas en gestión todavía.</td></tr>
         {% endfor %}
       </tbody>
     </table>
