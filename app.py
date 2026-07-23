@@ -779,7 +779,9 @@ def _resenas_weekly_report(items: dict) -> dict:
 
         por_local = {}  # (marca, local) -> [(fecha_snapshot, rating), ...] ordenado por fecha
         for row in rows:
-            key = (row["marca"], row["local"])
+            # BQ guarda marca en title case ("Temple"); el resto de esta pagina
+            # (Firestore, template) usa mayusculas ("TEMPLE") -- normalizar aca.
+            key = ((row["marca"] or "").upper(), row["local"])
             por_local.setdefault(key, []).append((row["fecha_snapshot"], row["rating"]))
 
         marca_ratings = {}  # marca -> [ultimo rating conocido por local, ...]
