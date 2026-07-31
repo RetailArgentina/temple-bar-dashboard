@@ -69,6 +69,9 @@ def upload_to_gcs(local_path, bucket_name, blob_name="super_dashboard_temple.htm
     """Upload the generated HTML to a GCS bucket and make it publicly readable."""
     from google.cloud import storage
     print(f"\nUploading to GCS: gs://{bucket_name}/{blob_name} ...")
+    file_size = os.path.getsize(local_path)
+    if file_size < 100_000:
+        raise RuntimeError("HTML demasiado pequeño — abortando upload a GCS")
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
@@ -371,8 +374,8 @@ def fetch_locales_obj(client):
     idx_local = next((hl[k] for k in hl if k in ('local', 'establecimiento', 'sucursal')), None)
     idx_mes   = next((hl[k] for k in hl if k in ('mes', 'month', 'periodo', 'period')), None)
     idx_marca = next((hl[k] for k in hl if 'marca' in k), None)
-    idx_fac   = hl.get('objetivo_facturacion_bq') or next((hl[k] for k in hl if 'fac' in k), None)
-    idx_ord_s = hl.get('objetivo_ordenes_bq') or next((hl[k] for k in hl if 'ord' in k), None)
+    _if = hl.get('objetivo_facturacion_bq'); idx_fac = _if if _if is not None else next((hl[k] for k in hl if 'fac' in k), None)
+    _io = hl.get('objetivo_ordenes_bq');     idx_ord_s = _io if _io is not None else next((hl[k] for k in hl if 'ord' in k), None)
 
     if any(i is None for i in [idx_local, idx_mes, idx_marca, idx_fac]):
         print(f" WARN cols no mapeadas (local={idx_local}, mes={idx_mes}, marca={idx_marca}, fac={idx_fac}) -- LOCALES_OBJ sera []")
@@ -503,17 +506,29 @@ def fetch_loc_count_by_mes(client):
 ## ── Queries para datos JS dinámicos ──────────────────────────────────────────
 
 def fetch_mensual_data(client):
+    # Orden (numero de ticket) se reinicia por Local -- COUNT(DISTINCT Orden)
+    # agrupado solo por mes/marca fusiona tickets de locales distintos con el
+    # mismo numero y subcuenta ordenes reales. Se agrupa por Local primero
+    # (unico sin colisiones dentro de mes+Local, verificado contra BQ) y se
+    # suma el conteo por local en la query externa.
     print("  Querying MENSUAL (monthly agg)...", end='', flush=True)
     q = f"""
-        SELECT FORMAT_DATE('%Y-%m', Fecha) AS mes, Marca AS m,
-               SAFE_CAST(ROUND(SUM(SAFE_CAST(Facturacion AS FLOAT64))/1e6) AS INT64) AS fac,
-               COUNT(DISTINCT Orden)                                                 AS ord,
-               SAFE_CAST(ROUND(SAFE_DIVIDE(SUM(SAFE_CAST(Total AS FLOAT64)),
-                                           COUNT(DISTINCT Orden))) AS INT64)         AS tick
-        FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_VENTAS}`
-        WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL 28 MONTH)
-          AND Marca IS NOT NULL
-          AND SAFE_CAST(Facturacion AS FLOAT64) BETWEEN 0 AND 1e12
+        WITH por_local AS (
+          SELECT FORMAT_DATE('%Y-%m', Fecha) AS mes, Marca AS m, Local AS l,
+                 SUM(SAFE_CAST(Facturacion AS FLOAT64)) AS fac_raw,
+                 COUNT(DISTINCT Orden)                  AS ord,
+                 SUM(SAFE_CAST(Total AS FLOAT64))       AS total_raw
+          FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_VENTAS}`
+          WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL 28 MONTH)
+            AND Marca IS NOT NULL
+            AND SAFE_CAST(Facturacion AS FLOAT64) BETWEEN 0 AND 1e12
+          GROUP BY mes, m, l
+        )
+        SELECT mes, m,
+               SAFE_CAST(ROUND(SUM(fac_raw)/1e6) AS INT64)                       AS fac,
+               SUM(ord)                                                         AS ord,
+               SAFE_CAST(ROUND(SAFE_DIVIDE(SUM(total_raw), SUM(ord))) AS INT64) AS tick
+        FROM por_local
         GROUP BY mes, m ORDER BY mes, m
     """
     rows = list(client.query(q).result())
@@ -521,19 +536,29 @@ def fetch_mensual_data(client):
     return [{"mes": r.mes, "m": r.m, "fac": r.fac or 0, "ord": r.ord or 0, "tick": r.tick or 0} for r in rows]
 
 def fetch_turnos_data(client):
+    # Mismo problema/fix que fetch_mensual_data: Orden se reinicia por Local,
+    # asi que se agrupa por mes+Local primero y se suma despues (m,t no
+    # cambia de shape, mes queda solo como grado interno de agregacion).
     COLORS = {"Tarde":"#34d399","Noche":"#818cf8","Mañana":"#fbbf24",
               "Extra":"#f87171","Almuerzo":"#60a5fa","Desayuno":"#a78bfa"}
     print("  Querying TURNOS...", end='', flush=True)
     q = f"""
-        SELECT Marca AS m, Turno AS t,
-               SAFE_CAST(ROUND(SUM(SAFE_CAST(Facturacion AS FLOAT64))/1e6) AS INT64) AS fac,
-               COUNT(DISTINCT Orden)                                                 AS ord,
-               SAFE_CAST(ROUND(SAFE_DIVIDE(SUM(SAFE_CAST(Total AS FLOAT64)),
-                                           COUNT(DISTINCT Orden))) AS INT64)         AS tick
-        FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_VENTAS}`
-        WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL 12 MONTH)
-          AND Turno IS NOT NULL AND Marca IS NOT NULL
-          AND SAFE_CAST(Facturacion AS FLOAT64) BETWEEN 0 AND 1e12
+        WITH por_local AS (
+          SELECT FORMAT_DATE('%Y-%m', Fecha) AS mes, Marca AS m, Turno AS t, Local AS l,
+                 SUM(SAFE_CAST(Facturacion AS FLOAT64)) AS fac_raw,
+                 COUNT(DISTINCT Orden)                  AS ord,
+                 SUM(SAFE_CAST(Total AS FLOAT64))       AS total_raw
+          FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_VENTAS}`
+          WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL 12 MONTH)
+            AND Turno IS NOT NULL AND Marca IS NOT NULL
+            AND SAFE_CAST(Facturacion AS FLOAT64) BETWEEN 0 AND 1e12
+          GROUP BY mes, m, t, l
+        )
+        SELECT m, t,
+               SAFE_CAST(ROUND(SUM(fac_raw)/1e6) AS INT64)                       AS fac,
+               SUM(ord)                                                         AS ord,
+               SAFE_CAST(ROUND(SAFE_DIVIDE(SUM(total_raw), SUM(ord))) AS INT64) AS tick
+        FROM por_local
         GROUP BY m, t ORDER BY m, fac DESC
     """
     rows = list(client.query(q).result())
@@ -542,15 +567,23 @@ def fetch_turnos_data(client):
              "color": COLORS.get(r.t, "#94a3b8")} for r in rows]
 
 def fetch_canal_data(client):
+    # Mismo fix: Local en el agrupamiento interno antes de contar Orden distinta.
     print("  Querying CANAL (last 6m)...", end='', flush=True)
     q = f"""
-        SELECT FORMAT_DATE('%Y-%m', Fecha) AS mes, Marca AS m, Canal AS c,
-               SAFE_CAST(ROUND(SUM(SAFE_CAST(Facturacion AS FLOAT64))/1e6) AS INT64) AS fac,
-               COUNT(DISTINCT Orden)                                                 AS ord
-        FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_VENTAS}`
-        WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL 6 MONTH)
-          AND Canal IS NOT NULL AND Marca IS NOT NULL
-          AND SAFE_CAST(Facturacion AS FLOAT64) BETWEEN 0 AND 1e12
+        WITH por_local AS (
+          SELECT FORMAT_DATE('%Y-%m', Fecha) AS mes, Marca AS m, Canal AS c, Local AS l,
+                 SUM(SAFE_CAST(Facturacion AS FLOAT64)) AS fac_raw,
+                 COUNT(DISTINCT Orden)                  AS ord
+          FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_VENTAS}`
+          WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL 6 MONTH)
+            AND Canal IS NOT NULL AND Marca IS NOT NULL
+            AND SAFE_CAST(Facturacion AS FLOAT64) BETWEEN 0 AND 1e12
+          GROUP BY mes, m, c, l
+        )
+        SELECT mes, m, c,
+               SAFE_CAST(ROUND(SUM(fac_raw)/1e6) AS INT64) AS fac,
+               SUM(ord)                                    AS ord
+        FROM por_local
         GROUP BY mes, m, c ORDER BY mes, m, fac DESC
     """
     rows = list(client.query(q).result())
@@ -764,7 +797,7 @@ def fetch_royalty_data():
             for marca, (_, _, ci_pct) in COLS.items():
                 try:
                     avg_pct[marca] = round(parse_ar(row[ci_pct].replace('%','')) if ci_pct < len(row) else 0, 2)
-                except: avg_pct[marca] = 3.5
+                except: avg_pct[marca] = 0
             break
 
     # Filas de datos mensuales: solo las que tienen nombre de mes reconocible
@@ -1119,7 +1152,7 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
         except Exception as exc:
             print(f"  WARN Insights generation failed: {exc} — using placeholder.")
             insights_html = '<div class="ic" style="background:#161b22;border:1px solid #30363d"><div class="it" style="color:#8b949e">⚠️ Insights temporalmente no disponibles</div><div class="ib">Los insights contextuales no pudieron generarse en este ciclo. Se actualizarán en la próxima ejecución.</div></div>'
-            insights_date = datetime.now().strftime("%-d %b %Y")
+            insights_date = datetime.now().strftime("%d %b %Y").lstrip("0")
 
         html = html.replace('__INSIGHTS_HTML__', insights_html)
         html = html.replace('__INSIGHTS_DATE__', insights_date)
@@ -1301,7 +1334,10 @@ def main():
         royalty_data     = results["royalty"]
 
         # Calcular estructuras derivadas
-        latest_mes   = sorted({r["mes"] for r in mensual_rows})[-1] if mensual_rows else ""
+        if not mensual_rows:
+            print("ERROR: MENSUAL sin datos — abortando para no publicar tablero vacío")
+            sys.exit(1)
+        latest_mes   = sorted({r["mes"] for r in mensual_rows})[-1]
         top10_data   = compute_top10(top10_base, latest_mes)
         pd_data      = compute_pd(mensual_rows)
         preset_meses = compute_preset_meses(mensual_rows)
