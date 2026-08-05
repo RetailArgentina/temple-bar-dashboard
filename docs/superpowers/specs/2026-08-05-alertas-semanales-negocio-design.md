@@ -46,13 +46,23 @@ Se llaman con la misma lógica de fechas que usa `build_informe()` (línea 708 e
 ### Fetcher nuevo: mix de producto por semana y por local
 ```
 fetch_mix_semanal_por_local(client, marca, desde, hasta) -> list[dict]
-    Igual a fetch_locales_temple/patagonia/feriado() de generar_preview_producto.py
-    (mismas 3 queries, mismas columnas lts_cerveza/lts_gin/lts_fernet/lts_feriado/
-    lts_tragos/lts_total por marca), pero agrega DATE_TRUNC(fecha, WEEK(MONDAY))
-    AS semana al SELECT y GROUP BY, para traer de una sola consulta las últimas
-    N semanas en vez de un período agregado.
-    Devuelve: {local, semana, lts_cerveza, lts_tragos, lts_total, pct_cerveza}
-    (pct_cerveza = lts_cerveza / lts_total si lts_total > 0, si no None)
+    Mismo patrón de fetch_locales_temple/patagonia/feriado() de
+    generar_preview_producto.py (mismo GROUP BY local, mismas columnas base
+    cerveza_total/tragos_total o sus equivalentes regex por marca), pero:
+    (a) selecciona solo lts_cerveza y lts_tragos (no gin/fernet/feriado/total
+    — no los usa esta regla), y (b) agrega DATE_TRUNC(fecha, WEEK(MONDAY))
+    AS semana al SELECT y GROUP BY, para traer de una sola consulta las
+    últimas N semanas en vez de un período agregado.
+    Devuelve: {local, semana, lts_cerveza, lts_tragos, pct_cerveza}
+    (pct_cerveza = lts_cerveza / (lts_cerveza + lts_tragos) si esa suma > 0,
+    si no None. Nota: se usa (lts_cerveza + lts_tragos) como denominador, NO
+    lts_total — "lts_total" no es comparable entre marcas: en Patagonia
+    excluye tragos_total del cálculo (fetch_locales_patagonia líneas 248-256
+    de generar_preview_producto.py solo suma cerveza+gin+fernet+feriado),
+    mientras que en Temple es un campo distinto ("total_receta") de alcance
+    más amplio. (lts_cerveza + lts_tragos) es la única definición consistente
+    entre las 3 marcas y además es exactamente la comparación que motiva esta
+    regla: cerveza vs. tragos, no cerveza vs. "todo lo demás".)
 ```
 Se llama una vez por marca pidiendo `desde = semana_inicio - 8 semanas`, `hasta = semana_fin`, para tener la semana a evaluar + 8 semanas de historia propia en una sola pasada por marca (3 queries en total, no 3×9).
 
@@ -65,7 +75,7 @@ CONFIG = {
     "pace_cumpl_pct":          {80: "Alta", 92: "Media"},   # menor a
     "mix_desvio_self_pp":      15,      # puntos porcentuales vs propio promedio 8 sem
     "mix_desvio_peer_pp":      10,      # puntos porcentuales vs promedio de pares
-    "mix_min_lts_semana":      50,      # litros mínimos esa semana para evaluar (evita ruido de locales chicos)
+    "mix_min_lts_semana":      50,      # litros mínimos de (cerveza+tragos) esa semana para evaluar (evita ruido de locales chicos)
     "mix_min_semanas_historia": 4,      # semanas mínimas de historia propia para evaluar self-history
     "mix_min_locales_peer":    3,       # locales pares mínimos (con datos esa semana) para evaluar peer-comparison
 }
@@ -91,8 +101,8 @@ Cada regla devuelve hallazgos con la misma forma:
 - Órdenes por marca: `dp_o < -10%` → Media; `<-20%` → Alta.
 
 ### Categoría "Mix producto" (nueva)
-Para cada `(marca, local)` con datos en la semana evaluada y `lts_total >= mix_min_lts_semana`:
-1. `pct_cerveza_semana = lts_cerveza / lts_total`
+Para cada `(marca, local)` con datos en la semana evaluada y `(lts_cerveza + lts_tragos) >= mix_min_lts_semana`:
+1. `pct_cerveza_semana = lts_cerveza / (lts_cerveza + lts_tragos)`
 2. **Self:** si hay ≥`mix_min_semanas_historia` semanas previas con datos, `self_avg = promedio(pct_cerveza)` de esas semanas. `desvio_self = pct_cerveza_semana - self_avg` (en pp).
 3. **Peer:** locales de la misma marca con datos esa misma semana (excluyendo el propio). Si hay ≥`mix_min_locales_peer`, `peer_avg = promedio(pct_cerveza)` de esos locales esa semana. `desvio_peer = pct_cerveza_semana - peer_avg` (en pp).
 4. Severidad:
