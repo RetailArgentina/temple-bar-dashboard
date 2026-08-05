@@ -63,3 +63,25 @@ def compute_date_ranges(semana_inicio: date, hoy: date = None) -> dict:
         "pace": pace,
         "dias_rest": dias_rest,
     }
+
+
+def build_mix_rows(raw_rows) -> list:
+    """Normaliza filas de BQ (con atributos local/semana/lts_cerveza/lts_tragos)
+    a dicts con pct_cerveza calculado. Descarta filas sin local."""
+    out = []
+    for r in raw_rows:
+        local = str(getattr(r, 'local', '') or '').strip()
+        if not local:
+            continue
+        lts_cerveza = float(getattr(r, 'lts_cerveza', 0) or 0)
+        lts_tragos = float(getattr(r, 'lts_tragos', 0) or 0)
+        denom = lts_cerveza + lts_tragos
+        pct_cerveza = (lts_cerveza / denom) if denom > 0 else None
+        out.append({
+            "local": local,
+            "semana": getattr(r, 'semana'),
+            "lts_cerveza": lts_cerveza,
+            "lts_tragos": lts_tragos,
+            "pct_cerveza": pct_cerveza,
+        })
+    return out
