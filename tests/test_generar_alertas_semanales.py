@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from types import SimpleNamespace
 import pytest
-from generar_alertas_semanales import compute_date_ranges, CONFIG, build_mix_rows, fetch_mix_semanal_por_local, evaluar_regla_mix
+from generar_alertas_semanales import compute_date_ranges, CONFIG, build_mix_rows, fetch_mix_semanal_por_local, evaluar_regla_mix, evaluar_regla_performance, evaluar_regla_ticket_ordenes
 
 
 class _FakeJob:
@@ -162,4 +162,58 @@ def test_mix_sin_fila_de_la_semana_evaluada_se_ignora():
     semana = date(2026, 8, 10)
     historia = [_rows_semana("MADERO", semana - timedelta(weeks=1), 0.80)]
     hallazgos = evaluar_regla_mix(historia, "Patagonia", semana, CONFIG)
+    assert hallazgos == []
+
+
+def test_performance_pace_bajo_da_alta():
+    marca_esta = {"Temple": {"fac_M": 10.0, "ordenes": 1000}}
+    marca_ant = {"Temple": {"fac_M": 10.0, "ordenes": 1000}}
+    objetivos = {"Temple": {"2026-08": 100.0}}
+    # pace=0.5 (mitad del mes) -> obj_pace=50, real acumulado 30 -> cumpl 60% (<80)
+    hallazgos = evaluar_regla_performance(
+        marca_esta, marca_ant, locales_top=[], locales_ant_dict={},
+        objetivos=objetivos, mes_key="2026-08", pace=0.5, dias_rest=15,
+        config=CONFIG, mes_real={"Temple": {"fac_M": 30.0}},
+    )
+    pace_h = [h for h in hallazgos if "ritmo" in h["mensaje"]]
+    assert len(pace_h) == 1
+    assert pace_h[0]["severidad"] == "Alta"
+    assert pace_h[0]["categoria"] == "Performance"
+
+
+def test_performance_caida_local_da_media():
+    locales_top = [{"Marca": "Temple", "local": "PALERMO", "fac_M": 4.0, "ordenes": 500}]
+    locales_ant_dict = {("Temple", "PALERMO"): 5.0}  # -20% exacto -> Media
+    hallazgos = evaluar_regla_performance(
+        marca_esta={}, marca_ant={}, locales_top=locales_top,
+        locales_ant_dict=locales_ant_dict, objetivos={}, mes_key="2026-08",
+        pace=0.5, dias_rest=15, config=CONFIG, mes_real={},
+    )
+    local_h = [h for h in hallazgos if h["local"] == "PALERMO"]
+    assert len(local_h) == 1
+    assert local_h[0]["severidad"] == "Media"
+    assert local_h[0]["categoria"] == "Performance"
+
+
+def test_ticket_caida_da_media():
+    marca_esta = {"Temple": {"fac_M": 9.0, "ordenes": 1000}}   # ticket = 9000
+    marca_ant = {"Temple": {"fac_M": 10.0, "ordenes": 1000}}   # ticket = 10000, cae 10%
+    hallazgos = evaluar_regla_ticket_ordenes(marca_esta, marca_ant, CONFIG)
+    ticket_h = [h for h in hallazgos if "ticket" in h["mensaje"].lower()]
+    assert len(ticket_h) == 1
+    assert ticket_h[0]["severidad"] == "Media"
+    assert ticket_h[0]["categoria"] == "Ticket/Órdenes"
+
+
+def test_ordenes_caida_fuerte_da_alta():
+    marca_esta = {"Temple": {"fac_M": 8.0, "ordenes": 780}}
+    marca_ant = {"Temple": {"fac_M": 10.0, "ordenes": 1000}}  # -22% ordenes
+    hallazgos = evaluar_regla_ticket_ordenes(marca_esta, marca_ant, CONFIG)
+    ordenes_h = [h for h in hallazgos if "órdenes" in h["mensaje"].lower()]
+    assert len(ordenes_h) == 1
+    assert ordenes_h[0]["severidad"] == "Alta"
+
+
+def test_sin_datos_previos_no_rompe():
+    hallazgos = evaluar_regla_ticket_ordenes({"Temple": {"fac_M": 5.0, "ordenes": 400}}, {}, CONFIG)
     assert hallazgos == []

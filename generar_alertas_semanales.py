@@ -215,3 +215,94 @@ def evaluar_regla_mix(mix_rows: list, marca: str, semana_evaluada, config: dict)
     orden = {"Alta": 0, "Media": 1, "Baja": 2}
     hallazgos.sort(key=lambda h: orden.get(h["severidad"], 9))
     return hallazgos
+
+
+def ticket_prom(fac_M, ordenes):
+    if ordenes == 0:
+        return 0
+    return round(fac_M * 1e6 / ordenes)
+
+
+def evaluar_regla_performance(marca_esta, marca_ant, locales_top, locales_ant_dict,
+                               objetivos, mes_key, pace, dias_rest, config, mes_real):
+    """Pace por marca vs objetivo prorrateado + caída de local vs semana anterior."""
+    hallazgos = []
+
+    for m, obj_por_mes in objetivos.items():
+        obj_M = obj_por_mes.get(mes_key, 0)
+        real_M = mes_real.get(m, {}).get('fac_M', 0)
+        if obj_M <= 0:
+            continue
+        obj_pace = obj_M * pace
+        cumpl_pace = real_M / obj_pace * 100 if obj_pace > 0 else 100
+        if cumpl_pace < 80 and dias_rest > 3:
+            severidad = "Alta"
+        elif cumpl_pace < 92 and dias_rest > 3:
+            severidad = "Media"
+        else:
+            continue
+        falta = obj_M - real_M
+        por_dia = falta / dias_rest if dias_rest > 0 else 0
+        hallazgos.append({
+            "marca": m, "local": None, "categoria": "Performance", "severidad": severidad,
+            "mensaje": f"{m}: ritmo de facturación {cumpl_pace:.0f}% del objetivo esperado",
+            "detalle": f"Faltan ${falta:.1f}M para el objetivo. Necesita ${por_dia:.1f}M/día "
+                       f"en los próximos {dias_rest} días.",
+        })
+
+    caidas = []
+    for loc in locales_top:
+        key = (loc['Marca'], loc['local'])
+        fac0 = locales_ant_dict.get(key, 0)
+        if fac0 > 0 and loc['fac_M'] > 0:
+            dp = (loc['fac_M'] - fac0) / fac0 * 100
+            if dp <= -20:
+                caidas.append((loc, dp, fac0))
+    for loc, dp, fac0 in caidas:
+        severidad = "Alta" if dp < -30 else "Media"
+        hallazgos.append({
+            "marca": loc['Marca'], "local": loc['local'], "categoria": "Performance",
+            "severidad": severidad,
+            "mensaje": f"{loc['local']} ({loc['Marca']}): caída del {abs(dp):.0f}% vs semana anterior",
+            "detalle": f"Pasó de ${fac0:.1f}M a ${loc['fac_M']:.1f}M.",
+        })
+
+    orden = {"Alta": 0, "Media": 1, "Baja": 2}
+    hallazgos.sort(key=lambda h: orden.get(h["severidad"], 9))
+    return hallazgos
+
+
+def evaluar_regla_ticket_ordenes(marca_esta, marca_ant, config):
+    """Caída de ticket promedio y de cantidad de órdenes por marca."""
+    hallazgos = []
+    for m, datos_esta in marca_esta.items():
+        datos_ant = marca_ant.get(m)
+        if not datos_ant:
+            continue
+
+        tk_e = ticket_prom(datos_esta.get('fac_M', 0), datos_esta.get('ordenes', 0))
+        tk_a = ticket_prom(datos_ant.get('fac_M', 0), datos_ant.get('ordenes', 0))
+        if tk_a > 0 and tk_e > 0:
+            dp_tk = (tk_e - tk_a) / tk_a * 100
+            if dp_tk <= config["ticket_caida_pct"]:
+                hallazgos.append({
+                    "marca": m, "local": None, "categoria": "Ticket/Órdenes", "severidad": "Media",
+                    "mensaje": f"{m}: ticket promedio cayó {abs(dp_tk):.0f}% (${tk_e:,.0f} vs ${tk_a:,.0f} sem. ant.)",
+                    "detalle": "Puede indicar mix de productos más económico o promociones activas.",
+                })
+
+        ord_e = datos_esta.get('ordenes', 0)
+        ord_a = datos_ant.get('ordenes', 0)
+        if ord_a > 0 and ord_e > 0:
+            dp_o = (ord_e - ord_a) / ord_a * 100
+            if dp_o < -10:
+                severidad = "Alta" if dp_o < -20 else "Media"
+                hallazgos.append({
+                    "marca": m, "local": None, "categoria": "Ticket/Órdenes", "severidad": severidad,
+                    "mensaje": f"{m}: caída del {abs(dp_o):.0f}% en cantidad de órdenes vs semana anterior",
+                    "detalle": f"Pasó de {ord_a:,} a {ord_e:,} órdenes.",
+                })
+
+    orden = {"Alta": 0, "Media": 1, "Baja": 2}
+    hallazgos.sort(key=lambda h: orden.get(h["severidad"], 9))
+    return hallazgos
