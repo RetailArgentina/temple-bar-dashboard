@@ -1,7 +1,7 @@
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from types import SimpleNamespace
 import pytest
-from generar_alertas_semanales import compute_date_ranges, CONFIG, build_mix_rows, fetch_mix_semanal_por_local, evaluar_regla_mix, evaluar_regla_performance, evaluar_regla_ticket_ordenes
+from generar_alertas_semanales import compute_date_ranges, CONFIG, build_mix_rows, fetch_mix_semanal_por_local, evaluar_regla_mix, evaluar_regla_performance, evaluar_regla_ticket_ordenes, render_alertas_html
 
 
 class _FakeJob:
@@ -217,3 +217,23 @@ def test_ordenes_caida_fuerte_da_alta():
 def test_sin_datos_previos_no_rompe():
     hallazgos = evaluar_regla_ticket_ordenes({"Temple": {"fac_M": 5.0, "ordenes": 400}}, {}, CONFIG)
     assert hallazgos == []
+
+
+def test_render_sin_hallazgos_muestra_estado_explicito():
+    html = render_alertas_html([], date(2026, 8, 10), date(2026, 8, 16), datetime(2026, 8, 17, 6, 30))
+    assert "Sin hallazgos relevantes esta semana" in html
+
+
+def test_render_agrupa_por_severidad_alta_primero():
+    hallazgos = [
+        {"marca": "Temple", "local": None, "categoria": "Performance", "severidad": "Media",
+         "mensaje": "Mensaje media", "detalle": "Detalle media"},
+        {"marca": "Patagonia", "local": "MADERO", "categoria": "Mix producto", "severidad": "Alta",
+         "mensaje": "Mensaje alta", "detalle": "Detalle alta"},
+    ]
+    html = render_alertas_html(hallazgos, date(2026, 8, 10), date(2026, 8, 16), datetime(2026, 8, 17, 6, 30))
+    pos_alta = html.index("Mensaje alta")
+    pos_media = html.index("Mensaje media")
+    assert pos_alta < pos_media
+    assert "Mix producto" in html
+    assert "10/08/2026" in html and "16/08/2026" in html

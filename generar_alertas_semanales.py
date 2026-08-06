@@ -306,3 +306,55 @@ def evaluar_regla_ticket_ordenes(marca_esta, marca_ant, config):
     orden = {"Alta": 0, "Media": 1, "Baja": 2}
     hallazgos.sort(key=lambda h: orden.get(h["severidad"], 9))
     return hallazgos
+
+
+_SEVERIDAD_COLOR = {"Alta": "#dc2626", "Media": "#d97706", "Baja": "#475569"}
+
+
+def render_alertas_html(hallazgos: list, semana_inicio, semana_fin, generado_en) -> str:
+    orden = {"Alta": 0, "Media": 1, "Baja": 2}
+    hallazgos_ordenados = sorted(hallazgos, key=lambda h: orden.get(h["severidad"], 9))
+
+    if hallazgos_ordenados:
+        bloques = []
+        for h in hallazgos_ordenados:
+            color = _SEVERIDAD_COLOR.get(h["severidad"], "#475569")
+            bloques.append(f"""
+            <div class="hallazgo" style="border-left: 4px solid {color};">
+              <span class="badge" style="background:{color};">{h['severidad']}</span>
+              <span class="categoria">{h['categoria']}</span>
+              <p class="mensaje">{h['mensaje']}</p>
+              <p class="detalle">{h['detalle']}</p>
+            </div>""")
+        cuerpo = "\n".join(bloques)
+    else:
+        cuerpo = '<div class="sin-hallazgos">✅ Sin hallazgos relevantes esta semana.</div>'
+
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Alertas Semanales de Negocio</title>
+<style>
+  body {{ background:#0f2544; color:#f1f5f9; font-family: Arial, sans-serif; padding: 24px; }}
+  h1 {{ color:#f1f5f9; }}
+  .subtitulo {{ color:#cbd5e1; margin-bottom: 24px; }}
+  .hallazgo {{ background:#16324f; border-radius: 6px; padding: 12px 16px; margin-bottom: 12px; }}
+  .badge {{ display:inline-block; padding: 2px 8px; border-radius: 4px; font-weight:bold; font-size: 12px; }}
+  .categoria {{ margin-left: 8px; color:#94a3b8; font-size: 13px; }}
+  .mensaje {{ font-weight:bold; margin: 6px 0 2px 0; }}
+  .detalle {{ color:#cbd5e1; margin: 0; font-size: 14px; }}
+  .sin-hallazgos {{ background:#16324f; border-radius: 6px; padding: 16px; }}
+  footer {{ color:#475569; margin-top: 32px; font-size: 12px; }}
+</style>
+</head>
+<body>
+  <h1>🚨 Alertas Semanales de Negocio</h1>
+  <p class="subtitulo">
+    Semana {semana_inicio.strftime('%d/%m/%Y')} – {semana_fin.strftime('%d/%m/%Y')} ·
+    Generado {generado_en.strftime('%d/%m/%Y %H:%M')}
+  </p>
+  {cuerpo}
+  <footer>Temple · Patagonia · Feriado — reporte automático semanal</footer>
+</body>
+</html>"""
