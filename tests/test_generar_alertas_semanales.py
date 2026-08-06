@@ -1,6 +1,24 @@
 from datetime import date
 from types import SimpleNamespace
-from generar_alertas_semanales import compute_date_ranges, CONFIG, build_mix_rows
+import pytest
+from generar_alertas_semanales import compute_date_ranges, CONFIG, build_mix_rows, fetch_mix_semanal_por_local
+
+
+class _FakeJob:
+    def __init__(self, sql):
+        self.sql = sql
+
+    def result(self):
+        return []
+
+
+class _FakeClient:
+    def __init__(self):
+        self.last_sql = None
+
+    def query(self, sql):
+        self.last_sql = sql
+        return _FakeJob(sql)
 
 
 def test_compute_date_ranges_mid_month():
@@ -55,3 +73,37 @@ def test_build_mix_rows_pct_none_when_no_volume():
     raw = [SimpleNamespace(local="X", semana=date(2026, 8, 10), lts_cerveza=0.0, lts_tragos=0.0)]
     rows = build_mix_rows(raw)
     assert rows[0]["pct_cerveza"] is None
+
+
+def test_fetch_mix_temple_query_shape():
+    client = _FakeClient()
+    fetch_mix_semanal_por_local(client, "Temple", "2026-06-01", "2026-08-16")
+    sql = client.last_sql
+    assert "vw_curated_compilado_ok" in sql
+    assert "establecimiento" in sql
+    assert "cerveza_total" in sql
+    assert "tragos_total" in sql
+    assert "GROUP BY local, semana" in sql
+
+
+def test_fetch_mix_patagonia_query_shape():
+    client = _FakeClient()
+    fetch_mix_semanal_por_local(client, "Patagonia", "2026-06-01", "2026-08-16")
+    sql = client.last_sql
+    assert "curated_mix" in sql
+    assert "cerveza_total" in sql
+    assert "tragos_total" in sql
+
+
+def test_fetch_mix_feriado_query_shape():
+    client = _FakeClient()
+    fetch_mix_semanal_por_local(client, "Feriado", "2026-06-01", "2026-08-16")
+    sql = client.last_sql
+    assert "vw_Ventas_Feriado" in sql
+    assert "Categoria_Empresa" in sql
+
+
+def test_fetch_mix_unknown_marca_raises():
+    client = _FakeClient()
+    with pytest.raises(ValueError):
+        fetch_mix_semanal_por_local(client, "Otra", "2026-06-01", "2026-08-16")

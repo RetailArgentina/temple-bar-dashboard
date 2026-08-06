@@ -85,3 +85,72 @@ def build_mix_rows(raw_rows) -> list:
             "pct_cerveza": pct_cerveza,
         })
     return out
+
+
+def _fetch_mix_temple(client, desde, hasta):
+    q = f"""
+    SELECT
+      establecimiento                          AS local,
+      DATE_TRUNC(fecha, WEEK(MONDAY))           AS semana,
+      ROUND(SUM(COALESCE(cerveza_total,0)), 2) AS lts_cerveza,
+      ROUND(SUM(COALESCE(tragos_total, 0)), 2) AS lts_tragos
+    FROM `temple-bar-439715.curated_database.vw_curated_compilado_ok`
+    WHERE fecha BETWEEN '{desde}' AND '{hasta}'
+    GROUP BY local, semana
+    ORDER BY local, semana
+    """
+    return list(client.query(q).result())
+
+
+def _fetch_mix_patagonia(client, desde, hasta):
+    q = f"""
+    SELECT
+      establecimiento                          AS local,
+      DATE_TRUNC(fecha, WEEK(MONDAY))           AS semana,
+      ROUND(SUM(COALESCE(cerveza_total,0)), 2) AS lts_cerveza,
+      ROUND(SUM(COALESCE(tragos_total, 0)), 2) AS lts_tragos
+    FROM `patagonia-refugios.curated_database.curated_mix`
+    WHERE fecha BETWEEN '{desde}' AND '{hasta}'
+    GROUP BY local, semana
+    ORDER BY local, semana
+    """
+    return list(client.query(q).result())
+
+
+def _fetch_mix_feriado(client, desde, hasta):
+    # Feriado no tiene un campo "tragos_total" propio en Ventas_Toteat (a
+    # diferencia de Temple/Patagonia). Se usa "todo lo que no es cerveza"
+    # (gin, fernet, vermú, etc.) como el bucket comparable de "tragos",
+    # mismo criterio de Categoria_Empresa que ya usa fetch_locales_feriado()
+    # en generar_preview_producto.py.
+    q = f"""
+    SELECT
+      Establecimiento                                          AS local,
+      DATE_TRUNC(Fecha, WEEK(MONDAY))                          AS semana,
+      ROUND(SUM(CASE WHEN LOWER(TRIM(Categoria_Empresa))
+                          IN ('cmq cerveza','temple cerveza')
+                     THEN COALESCE(Litros,0) ELSE 0 END), 2)   AS lts_cerveza,
+      ROUND(SUM(CASE WHEN LOWER(TRIM(Categoria_Empresa))
+                          NOT IN ('cmq cerveza','temple cerveza')
+                     THEN COALESCE(Litros,0) ELSE 0 END), 2)   AS lts_tragos
+    FROM `temple-bar-439715.Feriado.vw_Ventas_Feriado`
+    WHERE Fecha BETWEEN '{desde}' AND '{hasta}'
+    GROUP BY local, semana
+    ORDER BY local, semana
+    """
+    return list(client.query(q).result())
+
+
+_MIX_FETCHERS = {
+    "Temple": _fetch_mix_temple,
+    "Patagonia": _fetch_mix_patagonia,
+    "Feriado": _fetch_mix_feriado,
+}
+
+
+def fetch_mix_semanal_por_local(client, marca: str, desde: str, hasta: str) -> list:
+    """Filas crudas de BQ con local/semana/lts_cerveza/lts_tragos para la marca dada."""
+    fetcher = _MIX_FETCHERS.get(marca)
+    if fetcher is None:
+        raise ValueError(f"Marca desconocida para fetch de mix: {marca!r}")
+    return fetcher(client, desde, hasta)
