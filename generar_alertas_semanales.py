@@ -172,10 +172,34 @@ def fetch_mix_semanal_por_local(client, marca: str, desde: str, hasta: str) -> l
 
 def evaluar_regla_mix(mix_rows: list, marca: str, semana_evaluada, config: dict) -> list:
     """Detecta locales cuyo mix cerveza/tragos se desvía de su propia historia
-    y/o del promedio de sus pares (misma marca) en la semana evaluada."""
+    y/o de su relación histórica habitual con sus pares (misma marca) en la
+    semana evaluada.
+
+    La señal de pares compara el desvío ACTUAL de este local respecto al
+    promedio de sus pares contra el desvío HISTÓRICO TÍPICO de ese mismo
+    local respecto a sus pares -- no contra cero. Comparar contra el promedio
+    plano de la marca (validado a mano el 06/08/2026 contra datos reales)
+    marca casi todos los locales todas las semanas, porque hay variación
+    estructural real entre locales (algunos venden más tragos que otros por
+    naturaleza del local/clientela, sin que eso sea una novedad); lo que
+    importa es si ESE desvío particular cambia, no si existe."""
     por_local = {}
     for row in mix_rows:
         por_local.setdefault(row["local"], []).append(row)
+
+    # {semana: {local: pct_cerveza}} -- para calcular el promedio de pares de
+    # cualquier semana (histórica o actual), excluyendo el local evaluado.
+    pct_por_semana = {}
+    for local, filas in por_local.items():
+        for f in filas:
+            if f["pct_cerveza"] is not None:
+                pct_por_semana.setdefault(f["semana"], {})[local] = f["pct_cerveza"]
+
+    def peer_avg(semana, excluir_local):
+        valores = [pct for loc, pct in pct_por_semana.get(semana, {}).items() if loc != excluir_local]
+        if len(valores) >= config["mix_min_locales_peer"]:
+            return sum(valores) / len(valores)
+        return None
 
     hallazgos = []
     for local, filas in por_local.items():
@@ -194,15 +218,22 @@ def evaluar_regla_mix(mix_rows: list, marca: str, semana_evaluada, config: dict)
             self_avg = sum(historia) / len(historia)
             desvio_self = (actual["pct_cerveza"] - self_avg) * 100
 
-        peers = [f["pct_cerveza"] for otro_local, filas_otro in por_local.items()
-                 if otro_local != local
-                 for f in filas_otro
-                 if f["semana"] == semana_evaluada and f["pct_cerveza"] is not None]
         desvio_peer = None
-        peer_avg = None
-        if len(peers) >= config["mix_min_locales_peer"]:
-            peer_avg = sum(peers) / len(peers)
-            desvio_peer = (actual["pct_cerveza"] - peer_avg) * 100
+        excess_hist_avg = None
+        excess_actual = None
+        peer_avg_actual = peer_avg(semana_evaluada, local)
+        if peer_avg_actual is not None:
+            excess_actual = actual["pct_cerveza"] - peer_avg_actual
+            excesos_hist = []
+            for f in filas:
+                if f["semana"] == semana_evaluada or f["pct_cerveza"] is None:
+                    continue
+                pa = peer_avg(f["semana"], local)
+                if pa is not None:
+                    excesos_hist.append(f["pct_cerveza"] - pa)
+            if len(excesos_hist) >= config["mix_min_semanas_historia"]:
+                excess_hist_avg = sum(excesos_hist) / len(excesos_hist)
+                desvio_peer = (excess_actual - excess_hist_avg) * 100
 
         self_flag = desvio_self is not None and abs(desvio_self) >= config["mix_desvio_self_pp"]
         peer_flag = desvio_peer is not None and abs(desvio_peer) >= config["mix_desvio_peer_pp"]
@@ -216,7 +247,11 @@ def evaluar_regla_mix(mix_rows: list, marca: str, semana_evaluada, config: dict)
 
         pct_txt = f"{actual['pct_cerveza'] * 100:.0f}%"
         self_txt = f"{self_avg * 100:.0f}% (su propia historia)" if self_avg is not None else "sin historia suficiente"
-        peer_txt = f"{peer_avg * 100:.0f}% (locales pares)" if peer_avg is not None else "sin pares comparables"
+        if excess_hist_avg is not None:
+            peer_txt = (f"vs. pares esta semana {excess_actual * 100:+.0f}pp "
+                        f"(habitual para este local: {excess_hist_avg * 100:+.0f}pp)")
+        else:
+            peer_txt = "sin historia de pares suficiente"
         hallazgos.append({
             "marca": marca,
             "local": local,

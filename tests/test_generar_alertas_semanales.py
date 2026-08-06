@@ -120,17 +120,43 @@ def _rows_semana(local, semana, pct, lts_total=100.0):
 
 def test_mix_ambas_senales_da_alta():
     semana = date(2026, 8, 10)
+    # MADERO: 5 semanas de historia propia a 0.80, pares estables en 0.60
+    # esas mismas semanas -> desvio historico de MADERO vs pares = +20pp.
     historia = [_rows_semana("MADERO", semana - timedelta(weeks=i), 0.80) for i in range(1, 6)]
-    peers = [_rows_semana("OTRO_A", semana, 0.78), _rows_semana("OTRO_B", semana, 0.79),
-             _rows_semana("OTRO_C", semana, 0.80)]
-    actual = _rows_semana("MADERO", semana, 0.55)  # cae 25pp vs su historia y vs pares
-    hallazgos = evaluar_regla_mix(historia + peers + [actual], "Patagonia", semana, CONFIG)
-    assert len(hallazgos) == 1
-    h = hallazgos[0]
-    assert h["local"] == "MADERO"
+    peers_hist = [_rows_semana(loc, semana - timedelta(weeks=i), 0.60)
+                  for i in range(1, 6) for loc in ("OTRO_A", "OTRO_B", "OTRO_C")]
+    peers_actual = [_rows_semana("OTRO_A", semana, 0.58), _rows_semana("OTRO_B", semana, 0.60),
+                     _rows_semana("OTRO_C", semana, 0.62)]
+    actual = _rows_semana("MADERO", semana, 0.55)  # cae 25pp vs su historia propia
+    # vs pares: excess_actual = 0.55-0.60=-0.05, excess historico = +0.20 -> desvio_peer=-25pp
+    # Nota: con solo 4 locales en total, la caida de MADERO tambien corre un
+    # poco el promedio de pares de OTRO_C -- efecto matematico esperado en un
+    # universo tan chico (insignificante con las decenas de locales reales
+    # por marca), por eso se verifica el hallazgo de MADERO puntualmente en
+    # vez de asumir que es el unico de la lista.
+    hallazgos = evaluar_regla_mix(historia + peers_hist + peers_actual + [actual], "Patagonia", semana, CONFIG)
+    madero_h = [h for h in hallazgos if h["local"] == "MADERO"]
+    assert len(madero_h) == 1
+    h = madero_h[0]
     assert h["marca"] == "Patagonia"
     assert h["categoria"] == "Mix producto"
     assert h["severidad"] == "Alta"
+
+
+def test_mix_diferencia_estructural_no_dispara_pares():
+    """Un local que SIEMPRE esta ~20pp por debajo de sus pares (mix distinto
+    por naturaleza del local) no debe generar hallazgo si esa relacion no
+    cambia esta semana -- solo debe alertar cuando el desvio vs pares se
+    aparta de lo habitual para ese local, no por existir de por si."""
+    semana = date(2026, 8, 10)
+    historia = [_rows_semana("MADERO2", semana - timedelta(weeks=i), 0.50) for i in range(1, 6)]
+    peers_hist = [_rows_semana(loc, semana - timedelta(weeks=i), 0.70)
+                  for i in range(1, 6) for loc in ("OTRO_A", "OTRO_B", "OTRO_C")]
+    peers_actual = [_rows_semana("OTRO_A", semana, 0.68), _rows_semana("OTRO_B", semana, 0.70),
+                    _rows_semana("OTRO_C", semana, 0.72)]
+    actual = _rows_semana("MADERO2", semana, 0.48)  # -2pp vs su historia, y sigue ~20pp bajo pares (sin cambio)
+    hallazgos = evaluar_regla_mix(historia + peers_hist + peers_actual + [actual], "Patagonia", semana, CONFIG)
+    assert hallazgos == []
 
 
 def test_mix_solo_senal_propia_da_media():
