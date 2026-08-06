@@ -237,3 +237,28 @@ def test_render_agrupa_por_severidad_alta_primero():
     assert pos_alta < pos_media
     assert "Mix producto" in html
     assert "10/08/2026" in html and "16/08/2026" in html
+
+
+def test_main_no_upload_genera_archivo_local(tmp_path, monkeypatch):
+    import os
+    from unittest.mock import patch
+
+    output_path = tmp_path / "alertas_test.html"
+    monkeypatch.chdir(tmp_path)
+
+    with patch("generar_alertas_semanales.get_client", return_value=object()), \
+         patch("generar_alertas_semanales.fetch_semana", return_value=[]), \
+         patch("generar_alertas_semanales.fetch_mes_actual", return_value={}), \
+         patch("generar_alertas_semanales.fetch_objetivos", return_value={}), \
+         patch("generar_alertas_semanales.fetch_mix_semanal_por_local", return_value=[]), \
+         patch("sys.argv", ["generar_alertas_semanales.py",
+                             "--semana", "2026-08-10",
+                             "--output", str(output_path),
+                             "--no-upload"]):
+        import generar_alertas_semanales
+        generar_alertas_semanales.main()
+
+    assert output_path.exists()
+    contenido = output_path.read_text(encoding="utf-8")
+    assert "Alertas Semanales de Negocio" in contenido
+    assert "Sin hallazgos relevantes esta semana" in contenido

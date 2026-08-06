@@ -20,6 +20,12 @@ if hasattr(sys.stdout, 'reconfigure'):
 if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
+from generar_informe_semanal import (
+    get_client, fetch_semana, fetch_mes_actual, fetch_objetivos,
+    agg_por_marca, agg_por_local,
+)
+from generar_preview_producto import upload_to_gcs
+
 CONFIG = {
     "ticket_caida_pct":         -8,
     "mix_desvio_self_pp":       15,
@@ -358,3 +364,66 @@ def render_alertas_html(hallazgos: list, semana_inicio, semana_fin, generado_en)
   <footer>Temple · Patagonia · Feriado — reporte automático semanal</footer>
 </body>
 </html>"""
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--semana', default=None,
+                         help='Lunes de inicio de la semana a evaluar (YYYY-MM-DD, default: semana pasada)')
+    parser.add_argument('--output', default='alertas_semanales.html')
+    parser.add_argument('--gcs-bucket', default='temple-bar-dashboard-cache')
+    parser.add_argument('--gcs-blob', default='alertas_semanales.html')
+    parser.add_argument('--no-upload', action='store_true')
+    args = parser.parse_args()
+
+    if args.semana:
+        semana_inicio = datetime.strptime(args.semana, '%Y-%m-%d').date()
+    else:
+        hoy = date.today()
+        lunes_esta_semana = hoy - timedelta(days=hoy.weekday())
+        semana_inicio = lunes_esta_semana - timedelta(days=7)
+
+    rangos = compute_date_ranges(semana_inicio)
+    client = get_client()
+
+    rows_esta = fetch_semana(client, rangos["semana_inicio"].isoformat(), rangos["semana_fin"].isoformat())
+    rows_ant = fetch_semana(client, rangos["sem_ant_ini"].isoformat(), rangos["sem_ant_fin"].isoformat())
+    marca_esta = agg_por_marca(rows_esta)
+    marca_ant = agg_por_marca(rows_ant)
+    locales_top = agg_por_local(rows_esta)
+    locales_ant_dict = {(l['Marca'], l['local']): l['fac_M'] for l in agg_por_local(rows_ant)}
+
+    mes_real = fetch_mes_actual(client, rangos["mes_inicio"].isoformat(), rangos["semana_fin"].isoformat())
+    objetivos = fetch_objetivos()
+
+    hallazgos = []
+    hallazgos += evaluar_regla_performance(
+        marca_esta, marca_ant, locales_top, locales_ant_dict, objetivos,
+        rangos["mes_key"], rangos["pace"], rangos["dias_rest"], CONFIG, mes_real,
+    )
+    hallazgos += evaluar_regla_ticket_ordenes(marca_esta, marca_ant, CONFIG)
+
+    desde_mix = (rangos["semana_inicio"] - timedelta(weeks=8)).isoformat()
+    hasta_mix = rangos["semana_fin"].isoformat()
+    for marca in MARCAS_ACTIVAS:
+        raw_mix = fetch_mix_semanal_por_local(client, marca, desde_mix, hasta_mix)
+        mix_rows = build_mix_rows(raw_mix)
+        hallazgos += evaluar_regla_mix(mix_rows, marca, rangos["semana_inicio"], CONFIG)
+
+    html = render_alertas_html(hallazgos, rangos["semana_inicio"], rangos["semana_fin"], datetime.now())
+    with open(args.output, 'w', encoding='utf-8') as f:
+        f.write(html)
+    print(f"Generado {args.output} con {len(hallazgos)} hallazgo(s)")
+
+    if not args.no_upload:
+        from google.oauth2 import service_account
+        import os as _os
+        scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+        sa_file = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                 "temple-bar-439715-da51b292ce5d.json")
+        creds = service_account.Credentials.from_service_account_file(sa_file, scopes=scopes)
+        upload_to_gcs(args.output, args.gcs_bucket, args.gcs_blob, creds)
+
+
+if __name__ == '__main__':
+    main()
