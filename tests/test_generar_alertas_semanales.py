@@ -262,3 +262,89 @@ def test_main_no_upload_genera_archivo_local(tmp_path, monkeypatch):
     contenido = output_path.read_text(encoding="utf-8")
     assert "Alertas Semanales de Negocio" in contenido
     assert "Sin hallazgos relevantes esta semana" in contenido
+
+
+def test_main_no_upload_con_hallazgos_reales(tmp_path, monkeypatch):
+    """Test de integración completa: verifica que main() genera hallazgos reales
+    de las 3 categorías (Performance, Ticket/Órdenes, Mix producto) cuando hay
+    datos que los disparan."""
+    import os
+    from unittest.mock import patch
+    from datetime import date, timedelta
+
+    output_path = tmp_path / "alertas_test_hallazgos.html"
+    monkeypatch.chdir(tmp_path)
+
+    semana_eval = date(2026, 8, 3)
+
+    # === PERFORMANCE: pace bajo (cumpl_pace < 80 → Alta) ===
+    # Cálculo con semana 2026-08-03, hoy=2026-08-06:
+    # pace = 6/31 ≈ 0.194, obj_M=165 → obj_pace=32.0, real_M=25 → cumpl_pace=78.1% (<80)
+    marca_esta = {"Temple": {"fac_M": 25.0, "ordenes": 1000}}
+    marca_ant = {"Temple": {"fac_M": 30.0, "ordenes": 1100}}
+    locales_top = []  # Sin caída de locales para simplificar
+    locales_ant_dict = {}
+    objetivos = {"Temple": {"2026-08": 165.0}}
+    mes_real = {"Temple": {"fac_M": 25.0}}
+
+    # === TICKET/ÓRDENES: caída fuerte de órdenes (dp_o < -20 → Alta) ===
+    # Cálculo: esta_semana=775, ant_semana=1000 → dp_o=-22.5%
+    marca_esta["Temple"]["ordenes"] = 775
+    marca_ant["Temple"]["ordenes"] = 1000
+
+    # === MIX PRODUCTO: desvío de pct_cerveza (ambas señales → Alta) ===
+    # Historia de MADERO: 80% en 4-5 semanas previas
+    # Actual: 55% → desvio_self = -25pp (|desvio_self| >= 15 → flagea)
+    # Peers: promedio ~79% → desvio_peer = -24pp (|desvio_peer| >= 10 → flagea)
+    mix_rows_temple = [
+        SimpleNamespace(local="MADERO", semana=semana_eval - timedelta(weeks=5), lts_cerveza=80.0, lts_tragos=20.0),
+        SimpleNamespace(local="MADERO", semana=semana_eval - timedelta(weeks=4), lts_cerveza=80.0, lts_tragos=20.0),
+        SimpleNamespace(local="MADERO", semana=semana_eval - timedelta(weeks=3), lts_cerveza=80.0, lts_tragos=20.0),
+        SimpleNamespace(local="MADERO", semana=semana_eval - timedelta(weeks=2), lts_cerveza=80.0, lts_tragos=20.0),
+        SimpleNamespace(local="MADERO", semana=semana_eval - timedelta(weeks=1), lts_cerveza=80.0, lts_tragos=20.0),
+        SimpleNamespace(local="MADERO", semana=semana_eval, lts_cerveza=55.0, lts_tragos=45.0),  # cae a 55%
+        # Pares para la semana evaluada (mix_min_locales_peer=3)
+        SimpleNamespace(local="OTRO_A", semana=semana_eval, lts_cerveza=78.0, lts_tragos=22.0),
+        SimpleNamespace(local="OTRO_B", semana=semana_eval, lts_cerveza=79.0, lts_tragos=21.0),
+        SimpleNamespace(local="OTRO_C", semana=semana_eval, lts_cerveza=80.0, lts_tragos=20.0),
+    ]
+
+    # Mock de fetch_mix_semanal_por_local: devuelve datos de Mix para Temple, vacío para Patagonia/Feriado
+    def fetch_mix_mock(client, marca, desde, hasta):
+        if marca == "Temple":
+            return mix_rows_temple
+        return []
+
+    # Mock de agg_por_marca y agg_por_local
+    call_count = {"agg_marca": 0}
+    def agg_marca_mock(rows):
+        call_count["agg_marca"] += 1
+        return marca_esta if call_count["agg_marca"] == 1 else marca_ant
+
+    def agg_local_mock(rows):
+        return locales_top
+
+    with patch("generar_alertas_semanales.get_client", return_value=object()), \
+         patch("generar_alertas_semanales.fetch_semana", return_value=[]), \
+         patch("generar_alertas_semanales.agg_por_marca", side_effect=agg_marca_mock), \
+         patch("generar_alertas_semanales.agg_por_local", side_effect=agg_local_mock), \
+         patch("generar_alertas_semanales.fetch_mes_actual", return_value=mes_real), \
+         patch("generar_alertas_semanales.fetch_objetivos", return_value=objetivos), \
+         patch("generar_alertas_semanales.fetch_mix_semanal_por_local", side_effect=fetch_mix_mock), \
+         patch("sys.argv", ["generar_alertas_semanales.py",
+                             "--semana", "2026-08-03",
+                             "--output", str(output_path),
+                             "--no-upload"]):
+        import generar_alertas_semanales
+        generar_alertas_semanales.main()
+
+    assert output_path.exists()
+    contenido = output_path.read_text(encoding="utf-8")
+
+    # Verificaciones: debe haber hallazgos de las 3 categorías
+    assert "Performance" in contenido, "Falta categoría Performance"
+    assert "Mix producto" in contenido, "Falta categoría Mix producto"
+    assert "Ticket/Órdenes" in contenido, "Falta categoría Ticket/Órdenes"
+    assert "Sin hallazgos relevantes esta semana" not in contenido, "No debería haber mensaje de sin hallazgos"
+    # Verificar que hay al menos una severidad Alta
+    assert "Alta" in contenido, "Debería haber al menos un hallazgo de severidad Alta"

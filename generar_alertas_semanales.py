@@ -109,6 +109,14 @@ def _fetch_mix_temple(client, desde, hasta):
 
 
 def _fetch_mix_patagonia(client, desde, hasta):
+    # NOTA: Gap de datos conocido en patagonia-refugios.curated_database.curated_mix:
+    # La columna cerveza_total es NULL para líneas de combos comida+cerveza (gap en la
+    # ingesta de datos). El COALESCE(cerveza_total,0) aquí trata esos NULLs como 0 litros
+    # de cerveza, lo que puede generar falsos positivos en evaluar_regla_mix cuando hay
+    # muchos combos en una semana (pct_cerveza se ve artificialmente bajo porque se divide
+    # un volumen menor entre un denomin. parcial). En locales/semanas con >30% de volumen
+    # en combos, la regla de mix puede disparar sin que haya un verdadero cambio en estrategia.
+    # Ver lesson_curated-mix-mismo-hueco-combos.md en memoria de proyecto.
     q = f"""
     SELECT
       establecimiento                          AS local,
