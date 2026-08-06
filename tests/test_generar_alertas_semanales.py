@@ -182,8 +182,8 @@ def test_performance_pace_bajo_da_alta():
 
 
 def test_performance_caida_local_da_media():
-    locales_top = [{"Marca": "Temple", "local": "PALERMO", "fac_M": 4.0, "ordenes": 500}]
-    locales_ant_dict = {("Temple", "PALERMO"): 5.0}  # -20% exacto -> Media
+    locales_top = [{"Marca": "Temple", "local": "PALERMO", "fac_M": 6.5, "ordenes": 500}]
+    locales_ant_dict = {("Temple", "PALERMO"): 10.0}  # -35% exacto -> Media
     hallazgos = evaluar_regla_performance(
         marca_esta={}, marca_ant={}, locales_top=locales_top,
         locales_ant_dict=locales_ant_dict, objetivos={}, mes_key="2026-08",

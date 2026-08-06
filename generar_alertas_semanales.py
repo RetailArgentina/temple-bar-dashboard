@@ -264,16 +264,24 @@ def evaluar_regla_performance(marca_esta, marca_ant, locales_top, locales_ant_di
                        f"en los próximos {dias_rest} días.",
         })
 
+    # Umbral calibrado a mano el 06/08/2026 contra la semana 27/07-02/08 real:
+    # con -20/-30 (umbral original heredado de generar_informe_semanal.py, que
+    # ahí solo se mostraba top-3) esta regla sin cap generaba 14 hallazgos en
+    # una sola semana — la mayoría reflejaba volatilidad normal semana a semana
+    # a nivel local (la facturación total de la compañía solo cayó -7% esa
+    # semana, pero 31 de 50 locales bajaron y 19 subieron, con swings de hasta
+    # ±96%). Subido a -35/-45 para que solo alerte ante caídas bien por encima
+    # de esa volatilidad habitual.
     caidas = []
     for loc in locales_top:
         key = (loc['Marca'], loc['local'])
         fac0 = locales_ant_dict.get(key, 0)
         if fac0 > 0 and loc['fac_M'] > 0:
             dp = (loc['fac_M'] - fac0) / fac0 * 100
-            if dp <= -20:
+            if dp <= -35:
                 caidas.append((loc, dp, fac0))
     for loc, dp, fac0 in caidas:
-        severidad = "Alta" if dp < -30 else "Media"
+        severidad = "Alta" if dp < -45 else "Media"
         hallazgos.append({
             "marca": loc['Marca'], "local": loc['local'], "categoria": "Performance",
             "severidad": severidad,
