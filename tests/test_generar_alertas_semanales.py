@@ -1,7 +1,7 @@
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
 import pytest
-from generar_alertas_semanales import compute_date_ranges, CONFIG, build_mix_rows, fetch_mix_semanal_por_local
+from generar_alertas_semanales import compute_date_ranges, CONFIG, build_mix_rows, fetch_mix_semanal_por_local, evaluar_regla_mix
 
 
 class _FakeJob:
@@ -107,3 +107,59 @@ def test_fetch_mix_unknown_marca_raises():
     client = _FakeClient()
     with pytest.raises(ValueError):
         fetch_mix_semanal_por_local(client, "Otra", "2026-06-01", "2026-08-16")
+
+
+def _rows_semana(local, semana, pct, lts_total=100.0):
+    """Helper de test: fila con pct_cerveza dado y volumen total fijo."""
+    return {
+        "local": local, "semana": semana,
+        "lts_cerveza": lts_total * pct, "lts_tragos": lts_total * (1 - pct),
+        "pct_cerveza": pct,
+    }
+
+
+def test_mix_ambas_senales_da_alta():
+    semana = date(2026, 8, 10)
+    historia = [_rows_semana("MADERO", semana - timedelta(weeks=i), 0.80) for i in range(1, 6)]
+    peers = [_rows_semana("OTRO_A", semana, 0.78), _rows_semana("OTRO_B", semana, 0.79),
+             _rows_semana("OTRO_C", semana, 0.80)]
+    actual = _rows_semana("MADERO", semana, 0.55)  # cae 25pp vs su historia y vs pares
+    hallazgos = evaluar_regla_mix(historia + peers + [actual], "Patagonia", semana, CONFIG)
+    assert len(hallazgos) == 1
+    h = hallazgos[0]
+    assert h["local"] == "MADERO"
+    assert h["marca"] == "Patagonia"
+    assert h["categoria"] == "Mix producto"
+    assert h["severidad"] == "Alta"
+
+
+def test_mix_solo_senal_propia_da_media():
+    semana = date(2026, 8, 10)
+    historia = [_rows_semana("MADERO", semana - timedelta(weeks=i), 0.80) for i in range(1, 6)]
+    # Sin pares (menos de mix_min_locales_peer) -> solo se evalúa self
+    actual = _rows_semana("MADERO", semana, 0.60)
+    hallazgos = evaluar_regla_mix(historia + [actual], "Patagonia", semana, CONFIG)
+    assert len(hallazgos) == 1
+    assert hallazgos[0]["severidad"] == "Media"
+
+
+def test_mix_sin_desvio_no_genera_hallazgo():
+    semana = date(2026, 8, 10)
+    historia = [_rows_semana("MADERO", semana - timedelta(weeks=i), 0.80) for i in range(1, 6)]
+    actual = _rows_semana("MADERO", semana, 0.79)
+    hallazgos = evaluar_regla_mix(historia + [actual], "Patagonia", semana, CONFIG)
+    assert hallazgos == []
+
+
+def test_mix_bajo_volumen_minimo_se_ignora():
+    semana = date(2026, 8, 10)
+    actual = _rows_semana("LOCAL_CHICO", semana, 0.10, lts_total=10.0)  # < mix_min_lts_semana
+    hallazgos = evaluar_regla_mix([actual], "Feriado", semana, CONFIG)
+    assert hallazgos == []
+
+
+def test_mix_sin_fila_de_la_semana_evaluada_se_ignora():
+    semana = date(2026, 8, 10)
+    historia = [_rows_semana("MADERO", semana - timedelta(weeks=1), 0.80)]
+    hallazgos = evaluar_regla_mix(historia, "Patagonia", semana, CONFIG)
+    assert hallazgos == []

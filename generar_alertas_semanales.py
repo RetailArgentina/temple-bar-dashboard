@@ -154,3 +154,64 @@ def fetch_mix_semanal_por_local(client, marca: str, desde: str, hasta: str) -> l
     if fetcher is None:
         raise ValueError(f"Marca desconocida para fetch de mix: {marca!r}")
     return fetcher(client, desde, hasta)
+
+
+def evaluar_regla_mix(mix_rows: list, marca: str, semana_evaluada, config: dict) -> list:
+    """Detecta locales cuyo mix cerveza/tragos se desvía de su propia historia
+    y/o del promedio de sus pares (misma marca) en la semana evaluada."""
+    por_local = {}
+    for row in mix_rows:
+        por_local.setdefault(row["local"], []).append(row)
+
+    hallazgos = []
+    for local, filas in por_local.items():
+        actual = next((f for f in filas if f["semana"] == semana_evaluada), None)
+        if actual is None or actual["pct_cerveza"] is None:
+            continue
+        volumen = actual["lts_cerveza"] + actual["lts_tragos"]
+        if volumen < config["mix_min_lts_semana"]:
+            continue
+
+        historia = [f["pct_cerveza"] for f in filas
+                    if f["semana"] != semana_evaluada and f["pct_cerveza"] is not None]
+        desvio_self = None
+        self_avg = None
+        if len(historia) >= config["mix_min_semanas_historia"]:
+            self_avg = sum(historia) / len(historia)
+            desvio_self = (actual["pct_cerveza"] - self_avg) * 100
+
+        peers = [f["pct_cerveza"] for otro_local, filas_otro in por_local.items()
+                 if otro_local != local
+                 for f in filas_otro
+                 if f["semana"] == semana_evaluada and f["pct_cerveza"] is not None]
+        desvio_peer = None
+        peer_avg = None
+        if len(peers) >= config["mix_min_locales_peer"]:
+            peer_avg = sum(peers) / len(peers)
+            desvio_peer = (actual["pct_cerveza"] - peer_avg) * 100
+
+        self_flag = desvio_self is not None and abs(desvio_self) >= config["mix_desvio_self_pp"]
+        peer_flag = desvio_peer is not None and abs(desvio_peer) >= config["mix_desvio_peer_pp"]
+
+        if self_flag and peer_flag:
+            severidad = "Alta"
+        elif self_flag or peer_flag:
+            severidad = "Media"
+        else:
+            continue
+
+        pct_txt = f"{actual['pct_cerveza'] * 100:.0f}%"
+        self_txt = f"{self_avg * 100:.0f}% (su propia historia)" if self_avg is not None else "sin historia suficiente"
+        peer_txt = f"{peer_avg * 100:.0f}% (locales pares)" if peer_avg is not None else "sin pares comparables"
+        hallazgos.append({
+            "marca": marca,
+            "local": local,
+            "categoria": "Mix producto",
+            "severidad": severidad,
+            "mensaje": f"{local} ({marca}): cerveza es el {pct_txt} del volumen cerveza+tragos esta semana",
+            "detalle": f"Esperado: {self_txt}; {peer_txt}.",
+        })
+
+    orden = {"Alta": 0, "Media": 1, "Baja": 2}
+    hallazgos.sort(key=lambda h: orden.get(h["severidad"], 9))
+    return hallazgos
