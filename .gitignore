@@ -70,3 +70,19 @@ Thumbs.db
 .idea/
 *.swp
 .worktrees/
+
+# Otros proyectos dentro de la misma carpeta de Drive (no son parte de este repo)
+Proyecto_Costeo/
+Proyecto_Locales_Propios/
+Proyecto_Mundial/
+Proyecto_Patagonia_Semestral/
+Reporte_Carta_4_Refugios/
+
+# HTML generados / datos de objetivos (no se trackean, se publican via GCS)
+resenas.html
+alertas_semanales.html
+objetivos_destileria_*.xlsx
+
+# Basura de SO / herramientas locales
+desktop.ini
+.superpowers/

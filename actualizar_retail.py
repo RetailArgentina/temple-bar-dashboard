@@ -535,6 +535,27 @@ def fetch_mensual_data(client):
     print(f" {len(rows)} rows OK")
     return [{"mes": r.mes, "m": r.m, "fac": r.fac or 0, "ord": r.ord or 0, "tick": r.tick or 0} for r in rows]
 
+def fetch_local_mensual_data(client):
+    # Agregado mes+marca+local (no colapsa el local) para poder calcular
+    # comparaciones "same-store" (solo locales presentes en ambos períodos)
+    # en el frontend. COUNT(DISTINCT Orden) es seguro acá porque ya se
+    # agrupa por Local (Orden se reinicia por local, ver fetch_mensual_data).
+    print("  Querying LOCAL_MENSUAL (per-local, para same-store)...", end='', flush=True)
+    q = f"""
+        SELECT FORMAT_DATE('%Y-%m', Fecha) AS mes, Marca AS m, Local AS l,
+               ROUND(SUM(SAFE_CAST(Facturacion AS FLOAT64))/1e6, 3) AS fac,
+               COUNT(DISTINCT Orden) AS ord
+        FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_VENTAS}`
+        WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL 28 MONTH)
+          AND Marca IS NOT NULL AND Local IS NOT NULL
+          AND SAFE_CAST(Facturacion AS FLOAT64) BETWEEN 0 AND 1e12
+        GROUP BY mes, m, l
+        ORDER BY mes, m, l
+    """
+    rows = list(client.query(q).result())
+    print(f" {len(rows)} rows OK")
+    return [{"mes": r.mes, "m": r.m, "l": r.l, "fac": r.fac or 0, "ord": r.ord or 0} for r in rows]
+
 def fetch_turnos_data(client):
     # Mismo problema/fix que fetch_mensual_data: Orden se reinicia por Local,
     # asi que se agrupa por mes+Local primero y se suma despues (m,t no
@@ -1090,7 +1111,8 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
                              locales_obj_data=None,
                              loc_count_by_mes=None,
                              dias_data=None,
-                             producto_data=None):
+                             producto_data=None,
+                             local_mensual_rows=None):
     """Generate the dashboard HTML by reading the template.
 
     Template resolution order:
@@ -1214,6 +1236,11 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
     else:
         print("  ℹ Sin datos dinámicos JS o placeholders ausentes — se usan los valores del template.")
 
+    # ── Inyección de LOCAL_MENSUAL (para comparaciones "same-store") ─────
+    if '__LOCAL_MENSUAL_JSON__' in html:
+        html = html.replace('__LOCAL_MENSUAL_JSON__', json.dumps(local_mensual_rows or [], separators=(',', ':')))
+        print(f"  ✓ LOCAL_MENSUAL inyectado ({len(local_mensual_rows or [])} filas, same-store)")
+
     # ── Inyección de Objetivos ────────────────────────────────────────────
     if '__OBJETIVOS_JSON__' in html:
         obj = objetivos_data or {}
@@ -1314,6 +1341,7 @@ def main():
             "objetivos":  lambda: fetch_objetivos_data(client),
             "royalty":    lambda: fetch_royalty_data(),
             "locales_obj": lambda: fetch_locales_obj(client),
+            "local_mensual": lambda: fetch_local_mensual_data(client),
         }
 
         results = {}
@@ -1332,6 +1360,7 @@ def main():
         objetivos_data   = results["objetivos"]   or {}
         locales_obj_data = results["locales_obj"] or []
         royalty_data     = results["royalty"]
+        local_mensual_rows = results["local_mensual"] or []
 
         # Calcular estructuras derivadas
         if not mensual_rows:
@@ -1356,6 +1385,7 @@ def main():
             loc_count_by_mes=loc_count_by_mes,
             dias_data=dias_data,
             producto_data=None,
+            local_mensual_rows=local_mensual_rows,
         )
 
         # Upload to GCS if requested (Cloud Run mode)

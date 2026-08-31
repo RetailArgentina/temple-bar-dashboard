@@ -19,12 +19,13 @@ import json
 import os
 import re
 import sys
+import time
 from datetime import datetime
 import google.auth
 from google.cloud import bigquery
 
 PROJECT   = "temple-brewery"
-TABLE     = "temple-brewery.Destileria.Ventas_Maestro_Con_Cluster_Final"
+TABLE     = "temple-brewery.Destileria.vw_ventas_con_cluster"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE  = os.path.join(SCRIPT_DIR, "templates", "destileria.html")
 OUTPUT_DEFAULT  = os.path.join(SCRIPT_DIR, "destileria_dashboard.html")
@@ -303,14 +304,17 @@ def _merge(dest, key, vals):
 
 
 def _parse_product_sheet(rows, result):
-    """Parsea hoja 1 (objetivos por etiqueta/producto)."""
+    """Parsea hoja 1 (objetivos por etiqueta/producto).
+    `seen` no se resetea por marca: sk=(brand,key) ya identifica la marca,
+    y debe persistir para descartar el segundo bloque "sensibilizado" que
+    repite el encabezado de la misma marca más abajo en la hoja."""
     brand, month_cols, seen = "bosque", None, set()
     for row in rows:
         if not row:
             continue
         nb = _detect_brand(row)
         if nb:
-            brand, month_cols, seen = nb, None, set()
+            brand, month_cols = nb, None
             continue
         if _is_header(row):
             month_cols = _month_cols(row)
@@ -341,14 +345,17 @@ def _parse_product_sheet(rows, result):
 
 
 def _parse_cluster_sheet(rows, result):
-    """Parsea hoja 2 (objetivos por cluster)."""
+    """Parsea hoja 2 (objetivos por cluster).
+    `seen` no se resetea por marca: sk=(brand,key) ya identifica la marca,
+    y debe persistir para descartar el segundo bloque "sensibilizado" que
+    repite el encabezado de la misma marca más abajo en la hoja."""
     brand, month_cols, seen = "bosque", None, set()
     for row in rows:
         if not row:
             continue
         nb = _detect_brand(row)
         if nb:
-            brand, month_cols, seen = nb, None, set()
+            brand, month_cols = nb, None
             continue
         if _is_header(row):
             month_cols = _month_cols(row)
@@ -454,9 +461,13 @@ def fetch_objectives(creds):
         _parse_cluster_sheet(sheet_to_rows(t2), result)
 
     # Cerveza: objetivos en latas (473 ml c/u) → convertir a litros para comparar con BQ
+    # Excepción: product._TOTAL ("VENTAS TOTALES EN LTS" en hoja "Rolling - Mensual x Etiqueta")
+    # ya viene cargado directamente en litros, no en latas — no convertir esa fila.
     L_POR_LATA = 0.473
     for section in ("product", "cluster"):
         for key, arr in result["cerveza"][section].items():
+            if section == "product" and key == "_TOTAL":
+                continue
             result["cerveza"][section][key] = [round(v * L_POR_LATA, 1) for v in arr]
 
     return result
@@ -561,6 +572,7 @@ def fetch_rows(client):
         Producto, Envase, Tipo, CantEnvases, Litros, Total_
       FROM `{TABLE}`
       WHERE FechaPedido IS NOT NULL
+        AND FechaPedido < '2026-07-01'   -- datos históricos solo hasta el corte; julio en adelante viene de Contabilium
     ),
     cl_latest AS (
       -- Cluster más reciente no-null por cliente
@@ -573,7 +585,7 @@ def fetch_rows(client):
     )
     SELECT
       FORMAT_DATE('%Y-%m-%d', b.FechaPedido)              AS f,
-      COALESCE(c.Clusterizacion, 'Sin clasificar')         AS cl,
+      COALESCE(c.Clusterizacion, 'Sin Cluster')            AS cl,
       COALESCE(b.NombreDeFantasia, 'Sin nombre')           AS nd,
       COALESCE(b.GrupoCliente, '')                         AS gc,
       COALESCE(b.Producto, '')                             AS pr,
@@ -589,6 +601,336 @@ def fetch_rows(client):
     return list(client.query(query).result(timeout=120))
 
 
+# Mapeo de nombre Contabillium → cluster correcto (clientes sin match en cluster_map)
+_CBL_CLUSTER_MAP: dict[str, str] = {
+    "TEMPLE HOLLYWOOD NUEVO":       "Cadena Grupo Temple",
+    "TEMPLE MASCHWITZ":             "Cadena Grupo Temple",
+    "TEMPLE PALERMO NUEVO":         "Cadena Grupo Temple",
+    "TEMPLE PASEO LA PLAZA":        "Cadena Grupo Temple",
+    "TEMPLE RECOLETA SRL":          "Cadena Grupo Temple",
+    "TEMPLE RIO GALLEGOS":          "Cadena Grupo Temple",
+    "TEMPLE SALTA":                 "Cadena Grupo Temple",
+    "TEMPLE SOHO":                  "Cadena Grupo Temple",
+    "LOS TEMPLOS CABALLITO S.R.L.": "Cadena Grupo Temple",
+    "REBELION":                     "Cadena Grupo Temple",
+    "BARRA PATIO DE LOS LECHEROS":  "Bar/Resto",
+}
+
+
+def fetch_rows_contabilium(creds):
+    """Trae ventas de Contabilium (temple-bar-439715) desde 2026-07-01.
+    Devuelve SimpleNamespace con los mismos campos que fetch_rows()."""
+    import types
+    import google.cloud.bigquery as _bq
+    client = _bq.Client(project="temple-bar-439715", credentials=creds)
+    query = """
+    WITH cluster_map AS (
+      SELECT NombreDeFantasia, Clusterizacion
+      FROM `temple-brewery.Destileria.vw_ventas_con_cluster`
+      WHERE Clusterizacion IS NOT NULL
+      QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY NombreDeFantasia ORDER BY FechaPedido DESC
+      ) = 1
+    )
+    SELECT
+        FORMAT_DATE('%Y-%m-%d', ci.fecha_emision)                              AS f,
+        COALESCE(cl.cluster, cm.Clusterizacion, 'Sin Cluster')                AS cl,
+        COALESCE(NULLIF(TRIM(cl.nombre_fantasia),''), NULLIF(TRIM(cl.razon_social),''), 'Sin nombre') AS nd,
+        ''                                                                      AS gc,
+        COALESCE(ci.concepto, '')                                               AS pr,
+        CASE
+            WHEN UPPER(ci.concepto) LIKE '%473%'
+              OR UPPER(ci.concepto) LIKE '%LATA%'  THEN 'LATA'
+            WHEN UPPER(ci.concepto) LIKE '%BARRIL%' THEN 'BARRIL'
+            ELSE ''
+        END                                                                     AS en,
+        COALESCE(ci.tipo_fc, '')                                                AS ti,
+        (CASE WHEN ci.tipo_fc LIKE 'NC%' THEN -1 ELSE 1 END)
+            * COALESCE(ci.cantidad,    0.0)                                     AS ce,
+        (CASE WHEN ci.tipo_fc LIKE 'NC%' THEN -1 ELSE 1 END)
+            * ROUND(COALESCE(ci.litros,     0.0), 3)                            AS li,
+        (CASE WHEN ci.tipo_fc LIKE 'NC%' THEN -1 ELSE 1 END)
+            * ROUND(COALESCE(ci.neto_linea, 0.0), 0)                            AS to_
+    FROM `temple-bar-439715.Destileria_Contabilium.comprobantes_items` ci
+    LEFT JOIN `temple-bar-439715.Destileria_Contabilium.clientes` cl
+        ON ci.id_cliente = cl.id_cliente
+    LEFT JOIN cluster_map cm
+        ON TRIM(cl.nombre_fantasia) = cm.NombreDeFantasia
+    WHERE ci.fecha_emision >= '2026-07-01'
+      -- FCA/FCB/FCC/FCE/FCM = facturas reales; COT = venta entregada aún no facturada (a pedido del usuario);
+      -- NCA/NCB/NCC/NCT = notas de crédito (se restan via el signo arriba)
+      AND ci.tipo_fc IN ('FCA','FCB','FCC','FCE','FCM','COT','NCA','NCB','NCC','NCT')
+      AND COALESCE(ci.cantidad, 0) > 0
+      AND COALESCE(ci.tipo_item, 'P') != 'S'
+    ORDER BY ci.fecha_emision
+    """
+    rows = list(client.query(query).result(timeout=60))
+    result = []
+    for r in rows:
+        nd = r.nd
+        cl = _CBL_CLUSTER_MAP.get(nd, r.cl)   # override cluster si el nombre está mapeado
+        result.append(types.SimpleNamespace(
+            f=r.f, cl=cl, nd=nd, gc=r.gc,
+            pr=r.pr, en=r.en, ti=r.ti,
+            ce=r.ce, li=r.li, to_=r.to_
+        ))
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Validación de integridad Contabilium (evita publicar facturación incompleta)
+# ---------------------------------------------------------------------------
+#
+# Incidente 2026-08-31: una corrida manual capturó BigQuery en un estado
+# transitorio (probablemente el sync Contabilium→BQ recién había hecho el
+# DELETE-antes-de-refetch de las COT, ver lesson_contabilium_sync_fixes) y
+# publicó un tablero con 0 filas tipo COT — julio quedó en $37.2M en vez de
+# $58.9M reales (-37%). Estos checks comparan lo recién obtenido de BQ contra
+# el MÁXIMO HISTÓRICO conocido (no solo el último publicado — ver high-water-
+# mark abajo) y abortan la publicación (sin subir nada) si detectan una
+# regresión sospechosa, para nunca pisar un tablero correcto con uno peor.
+# Si abortan, además dejan una bandera en GCS que el propio tablero en vivo
+# muestra como banner (ver app.py) — no depende de que alguien mire un log.
+
+_CBL_DROP_THRESHOLD = 0.10  # caída >10% en un mes vs. el máximo histórico = sospechoso
+_CBL_HWM_BLOB       = "destileria_cbl_hwm.json"          # high-water-mark persistente
+_CBL_ALERT_BLOB     = "destileria_alert.json"            # bandera de falla que lee app.py
+_CBL_LAST_GOOD_BLOB = "destileria_dashboard_last_good.html"  # última publicación validada limpia
+
+
+def is_contabilium_data_healthy(html_text, hwm):
+    """Defensa en profundidad: valida un HTML de destileria_dashboard.html
+    YA PUBLICADO en GCS contra el high-water-mark, sin importar qué proceso
+    lo haya subido (el script correcto, una copia vieja, lo que sea). Usada
+    por app.py en el momento de SERVIR la página — no solo por este script
+    al momento de publicar — para que ninguna vía de publicación, conocida o
+    no, pueda mostrarle a un usuario un número que ya sabemos que es peor
+    que el máximo histórico. Devuelve (ok: bool, reasons: list[str])."""
+    cur = _extract_contabilium_monthly(html_text) or {}
+    reasons = []
+    for mes, base in (hwm or {}).items():
+        cur_b = cur.get(mes, {"total": 0.0, "cot": 0, "li": 0.0, "ce": 0.0})
+        for campo, etiqueta in (("total", "Facturación $"), ("li", "Litros"), ("ce", "Envases")):
+            b = base.get(campo, 0.0)
+            if b > 0:
+                drop = (b - cur_b.get(campo, 0.0)) / b
+                if drop > _CBL_DROP_THRESHOLD:
+                    reasons.append(
+                        f"{etiqueta} Contabilium {mes} cayó {drop*100:.1f}% vs. el máximo histórico "
+                        f"({b:,.0f} → {cur_b.get(campo, 0.0):,.0f})"
+                    )
+        if base.get("cot", 0) > 0 and cur_b.get("cot", 0) == 0:
+            reasons.append(
+                f"Contabilium {mes}: {base['cot']} comprobantes tipo COT vistos históricamente, "
+                f"0 en lo publicado ahora — datos probablemente incompletos"
+            )
+    return (not reasons), reasons
+
+
+def _extract_contabilium_monthly(html_text):
+    """Parsea un HTML de destileria_dashboard.html ya generado y devuelve
+    {mes: {'total': float, 'cot': int, 'items': int, 'li': float, 'ce': float}}
+    para filas con fecha >= 2026-07-01 (período servido por Contabilium).
+    None si no se pudo parsear (formato viejo, corrupto, etc.) — nunca lanza
+    excepción. Usa json.raw_decode (no regex) para no truncar si algún campo
+    de texto contuviera algo parecido a '];\\n'."""
+    marker = "const ROWS = "
+    i = html_text.find(marker)
+    if i == -1:
+        return None
+    try:
+        rows, _ = json.JSONDecoder().raw_decode(html_text, i + len(marker))
+    except Exception:
+        return None
+    out = {}
+    for r in rows:
+        f = r.get("f") or ""
+        if f < "2026-07-01":
+            continue
+        mes = f[:7]
+        b = out.setdefault(mes, {"total": 0.0, "cot": 0, "items": 0, "li": 0.0, "ce": 0.0})
+        b["total"] += r.get("to", 0.0)
+        b["li"]    += r.get("li", 0.0)
+        b["ce"]    += r.get("ce", 0.0)
+        b["items"] += 1
+        if r.get("ti") == "COT":
+            b["cot"] += 1
+    return out
+
+
+def _monthly_from_raw(raw_cbl):
+    """Mismo agregado que _extract_contabilium_monthly pero a partir de la
+    lista de SimpleNamespace recién traída de BQ (fetch_rows_contabilium),
+    no de un HTML ya generado."""
+    cur = {}
+    for r in raw_cbl:
+        if not r.f:
+            continue
+        mes = r.f[:7]
+        b = cur.setdefault(mes, {"total": 0.0, "cot": 0, "items": 0, "li": 0.0, "ce": 0.0})
+        b["total"] += r.to_
+        b["li"]    += r.li
+        b["ce"]    += r.ce
+        b["items"] += 1
+        if r.ti == "COT":
+            b["cot"] += 1
+    return cur
+
+
+def load_cbl_hwm(bucket_name):
+    """High-water-mark: el máximo histórico ya validado para cada mes de
+    Contabilium (persiste en GCS, sobrevive entre corridas). Comparar contra
+    esto — y no solo contra el último tablero publicado — evita que una
+    seguidilla de caídas chicas (cada una por debajo del umbral) vaya
+    'reseteando' silenciosamente la base de comparación hasta perder de
+    vista una caída grande acumulada."""
+    if not bucket_name:
+        return {}
+    try:
+        from google.cloud import storage
+        client = storage.Client()
+        blob = client.bucket(bucket_name).blob(_CBL_HWM_BLOB)
+        if not blob.exists():
+            return {}
+        return json.loads(blob.download_as_text(encoding="utf-8"))
+    except Exception as _e:
+        print(f"WARN: no se pudo leer el high-water-mark de Contabilium — {_e}", file=sys.stderr)
+        return {}
+
+
+def save_cbl_hwm(bucket_name, hwm):
+    if not bucket_name:
+        return
+    try:
+        from google.cloud import storage
+        client = storage.Client()
+        blob = client.bucket(bucket_name).blob(_CBL_HWM_BLOB)
+        blob.upload_from_string(
+            json.dumps(hwm, ensure_ascii=False, indent=2).encode("utf-8"),
+            content_type="application/json; charset=utf-8",
+        )
+        blob.cache_control = "no-cache, no-store, must-revalidate"
+        blob.patch()
+    except Exception as _e:
+        print(f"WARN: no se pudo guardar el high-water-mark de Contabilium — {_e}", file=sys.stderr)
+
+
+def write_alert_flag(bucket_name, reason):
+    """Deja una bandera visible en GCS (destileria_alert.json) para que
+    app.py la muestre como banner en el tablero EN VIVO. Una falla del
+    pipeline local (Task Scheduler, sin nadie mirando dashboard_errors.log)
+    así se ve directamente en la página que la gente realmente consulta,
+    no solo en un archivo de log."""
+    if not bucket_name:
+        return
+    try:
+        from google.cloud import storage
+        client = storage.Client()
+        blob = client.bucket(bucket_name).blob(_CBL_ALERT_BLOB)
+        payload = {"failed_at": datetime.now().strftime("%d/%m/%Y %H:%M"), "reason": reason}
+        blob.upload_from_string(
+            json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            content_type="application/json; charset=utf-8",
+        )
+        blob.cache_control = "no-cache, no-store, must-revalidate"
+        blob.patch()
+    except Exception as _e:
+        print(f"WARN: no se pudo escribir la bandera de alerta en GCS — {_e}", file=sys.stderr)
+
+
+def clear_alert_flag(bucket_name):
+    """Borra la bandera de alerta — se llama después de una publicación
+    exitosa para que el banner desaparezca solo en cuanto se resuelve."""
+    if not bucket_name:
+        return
+    try:
+        from google.cloud import storage
+        client = storage.Client()
+        blob = client.bucket(bucket_name).blob(_CBL_ALERT_BLOB)
+        if blob.exists():
+            blob.delete()
+    except Exception as _e:
+        print(f"WARN: no se pudo borrar la bandera de alerta en GCS — {_e}", file=sys.stderr)
+
+
+def validate_contabilium_integrity(raw_cbl, bucket_name):
+    """Compara los totales mensuales de Contabilium (facturación, litros,
+    envases, presencia de COT) recién obtenidos contra el máximo entre lo
+    publicado AHORA MISMO en GCS y el high-water-mark histórico.
+
+    Devuelve (errors, skip_note):
+      - errors: lista de strings de error (vacía si todo OK). Cualquier
+        error debe abortar la publicación en el llamador.
+      - skip_note: None si la validación corrió normalmente (con o sin
+        errores). String describiendo por qué NO se pudo validar del todo
+        (ej: falla de lectura de GCS) — el llamador debe tratarlo como una
+        alerta visible aunque no bloquee la publicación (fail-open pero
+        NUNCA silencioso)."""
+    errors = []
+    skip_note = None
+    if not bucket_name:
+        return errors, "sin --gcs-bucket — validación de integridad salteada"
+
+    prev = {}
+    try:
+        from google.cloud import storage
+        client = storage.Client()
+        blob = client.bucket(bucket_name).blob("destileria_dashboard.html")
+        if blob.exists():
+            prev_html = blob.download_as_text(encoding="utf-8")
+            prev = _extract_contabilium_monthly(prev_html) or {}
+    except Exception as _e:
+        skip_note = f"no se pudo leer el tablero publicado para validar integridad ({_e})"
+        print(f"WARN: {skip_note}", file=sys.stderr)
+
+    hwm = load_cbl_hwm(bucket_name)
+
+    baseline = {}
+    for mes in set(prev) | set(hwm):
+        p, h = prev.get(mes, {}), hwm.get(mes, {})
+        baseline[mes] = {
+            "total": max(p.get("total", 0.0), h.get("total", 0.0)),
+            "cot":   max(p.get("cot", 0),     h.get("cot", 0)),
+            "li":    max(p.get("li", 0.0),    h.get("li", 0.0)),
+            "ce":    max(p.get("ce", 0.0),    h.get("ce", 0.0)),
+        }
+    if not baseline:
+        return errors, skip_note
+
+    cur = _monthly_from_raw(raw_cbl)
+
+    for mes, base in sorted(baseline.items()):
+        cur_b = cur.get(mes, {"total": 0.0, "cot": 0, "li": 0.0, "ce": 0.0})
+        for campo, etiqueta in (("total", "Facturación $"), ("li", "Litros"), ("ce", "Envases")):
+            if base[campo] > 0:
+                drop = (base[campo] - cur_b[campo]) / base[campo]
+                if drop > _CBL_DROP_THRESHOLD:
+                    errors.append(
+                        f"{etiqueta} Contabilium {mes} cayó {drop*100:.1f}% vs. el máximo histórico "
+                        f"({base[campo]:,.0f} → {cur_b[campo]:,.0f})"
+                    )
+        if base["cot"] > 0 and cur_b["cot"] == 0:
+            errors.append(
+                f"Contabilium {mes}: {base['cot']} comprobantes tipo COT vistos históricamente, "
+                f"0 en esta corrida — datos de BQ probablemente incompletos"
+            )
+    return errors, skip_note
+
+
+def check_comprobantes_duplicates(client):
+    """Detecta duplicados en comprobantes_items (bug histórico: streaming
+    buffer + DELETE/reinsert de COT solapados duplicaba líneas de ítem y
+    duplicaba la facturación, ver lesson_contabilium_sync_fixes Causa 3).
+    Devuelve la cantidad de filas duplicadas (0 = OK)."""
+    query = """
+    SELECT COUNT(*) - COUNT(DISTINCT id_item) AS dup
+    FROM `temple-bar-439715.Destileria_Contabilium.comprobantes_items`
+    WHERE fecha_emision >= '2026-07-01'
+    """
+    row = list(client.query(query).result(timeout=60))[0]
+    return int(row.dup or 0)
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -599,9 +941,17 @@ def main():
                         help="Ruta del HTML generado")
     parser.add_argument("--gcs-bucket", default="",
                         help="Bucket GCS destino (opcional)")
+    parser.add_argument("--force-publish", action="store_true",
+                        help="Publica igual aunque los guardrails de integridad Contabilium "
+                             "detecten una caída sospechosa. Usar solo tras confirmar manualmente "
+                             "que el cambio es legítimo (ej: nota de crédito grande real).")
     args = parser.parse_args()
 
     ts = lambda: datetime.now().strftime("%H:%M:%S")
+
+    if not args.gcs_bucket:
+        print(f"[{ts()}] WARN: corriendo sin --gcs-bucket — no se va a publicar nada "
+              f"y los guardrails de integridad Contabilium quedan salteados (nada contra qué comparar).")
 
     print(f"[{ts()}] Autenticando con Google (BQ + Sheets)...")
     creds, _ = google.auth.default(scopes=GCP_SCOPES)
@@ -609,9 +959,85 @@ def main():
     print(f"[{ts()}] Conectando a BigQuery (proyecto: {PROJECT})...")
     client = bigquery.Client(project=PROJECT, credentials=creds)
 
-    print(f"[{ts()}] Consultando datos...")
+    print(f"[{ts()}] Consultando datos históricos...")
     raw = fetch_rows(client)
-    print(f"[{ts()}] {len(raw):,} filas obtenidas")
+    print(f"[{ts()}] {len(raw):,} filas históricas")
+
+    print(f"[{ts()}] Consultando Contabilium (desde 2026-07-01)...")
+    raw_cbl = fetch_rows_contabilium(creds)
+    print(f"[{ts()}] {len(raw_cbl):,} filas Contabilium")
+
+    if raw_cbl:
+        _sc_n = sum(1 for r in raw_cbl if r.cl == "Sin Cluster")
+        print(f"[{ts()}] Info: {_sc_n}/{len(raw_cbl)} filas Contabilium sin cluster asignado "
+              f"({_sc_n / len(raw_cbl) * 100:.0f}%) — no afecta la facturación total, "
+              f"pero si es alto conviene revisar el panel admin de clusterización")
+
+    # ── Guardrails de integridad Contabilium (ver incidente 2026-08-31) ─────
+    print(f"[{ts()}] Verificando duplicados en comprobantes_items...")
+    import google.cloud.bigquery as _bq
+    _cbl_client = _bq.Client(project="temple-bar-439715", credentials=creds)
+    _dup_count = check_comprobantes_duplicates(_cbl_client)
+    if _dup_count > 0:
+        _msg = (f"{_dup_count} filas duplicadas en Destileria_Contabilium.comprobantes_items "
+                "(id_item repetido) — la facturación quedaría inflada.")
+        if args.force_publish:
+            print(f"[{ts()}] WARN --force-publish: se ignora el guardrail de duplicados — {_msg}", file=sys.stderr)
+        else:
+            write_alert_flag(args.gcs_bucket, _msg)
+            raise RuntimeError(
+                f"ERROR CRÍTICO: {_msg} Abortando sin publicar. Revisar sync Contabilium→BQ "
+                "(streaming buffer / DELETE-reinsert solapados). Si es un falso positivo confirmado, "
+                "volver a correr con --force-publish."
+            )
+    else:
+        print(f"[{ts()}] Sin duplicados en comprobantes_items — OK")
+
+    print(f"[{ts()}] Verificando integridad vs. máximo histórico...")
+    _cbl_errors, _cbl_skip_note = validate_contabilium_integrity(raw_cbl, args.gcs_bucket)
+    if _cbl_errors:
+        for _e in _cbl_errors:
+            print(f"[{ts()}] ERROR CRÍTICO: {_e}", file=sys.stderr)
+        _detalle = " | ".join(_cbl_errors)
+        if args.force_publish:
+            print(f"[{ts()}] WARN --force-publish: se ignora el guardrail de integridad — {_detalle}", file=sys.stderr)
+            write_alert_flag(args.gcs_bucket, f"Publicado con --force-publish pese a: {_detalle}")
+        else:
+            write_alert_flag(args.gcs_bucket, _detalle)
+            raise RuntimeError(
+                "Datos de Contabilium incompletos/inconsistentes respecto al máximo histórico — "
+                "abortando para no sobrescribir con números peores. Revisar sync Contabilium→BQ "
+                "(¿corrió completo antes de esta generación?) y volver a correr. "
+                f"Detalle: {_detalle}. Si es un cambio legítimo confirmado, volver a correr con --force-publish."
+            )
+    elif _cbl_skip_note:
+        print(f"[{ts()}] WARN: validación de integridad incompleta — {_cbl_skip_note}")
+        write_alert_flag(args.gcs_bucket, f"Guardrail no pudo validar del todo esta corrida: {_cbl_skip_note}")
+    else:
+        print(f"[{ts()}] Integridad Contabilium OK")
+
+    raw = raw + raw_cbl
+
+    # Alerta de datos desactualizados: si la última fecha sincronizada de
+    # Contabilium queda muy atrás de hoy, el sync Contabilium→BQ probablemente
+    # viene fallando en silencio (ver incidente 2026-08-18: 4 días sin correr).
+    stale_banner = ""
+    _cbl_dates = [r.f for r in raw_cbl if r.f]
+    if _cbl_dates:
+        _last_cbl_date = max(_cbl_dates)
+        _days_stale = (datetime.now().date() - datetime.strptime(_last_cbl_date, "%Y-%m-%d").date()).days
+        if _days_stale > 2:
+            stale_banner = (
+                '<div style="background:#3d1f1f;border:1px solid #c8102e;border-radius:8px;'
+                'padding:12px 18px;margin:0 auto 14px;max-width:1400px;color:#fca5a5;'
+                'font-size:13px;font-weight:600">'
+                f'⚠ Datos de Contabilium desactualizados — última sincronización: {_last_cbl_date} '
+                f'({_days_stale} días de atraso). Revisar el sync Contabilium→BQ / tareas programadas.'
+                '</div>'
+            )
+            print(f"[{ts()}] ALERTA: Contabilium desactualizado ({_days_stale} días, última fecha {_last_cbl_date})")
+
+    print(f"[{ts()}] Total combinado: {len(raw):,} filas")
     if len(raw) < 100:
         raise RuntimeError(f"BQ devolvió solo {len(raw)} filas — posible error de datos, abortando")
 
@@ -678,12 +1104,44 @@ def main():
             "Placeholder sell-in/out local × semana (__SELLINOUT_LOCAL_WK_JSON__)",
         ),
         (
+            '__SELLINOUT_LOCAL_MO_JSON__',
+            "Placeholder sell-in/out local × mes (__SELLINOUT_LOCAL_MO_JSON__)",
+        ),
+        (
             '__SELLINOUT_PAT_JSON__',
             "Placeholder sell-in/out Patagonia semanal (__SELLINOUT_PAT_JSON__)",
         ),
         (
             '__SELLINOUT_PAT_LOCAL_WK_JSON__',
             "Placeholder sell-in/out Patagonia local × semana (__SELLINOUT_PAT_LOCAL_WK_JSON__)",
+        ),
+        (
+            '__SELLINOUT_PAT_LOCAL_MO_JSON__',
+            "Placeholder sell-in/out Patagonia local × mes (__SELLINOUT_PAT_LOCAL_MO_JSON__)",
+        ),
+        (
+            '__SELLINOUT_FER_JSON__',
+            "Placeholder sell-in/out Feriado semanal (__SELLINOUT_FER_JSON__)",
+        ),
+        (
+            '__SELLINOUT_FER_LOCAL_WK_JSON__',
+            "Placeholder sell-in/out Feriado local × semana (__SELLINOUT_FER_LOCAL_WK_JSON__)",
+        ),
+        (
+            '__SELLINOUT_FER_LOCAL_MO_JSON__',
+            "Placeholder sell-in/out Feriado local × mes (__SELLINOUT_FER_LOCAL_MO_JSON__)",
+        ),
+        (
+            '__SELLINOUT_FER_PAT_JSON__',
+            "Placeholder sell-in/out Feriado Patagonia semanal (__SELLINOUT_FER_PAT_JSON__)",
+        ),
+        (
+            '__SELLINOUT_FER_PAT_LOCAL_WK_JSON__',
+            "Placeholder sell-in/out Feriado Patagonia local × semana (__SELLINOUT_FER_PAT_LOCAL_WK_JSON__)",
+        ),
+        (
+            '__SELLINOUT_FER_PAT_LOCAL_MO_JSON__',
+            "Placeholder sell-in/out Feriado Patagonia local × mes (__SELLINOUT_FER_PAT_LOCAL_MO_JSON__)",
         ),
         (
             '__PERMISSIONS_INJECT__',
@@ -745,15 +1203,23 @@ def main():
     obj = None
     _obj_source = "none"
 
-    # ── 0. Intentar desde Firestore ──────────────────────────────────────────
+    # ── 0. Intentar desde Firestore (con reintento si la lectura viene incompleta) ──
     try:
         from google.cloud import firestore as _firestore
         _fs_client = _firestore.Client(project="temple-bar-439715")
         _fs_obj = load_objectives_from_firestore(_fs_client)
-        if _fs_obj:
+        _fs_errs, _ = validate_objectives(_fs_obj) if _fs_obj else ([], [])
+        if _fs_obj and _fs_errs:
+            print(f"[{ts()}] WARN: lectura de Firestore incompleta ({len(_fs_errs)} error(es)) — reintentando...", file=sys.stderr)
+            time.sleep(3)
+            _fs_obj = load_objectives_from_firestore(_fs_client)
+            _fs_errs, _ = validate_objectives(_fs_obj) if _fs_obj else ([], [])
+        if _fs_obj and not _fs_errs:
             obj = _fs_obj
             _obj_source = "firestore"
             print(f"[{ts()}] Objetivos OK (desde Firestore)")
+        elif _fs_obj:
+            print(f"[{ts()}] WARN: Firestore sigue incompleto tras reintento — se descarta, se prueba el siguiente fallback", file=sys.stderr)
     except Exception as _fs_init_err:
         print(f"WARN: Firestore init falló: {_fs_init_err}", file=sys.stderr)
 
@@ -844,6 +1310,7 @@ def main():
     html = html.replace("__OBJ_JSON__",        obj_json)
     html = html.replace("__UPDATED_AT__",      now_str)
     html = html.replace("__RECORD_COUNT__",    f"{len(data):,}")
+    html = html.replace("__STALE_BANNER__",    stale_banner)
 
     # ── Sell-in / Sell-out Bosque Nativo ────────────────────────────────────
     try:
@@ -872,6 +1339,18 @@ def main():
         print(f"WARN: SELLINOUT_LOCAL_WK falló — {_sio_lw_err}", file=sys.stderr)
         html = html.replace("__SELLINOUT_LOCAL_WK_JSON__", "[]")
 
+    # ── Sell-in / Sell-out por local × mes calendario (Mes Actual/Anterior) ──
+    try:
+        _sio_lm = fetch_sellinout_local_monthly(
+            creds, r'GIN BOSQUE.*(500|750)', "curated_gin", "Gin_Total",
+            _SI_ALIAS, _SO_ALIAS, months=3,
+        )
+        html = html.replace("__SELLINOUT_LOCAL_MO_JSON__", json.dumps(_sio_lm, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_LOCAL_MO inyectado ({len(_sio_lm)} filas)")
+    except Exception as _sio_lm_err:
+        print(f"WARN: SELLINOUT_LOCAL_MO falló — {_sio_lm_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_LOCAL_MO_JSON__", "[]")
+
     try:
         _sio_pat = fetch_sellinout_pat_weekly(creds, weeks=12)
         html = html.replace("__SELLINOUT_PAT_JSON__", json.dumps(_sio_pat, ensure_ascii=False, separators=(",", ":")))
@@ -887,6 +1366,67 @@ def main():
     except Exception as _sio_pat_lw_err:
         print(f"WARN: SELLINOUT_PAT_LOCAL_WK falló — {_sio_pat_lw_err}", file=sys.stderr)
         html = html.replace("__SELLINOUT_PAT_LOCAL_WK_JSON__", "[]")
+
+    try:
+        _sio_pat_lm = fetch_sellinout_pat_local_monthly(creds, months=3)
+        html = html.replace("__SELLINOUT_PAT_LOCAL_MO_JSON__", json.dumps(_sio_pat_lm, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_PAT_LOCAL_MO inyectado ({len(_sio_pat_lm)} filas)")
+    except Exception as _sio_pat_lm_err:
+        print(f"WARN: SELLINOUT_PAT_LOCAL_MO falló — {_sio_pat_lm_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_PAT_LOCAL_MO_JSON__", "[]")
+
+    # ── Sell-in / Sell-out Feriado ───────────────────────────────────────────
+    try:
+        _sio_fer = fetch_sellinout_fer_weekly(creds, weeks=12)
+        html = html.replace("__SELLINOUT_FER_JSON__", json.dumps(_sio_fer, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_FER inyectado ({len(_sio_fer)} semanas)")
+    except Exception as _sio_fer_err:
+        print(f"WARN: SELLINOUT_FER falló — {_sio_fer_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_FER_JSON__", "[]")
+
+    try:
+        _sio_fer_lw = fetch_sellinout_fer_local_weekly(creds, weeks=12)
+        html = html.replace("__SELLINOUT_FER_LOCAL_WK_JSON__", json.dumps(_sio_fer_lw, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_FER_LOCAL_WK inyectado ({len(_sio_fer_lw)} filas)")
+    except Exception as _sio_fer_lw_err:
+        print(f"WARN: SELLINOUT_FER_LOCAL_WK falló — {_sio_fer_lw_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_FER_LOCAL_WK_JSON__", "[]")
+
+    # ── Sell-in / Sell-out Feriado por local × mes calendario ────────────────
+    try:
+        _sio_fer_lm = fetch_sellinout_local_monthly(
+            creds, r'FERIADO', "curated_feriado", "Feriado_Total",
+            _FER_SI_ALIAS, _FER_SO_ALIAS, months=3,
+        )
+        html = html.replace("__SELLINOUT_FER_LOCAL_MO_JSON__", json.dumps(_sio_fer_lm, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_FER_LOCAL_MO inyectado ({len(_sio_fer_lm)} filas)")
+    except Exception as _sio_fer_lm_err:
+        print(f"WARN: SELLINOUT_FER_LOCAL_MO falló — {_sio_fer_lm_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_FER_LOCAL_MO_JSON__", "[]")
+
+    try:
+        _sio_fer_pat = fetch_sellinout_fer_pat_weekly(creds, weeks=12)
+        html = html.replace("__SELLINOUT_FER_PAT_JSON__", json.dumps(_sio_fer_pat, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_FER_PAT inyectado ({len(_sio_fer_pat)} semanas)")
+    except Exception as _e:
+        print(f"WARN: SELLINOUT_FER_PAT falló — {_e}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_FER_PAT_JSON__", "[]")
+
+    try:
+        _sio_fer_pat_lw = fetch_sellinout_fer_pat_local_weekly(creds, weeks=12)
+        html = html.replace("__SELLINOUT_FER_PAT_LOCAL_WK_JSON__", json.dumps(_sio_fer_pat_lw, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_FER_PAT_LOCAL_WK inyectado ({len(_sio_fer_pat_lw)} filas)")
+    except Exception as _e:
+        print(f"WARN: SELLINOUT_FER_PAT_LOCAL_WK falló — {_e}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_FER_PAT_LOCAL_WK_JSON__", "[]")
+
+    try:
+        _sio_fer_pat_lm = fetch_sellinout_fer_pat_local_monthly(creds, months=3)
+        html = html.replace("__SELLINOUT_FER_PAT_LOCAL_MO_JSON__", json.dumps(_sio_fer_pat_lm, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_FER_PAT_LOCAL_MO inyectado ({len(_sio_fer_pat_lm)} filas)")
+    except Exception as _e:
+        print(f"WARN: SELLINOUT_FER_PAT_LOCAL_MO falló — {_e}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_FER_PAT_LOCAL_MO_JSON__", "[]")
 
     # Garantía: __PERMISSIONS_INJECT__ siempre presente aunque Drive haya
     # sincronizado una versión vieja del template que no lo tenga.
@@ -914,12 +1454,232 @@ def main():
 
     if args.gcs_bucket:
         upload_to_gcs(args.output, args.gcs_bucket, html_content=html)
+        try:
+            _hwm = load_cbl_hwm(args.gcs_bucket)
+            for _mes, _b in _monthly_from_raw(raw_cbl).items():
+                _h = _hwm.get(_mes, {})
+                _hwm[_mes] = {
+                    "total": max(_b["total"], _h.get("total", 0.0)),
+                    "cot":   max(_b["cot"],   _h.get("cot", 0)),
+                    "li":    max(_b["li"],    _h.get("li", 0.0)),
+                    "ce":    max(_b["ce"],    _h.get("ce", 0.0)),
+                }
+            save_cbl_hwm(args.gcs_bucket, _hwm)
+            if not _cbl_skip_note:
+                clear_alert_flag(args.gcs_bucket)
+                # Copia de respaldo para que app.py pueda mostrarla si una
+                # publicación futura (por esta vía o cualquier otra) resulta
+                # incompleta — ver is_contabilium_data_healthy.
+                from google.cloud import storage as _storage
+                _storage.Client().bucket(args.gcs_bucket).blob(_CBL_LAST_GOOD_BLOB) \
+                    .upload_from_string(html.encode("utf-8"), content_type="text/html; charset=utf-8")
+                print(f"[{ts()}] ✓ Copia de respaldo actualizada ({_CBL_LAST_GOOD_BLOB})")
+        except Exception as _e:
+            print(f"WARN: no se pudo actualizar el high-water-mark / copia de respaldo de Contabilium — {_e}", file=sys.stderr)
     else:
         print()
         print("Deploy:")
         print('  gsutil -h "Cache-Control:no-cache, no-store, must-revalidate" '
               'cp destileria_dashboard.html '
               'gs://temple-bar-dashboard-cache/destileria_dashboard.html')
+
+
+# ── Sell-in (compra) desde Contabilium — reemplaza Ventas_Maestro_Con_Cluster_Final
+# desde el 2026-07-01 (tabla congelada, sin filas nuevas desde esa fecha).
+# Nombres de cliente en Contabilium != NombreDeFantasia de Ventas_Maestro, de ahí este alias aparte.
+_CBL_SI_ALIAS: dict[str, str | None] = {
+    "TEMPLE PUERTO MADERO":   "Puerto Madero",
+    "TEMPLE HOLLYWOOD NUEVO": "Hollywood",
+    "TEMPLE MASCHWITZ":       "Maschwitz",
+    "TEMPLE PALERMO NUEVO":   "Casa Temple",
+    "TEMPLE PASEO LA PLAZA":  "Club Temple",
+    "TEMPLE RECOLETA SRL":    "Recoleta",
+    "TEMPLE RIO GALLEGOS":    "Rio Gallegos",
+    "TEMPLE ROSARIO":         "Rosario 2",
+    "TEMPLE SALTA":           "Salta",
+    "TEMPLE SOHO":            "Soho",
+    "TEMPLE CAMINITO":        "Caminito",
+    # nombre_fantasia mal cargado en Contabilium (dice "Cordoba" pero la razón
+    # social MOLBRA S.A.S. es en realidad el local Güemes — confirmado 2026-08-11).
+    "TEMPLE CORDOBA (USAR)":  "Güemes",
+    "BONALAR S.R.L":                      "Santiago del Estero",
+    "AREA SUR S.R.L. EN FORMACION":        "Comodoro Rivadavia",
+    "QUIJOTE TUCUMAN  S. R. L.":           "Tucumán 3",
+    # Los Templos Caballito S.R.L. es la razón social de facturación compartida
+    # entre Barrio Chino y Monroe — no se puede separar la compra por local.
+    "LOS TEMPLOS CABALLITO S.R.L.": "Barrio Chino + Monroe",
+}
+
+_CBL_SELLIN_CUTOFF = "2026-07-01"
+
+
+def _fetch_cbl_sellin_by_week_local(creds, product_regex, alias_map=None,
+                                     cluster_name="Cadena Grupo Temple", since=_CBL_SELLIN_CUTOFF):
+    """Compra (sell-in) desde Contabilium, agrupada por semana y local.
+
+    `alias_map`/`cluster_name` permiten reusar la función para otras cadenas
+    (ej. Cadena Patagonia con `_CBL_PAT_SI_ALIAS`) — por defecto Grupo Temple.
+    Devuelve {(local_canónico, 'YYYY-MM-DD' lunes de semana): litros}.
+    """
+    alias_map = _CBL_SI_ALIAS if alias_map is None else alias_map
+    from google.cloud import bigquery as _bq
+    client = _bq.Client(project="temple-bar-439715", credentials=creds)
+    query = f"""
+    WITH cluster_map AS (
+      SELECT NombreDeFantasia, Clusterizacion
+      FROM `temple-brewery.Destileria.vw_ventas_con_cluster`
+      WHERE Clusterizacion IS NOT NULL
+      QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY NombreDeFantasia ORDER BY FechaPedido DESC
+      ) = 1
+    )
+    SELECT
+      DATE_TRUNC(ci.fecha_emision, WEEK(MONDAY)) AS semana,
+      COALESCE(NULLIF(TRIM(cl.nombre_fantasia),''), NULLIF(TRIM(cl.razon_social),''), 'Sin nombre') AS nd,
+      COALESCE(cl.cluster, cm.Clusterizacion, 'Sin Cluster') AS cluster_raw,
+      (CASE WHEN ci.tipo_fc LIKE 'NC%' THEN -1 ELSE 1 END)
+          * ROUND(COALESCE(ci.litros, 0.0), 3)   AS litros
+    FROM `temple-bar-439715.Destileria_Contabilium.comprobantes_items` ci
+    LEFT JOIN `temple-bar-439715.Destileria_Contabilium.clientes` cl
+        ON ci.id_cliente = cl.id_cliente
+    LEFT JOIN cluster_map cm
+        ON TRIM(cl.nombre_fantasia) = cm.NombreDeFantasia
+    WHERE ci.fecha_emision >= '{since}'
+      AND ci.tipo_fc IN ('FCA','FCB','FCC','FCE','FCM','COT','NCA','NCB','NCC','NCT')
+      AND COALESCE(ci.cantidad, 0) > 0
+      AND COALESCE(ci.tipo_item, 'P') != 'S'
+      AND REGEXP_CONTAINS(UPPER(TRIM(ci.concepto)), r'{product_regex}')
+    """
+    result: dict[tuple, float] = {}
+    for r in client.query(query).result(timeout=60):
+        # Nombres curados en alias_map son locales conocidos — confiar en el alias
+        # directo, sin pasar por Clusterizacion (que puede venir "Sin Cluster" para
+        # nombres que _CBL_CLUSTER_MAP todavía no cubre).
+        if r.nd in alias_map:
+            canon = alias_map[r.nd]
+            if canon is None:
+                continue
+        else:
+            cluster = _CBL_CLUSTER_MAP.get(r.nd, r.cluster_raw)
+            if cluster != cluster_name:
+                continue
+            canon = r.nd.title()
+        key = (canon, str(r.semana))
+        result[key] = result.get(key, 0.0) + float(r.litros)
+    return result
+
+
+def _fetch_cbl_sellin_by_month_local(creds, product_regex, alias_map=None,
+                                      cluster_name="Cadena Grupo Temple", since=_CBL_SELLIN_CUTOFF):
+    """Igual que _fetch_cbl_sellin_by_week_local pero agrupado por mes calendario
+    ('YYYY-MM'). Usado para Mes Actual/Mes Anterior — evita el sesgo de los buckets
+    semanales que arrastran días del mes anterior cuando el 1° no cae lunes."""
+    alias_map = _CBL_SI_ALIAS if alias_map is None else alias_map
+    from google.cloud import bigquery as _bq
+    client = _bq.Client(project="temple-bar-439715", credentials=creds)
+    query = f"""
+    WITH cluster_map AS (
+      SELECT NombreDeFantasia, Clusterizacion
+      FROM `temple-brewery.Destileria.vw_ventas_con_cluster`
+      WHERE Clusterizacion IS NOT NULL
+      QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY NombreDeFantasia ORDER BY FechaPedido DESC
+      ) = 1
+    )
+    SELECT
+      FORMAT_DATE('%Y-%m', ci.fecha_emision) AS mes,
+      COALESCE(NULLIF(TRIM(cl.nombre_fantasia),''), NULLIF(TRIM(cl.razon_social),''), 'Sin nombre') AS nd,
+      COALESCE(cl.cluster, cm.Clusterizacion, 'Sin Cluster') AS cluster_raw,
+      (CASE WHEN ci.tipo_fc LIKE 'NC%' THEN -1 ELSE 1 END)
+          * ROUND(COALESCE(ci.litros, 0.0), 3)   AS litros
+    FROM `temple-bar-439715.Destileria_Contabilium.comprobantes_items` ci
+    LEFT JOIN `temple-bar-439715.Destileria_Contabilium.clientes` cl
+        ON ci.id_cliente = cl.id_cliente
+    LEFT JOIN cluster_map cm
+        ON TRIM(cl.nombre_fantasia) = cm.NombreDeFantasia
+    WHERE ci.fecha_emision >= '{since}'
+      AND ci.tipo_fc IN ('FCA','FCB','FCC','FCE','FCM','COT','NCA','NCB','NCC','NCT')
+      AND COALESCE(ci.cantidad, 0) > 0
+      AND COALESCE(ci.tipo_item, 'P') != 'S'
+      AND REGEXP_CONTAINS(UPPER(TRIM(ci.concepto)), r'{product_regex}')
+    """
+    result: dict[tuple, float] = {}
+    for r in client.query(query).result(timeout=60):
+        if r.nd in alias_map:
+            canon = alias_map[r.nd]
+            if canon is None:
+                continue
+        else:
+            cluster = _CBL_CLUSTER_MAP.get(r.nd, r.cluster_raw)
+            if cluster != cluster_name:
+                continue
+            canon = r.nd.title()
+        key = (canon, r.mes)
+        result[key] = result.get(key, 0.0) + float(r.litros)
+    return result
+
+
+def fetch_sellinout_local_monthly(creds, product_regex, so_table, so_field,
+                                   si_alias, so_alias, months=3):
+    """Compra vs venta por local y MES CALENDARIO (Cadena Grupo Temple) — usado
+    exclusivamente por los filtros Mes Actual / Mes Anterior en las vistas 'Por
+    Local' y 'Sem × Local' para evitar el sesgo de los buckets semanales.
+    """
+    from google.cloud import bigquery as _bq
+    bq_dest   = _bq.Client(project="temple-brewery",    credentials=creds)
+    bq_temple = _bq.Client(project="temple-bar-439715", credentials=creds)
+
+    q_si = f"""
+    SELECT
+      FORMAT_DATE('%Y-%m', FechaPedido) AS mes,
+      TRIM(NombreDeFantasia)            AS local,
+      ROUND(SUM(COALESCE(Litros, 0)), 2) AS litros
+    FROM `temple-brewery.Destileria.Ventas_Maestro_Con_Cluster_Final`
+    WHERE LOWER(TRIM(Clusterizacion)) = 'cadena grupo temple'
+      AND REGEXP_CONTAINS(UPPER(TRIM(Producto)), r'{product_regex}')
+      AND FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {months} MONTH)
+      AND FechaPedido < '{_CBL_SELLIN_CUTOFF}'
+    GROUP BY mes, local
+    """
+    q_so = f"""
+    SELECT
+      FORMAT_DATE('%Y-%m', Fecha) AS mes,
+      TRIM(Establecimiento)       AS local,
+      ROUND(SUM({so_field}), 2)   AS litros
+    FROM `temple-bar-439715.curated_database.{so_table}`
+    WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {months} MONTH)
+    GROUP BY mes, local
+    """
+
+    si_map: dict[tuple, float] = {}
+    for r in bq_dest.query(q_si).result(timeout=60):
+        canon = si_alias.get(r.local, r.local)
+        if canon is None:
+            continue
+        key = (canon, r.mes)
+        si_map[key] = si_map.get(key, 0.0) + float(r.litros)
+
+    for (local, mes), litros in _fetch_cbl_sellin_by_month_local(creds, product_regex).items():
+        key = (local, mes)
+        si_map[key] = si_map.get(key, 0.0) + litros
+
+    so_map: dict[tuple, float] = {}
+    for r in bq_temple.query(q_so).result(timeout=60):
+        raw = r.local or ""
+        canon = so_alias.get(raw.upper(), raw.title())
+        if canon is None:
+            continue
+        key = (canon, r.mes)
+        so_map[key] = so_map.get(key, 0.0) + float(r.litros)
+
+    result = []
+    for (local, mes) in sorted(set(si_map) | set(so_map)):
+        si = round(si_map.get((local, mes), 0.0), 2)
+        so = round(so_map.get((local, mes), 0.0), 2)
+        if si == 0 and so == 0:
+            continue
+        result.append({"local": local, "mo": mes, "si": si, "so": so})
+    return result
 
 
 def fetch_sellinout_weekly(creds, weeks=12):
@@ -946,6 +1706,7 @@ def fetch_sellinout_weekly(creds, weeks=12):
     WHERE LOWER(TRIM(Clusterizacion)) = 'cadena grupo temple'
       AND REGEXP_CONTAINS(UPPER(TRIM(Producto)), r'GIN BOSQUE.*(500|750)')
       AND FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+      AND FechaPedido < '{_CBL_SELLIN_CUTOFF}'
     GROUP BY semana
     """
     q_so = f"""
@@ -958,6 +1719,10 @@ def fetch_sellinout_weekly(creds, weeks=12):
     """
     si_map = {str(r.semana): float(r.litros) for r in bq_dest.query(q_si).result(timeout=60)}
     so_map = {str(r.semana): float(r.litros) for r in bq_temple.query(q_so).result(timeout=60)}
+
+    # Sell-in desde el corte: Ventas_Maestro está congelada desde 2026-07-01, se completa con Contabilium
+    for (_local, wk), litros in _fetch_cbl_sellin_by_week_local(creds, r'GIN BOSQUE.*(500|750)').items():
+        si_map[wk] = si_map.get(wk, 0.0) + litros
 
     all_weeks = sorted(set(list(si_map) + list(so_map)), reverse=True)[:weeks]
 
@@ -984,10 +1749,10 @@ _SI_ALIAS = {
     "Temple Craft Madero":              "Puerto Madero",
     "Temple Hollywood":                 "Hollywood",
     "MINIMARKET (Distri Rio Gallegos)": "Rio Gallegos",
-    "Temple Barrio Chino":              "Barrio Chino",
+    "Temple Barrio Chino":              "Barrio Chino + Monroe",
     "Temple Paseo La Plaza":            "Club Temple",
     "Temple Craft Soho":                "Soho",
-    "Temple Monroe":                    "Monroe",
+    "Temple Monroe":                    "Barrio Chino + Monroe",
     "Temple Recoleta":                  "Recoleta",
     "Temple Santiago del Estero":       "Santiago del Estero",
     "Temple Craft Pilar":               "Pilar",
@@ -997,6 +1762,9 @@ _SI_ALIAS = {
     "Temple Cordoba":                   "Córdoba",
     "Temple Caminito":                  "Caminito",
     "Temple Palermo":                   "Casa Temple",
+    "Temple Rio Gallegos":               "Rio Gallegos",
+    "Temple Rosario":                    "Rosario 2",
+    "Patagonia Santiago del estero":     None,   # cadena Patagonia, no Temple
     "Barra Patio de los Lecheros":      None,   # no es cadena Grupo Temple
     "Trenque Craft":                    None,   # no es cadena Grupo Temple
 }
@@ -1010,10 +1778,10 @@ _SO_ALIAS = {
     "CASA TEMPLE":        "Casa Temple",
     "MASCHWITZ":          "Maschwitz",
     "RIO GALLEGOS":       "Rio Gallegos",
-    "BARRIO CHINO":       "Barrio Chino",
+    "BARRIO CHINO":       "Barrio Chino + Monroe",
     "SALTA":              "Salta",
     "PILAR":              "Pilar",
-    "MONROE":             "Monroe",
+    "MONROE":             "Barrio Chino + Monroe",
     "CORRIENTES":         "Corrientes",
     "RECOLETA":           "Recoleta",
     "SANTIAGO DEL ESTERO": "Santiago del Estero",
@@ -1024,6 +1792,405 @@ _SO_ALIAS = {
     "GUEMES":             "Güemes",
     "PINAMAR":            "Pinamar",
 }
+
+
+# ── Feriado sell in/out — aliases NombreDeFantasia / Establecimiento ────────
+_FER_SI_ALIAS: dict[str, str | None] = {
+    "Temple Craft Madero":              "Puerto Madero",
+    "Temple Hollywood":                 "Hollywood",
+    "MINIMARKET (Distri Rio Gallegos)": "Rio Gallegos",
+    "Temple Barrio Chino":              "Barrio Chino + Monroe",
+    "Temple Paseo La Plaza":            "Club Temple",
+    "Temple Craft Soho":                "Soho",
+    "Temple Monroe":                    "Barrio Chino + Monroe",
+    "Temple Recoleta":                  "Recoleta",
+    "Temple Santiago del Estero":       "Santiago del Estero",
+    "Temple Craft Pilar":               "Pilar",
+    "Temple Craft Salta":               "Salta",
+    "Temple Comodoro":                  "Comodoro Rivadavia",
+    "Temple Maschwitz":                 "Maschwitz",
+    "Temple Cordoba":                   "Córdoba",
+    "Temple Caminito":                  "Caminito",
+    "Temple Palermo":                   "Casa Temple",
+    "Temple Rio Gallegos":               "Rio Gallegos",
+    "Temple Rosario":                    "Rosario 2",
+    "Patagonia Santiago del estero":     None,   # cadena Patagonia, no Temple
+    "Barra Patio de los Lecheros":      None,
+    "Trenque Craft":                    None,
+}
+
+_FER_SO_ALIAS: dict[str, str | None] = {
+    "PUERTO MADERO":       "Puerto Madero",
+    "HOLLYWOOD":           "Hollywood",
+    "CLUB TEMPLE":         "Club Temple",
+    "SOHO":                "Soho",
+    "CASA TEMPLE":         "Casa Temple",
+    "MASCHWITZ":           "Maschwitz",
+    "RIO GALLEGOS":        "Rio Gallegos",
+    "BARRIO CHINO":        "Barrio Chino + Monroe",
+    "SALTA":               "Salta",
+    "PILAR":               "Pilar",
+    "MONROE":              "Barrio Chino + Monroe",
+    "CORRIENTES":          "Corrientes",
+    "RECOLETA":            "Recoleta",
+    "SANTIAGO DEL ESTERO": "Santiago del Estero",
+    "ROSARIO 2":           "Rosario 2",
+    "COMODORO RIVADAVIA":  "Comodoro Rivadavia",
+    "TUCUMAN 3":           "Tucumán 3",
+    "CAMINITO":            "Caminito",
+    "GUEMES":              "Güemes",
+    "PINAMAR":             "Pinamar",
+    "TAP ROOM":            None,  # no es local de cadena
+}
+
+
+def fetch_sellinout_fer_weekly(creds, weeks=12):
+    """
+    Sell-in/out semanal de Feriado para Cadena Grupo Temple.
+
+    Sell-in : Ventas_Maestro_Con_Cluster_Final — cl='CADENA GRUPO TEMPLE',
+              filtro REGEXP 'FERIADO' en Producto, campo Litros.
+    Sell-out: curated_database.curated_feriado — campo Feriado_Total (litros).
+
+    Alarma: sell-out[semana N] > sell-in[semana N-1]
+    """
+    from google.cloud import bigquery as _bq
+    bq_dest   = _bq.Client(project="temple-brewery",    credentials=creds)
+    bq_temple = _bq.Client(project="temple-bar-439715", credentials=creds)
+
+    q_si = f"""
+    SELECT
+      DATE_TRUNC(FechaPedido, WEEK(MONDAY)) AS semana,
+      ROUND(SUM(COALESCE(Litros, 0)), 2)    AS litros
+    FROM `temple-brewery.Destileria.Ventas_Maestro_Con_Cluster_Final`
+    WHERE LOWER(TRIM(Clusterizacion)) = 'cadena grupo temple'
+      AND REGEXP_CONTAINS(UPPER(TRIM(Producto)), r'FERIADO')
+      AND FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+      AND FechaPedido < '{_CBL_SELLIN_CUTOFF}'
+    GROUP BY semana
+    """
+    q_so = f"""
+    SELECT
+      DATE_TRUNC(Fecha, WEEK(MONDAY)) AS semana,
+      ROUND(SUM(Feriado_Total), 2)    AS litros
+    FROM `temple-bar-439715.curated_database.curated_feriado`
+    WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana
+    """
+    si_map = {str(r.semana): float(r.litros) for r in bq_dest.query(q_si).result(timeout=60)}
+    so_map = {str(r.semana): float(r.litros) for r in bq_temple.query(q_so).result(timeout=60)}
+
+    # Sell-in desde el corte: Ventas_Maestro está congelada desde 2026-07-01, se completa con Contabilium
+    for (_local, wk), litros in _fetch_cbl_sellin_by_week_local(creds, r'FERIADO').items():
+        si_map[wk] = si_map.get(wk, 0.0) + litros
+
+    all_weeks = sorted(set(list(si_map) + list(so_map)), reverse=True)[:weeks]
+
+    result = []
+    for i, wk in enumerate(all_weeks):
+        si      = si_map.get(wk, 0.0)
+        so      = so_map.get(wk, 0.0)
+        prev_wk = all_weeks[i + 1] if i + 1 < len(all_weeks) else None
+        si_prev = si_map.get(prev_wk) if prev_wk else None
+        result.append({
+            "w":       wk,
+            "si":      si,
+            "so":      so,
+            "diff":    round(si - so, 2),
+            "si_prev": si_prev,
+            "alarm":   (si_prev is not None and so > si_prev),
+        })
+    return result
+
+
+def fetch_sellinout_fer_local_weekly(creds, weeks=12):
+    """Sell-in vs sell-out Feriado por local y por semana — pivot para vista Sem × Local."""
+    from google.cloud import bigquery as _bq
+    bq_dest   = _bq.Client(project="temple-brewery",    credentials=creds)
+    bq_temple = _bq.Client(project="temple-bar-439715", credentials=creds)
+
+    q_si = f"""
+    SELECT
+      DATE_TRUNC(FechaPedido, WEEK(MONDAY)) AS semana,
+      TRIM(NombreDeFantasia)                AS local,
+      ROUND(SUM(COALESCE(Litros, 0)), 2)    AS litros
+    FROM `temple-brewery.Destileria.Ventas_Maestro_Con_Cluster_Final`
+    WHERE LOWER(TRIM(Clusterizacion)) = 'cadena grupo temple'
+      AND REGEXP_CONTAINS(UPPER(TRIM(Producto)), r'FERIADO')
+      AND FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+      AND FechaPedido < '{_CBL_SELLIN_CUTOFF}'
+    GROUP BY semana, local
+    """
+    q_so = f"""
+    SELECT
+      DATE_TRUNC(Fecha, WEEK(MONDAY))   AS semana,
+      TRIM(Establecimiento)             AS local,
+      ROUND(SUM(Feriado_Total), 2)      AS litros
+    FROM `temple-bar-439715.curated_database.curated_feriado`
+    WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana, local
+    """
+    # Agrupar por (semana, local_canónico)
+    si_data: dict[tuple, float] = {}
+    for r in bq_dest.query(q_si).result(timeout=60):
+        canon = _FER_SI_ALIAS.get(r.local, r.local)
+        if canon is None:
+            continue
+        key = (str(r.semana), canon)
+        si_data[key] = si_data.get(key, 0.0) + float(r.litros)
+
+    # Sell-in desde el corte: Ventas_Maestro está congelada desde 2026-07-01, se completa con Contabilium
+    for (local, wk), litros in _fetch_cbl_sellin_by_week_local(creds, r'FERIADO').items():
+        key = (wk, local)
+        si_data[key] = si_data.get(key, 0.0) + litros
+
+    so_data: dict[tuple, float] = {}
+    for r in bq_temple.query(q_so).result(timeout=60):
+        canon = _FER_SO_ALIAS.get(r.local.upper() if r.local else "", r.local)
+        if canon is None:
+            continue
+        key = (str(r.semana), canon)
+        so_data[key] = so_data.get(key, 0.0) + float(r.litros)
+
+    all_keys = set(si_data) | set(so_data)
+    result = []
+    for (wk, local) in sorted(all_keys, key=lambda x: (x[0], x[1]), reverse=False):
+        si = round(si_data.get((wk, local), 0.0), 2)
+        so = round(so_data.get((wk, local), 0.0), 2)
+        if si == 0 and so == 0:
+            continue
+        result.append({"w": wk, "local": local, "si": si, "so": so})
+    return result
+
+
+# ── Feriado Patagonia — productos y aliases ──────────────────────────────────
+_FER_PAT_SO_PRODUCTS = ['VERMU FERIADO', 'VERMU FERIADO CON TONICA', 'VERMU FERIADO CON POMELO']
+
+# Alias Contabilium (post-migración, ver _CBL_SELLIN_CUTOFF) para completar la
+# compra de Feriado de Cadena Patagonia — confirmado con Darwin 2026-08-11.
+# También reusado para Bosque (misma cuenta de cliente, distinto producto) —
+# ver fetch_sellinout_pat_weekly / fetch_sellinout_pat_local_weekly / _local_monthly.
+_CBL_PAT_SI_ALIAS: dict[str, str | None] = {
+    "PATAGONIA POSADAS BEER S.A.": "Mis - Posadas",
+    # razón social compartida entre los dos locales de Puerto Iguazú.
+    "PATAGONIA IGUAZU BEER":       "Mis - Puerto Iguazu (Ambos)",
+    # local sin visibilidad de venta en curated_mix — se muestra la compra igual,
+    # el sell-out queda en 0 a propósito (confirmado, no es bug).
+    "PATAGONIA 24.7":              "24.7",
+    # detectados 2026-08-12 comprando Bosque en Contabilium bajo cluster "Sin
+    # Cluster" en lugar de "Cadena Patagonia" — el alias los rescata igual.
+    "PATAGONIA LANUS":             "Ba - Lanus",
+    "PATAGONIA NEUQUEN":           "Neuquen",
+}
+
+# Alias de sell-out (curated_mix) para que los dos Iguazú se sumen bajo el mismo
+# canónico que usa _CBL_PAT_SI_ALIAS — cualquier local no listado usa .title().
+_FER_PAT_SO_ALIAS: dict[str, str | None] = {
+    "MIS - PUERTO IGUAZU":   "Mis - Puerto Iguazu (Ambos)",
+    "MIS - PUERTO IGUAZU 2": "Mis - Puerto Iguazu (Ambos)",
+}
+
+_FER_PAT_SI_ALIAS: dict[str, str | None] = {
+    "Patagonia Casa Tango":              "Casa Del Tango",
+    "Patagonia Leloir":                  "Leloir",
+    "Patagonia Bahia Blanca":            "Bahia Blanca",
+    "Patagonia Mendoza":                 "Mendoza",
+    "PATAGONIA Neuquen":                 "Neuquen",
+    "CERVECER\u00cdA PATAGONIA Neuquen": "Neuquen",
+    "Patagonia El Chalten":              "Chalten",
+    "PATAGONIA USHUAIA":                 "Ushuaia",
+    "PATAGONIA CALAFATE":                "Calafate",
+    "PATAGONIA RIO GALLEGOS":            "Rio Gallegos",
+    "Patagonia Armenia":                 "Ba - Plaza Armenia",
+    "Patagonia Riobamba":                "Ba - Riobamba",
+    "Patagonia Puerto Madero":           "Puerto Madero",
+    "Refugio Patagonia Parana":          "Parana",
+    "Patagonia Caril\u00f3":             "Carilo",
+    "Refugio Patagonia Jujuy":           "Jujuy",
+    "Patagonia Lanus":                   "Ba - Lanus",
+    "CERVECERIA PATAGONIA (PINAMAR)":    "Pinamar",
+    "PATAGONIA POSADAS BEER S.A.":       "Mis - Posadas",
+    "PATAGONIA ROSARIO LA FLORIDA":      "Sfe - Rosario La Florida",
+    "PATAGONIA LA PLATA 20 Y 50":        None,   # sin match en curated_mix
+    "BARRIO DAMALE S.R.L.":              None,   # distribuidor
+}
+
+
+def fetch_sellinout_fer_pat_weekly(creds, weeks=12):
+    """
+    Sell-in/out semanal Feriado para Cadena Patagonia.
+    Sell-in : Ventas_Maestro_Con_Cluster_Final — cl='cadena patagonia', FERIADO, campo Litros.
+    Sell-out: patagonia-refugios.curated_database.curated_mix — VERMU FERIADO / FERIADITO,
+              litros = SUM(tragos_total) * 0.24 (240ml por serve).
+    """
+    from google.cloud import bigquery as _bq
+    bq_dest = _bq.Client(project="temple-brewery",     credentials=creds)
+    bq_pat  = _bq.Client(project="patagonia-refugios", credentials=creds)
+
+    q_si = f"""
+    SELECT DATE_TRUNC(FechaPedido, WEEK(MONDAY)) AS semana,
+           ROUND(SUM(COALESCE(Litros, 0)), 2)    AS litros
+    FROM `temple-brewery.Destileria.Ventas_Maestro_Con_Cluster_Final`
+    WHERE LOWER(TRIM(Clusterizacion)) = 'cadena patagonia'
+      AND REGEXP_CONTAINS(UPPER(TRIM(Producto)), r'FERIADO')
+      AND FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana
+    """
+    _prods_sql = ', '.join(f"'{p}'" for p in _FER_PAT_SO_PRODUCTS)
+    q_so = f"""
+    SELECT DATE_TRUNC(fecha, WEEK(MONDAY))            AS semana,
+           ROUND(SUM(COALESCE(tragos_total, 0)) * 0.12, 2) AS litros
+    FROM `patagonia-refugios.curated_database.curated_mix`
+    WHERE fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+      AND UPPER(TRIM(producto)) IN ({_prods_sql})
+      AND categoria = 'VERMUTH'
+    GROUP BY semana
+    """
+    si_map = {str(r.semana): float(r.litros) for r in bq_dest.query(q_si).result(timeout=60)}
+    so_map = {str(r.semana): float(r.litros) for r in bq_pat.query(q_so).result(timeout=60)}
+
+    # Ventas_Maestro está congelada (ver lesson_sin-compra-datos-reales) — se completa
+    # la compra reciente desde Contabilium, igual que para Cadena Grupo Temple.
+    for (_local, wk), litros in _fetch_cbl_sellin_by_week_local(
+            creds, r'FERIADO', alias_map=_CBL_PAT_SI_ALIAS, cluster_name='Cadena Patagonia').items():
+        si_map[wk] = si_map.get(wk, 0.0) + litros
+
+    all_weeks = sorted(set(list(si_map) + list(so_map)), reverse=True)[:weeks]
+    result = []
+    for i, wk in enumerate(all_weeks):
+        si      = si_map.get(wk, 0.0)
+        so      = so_map.get(wk, 0.0)
+        prev_wk = all_weeks[i + 1] if i + 1 < len(all_weeks) else None
+        si_prev = si_map.get(prev_wk) if prev_wk else None
+        result.append({"w": wk, "si": si, "so": so, "diff": round(si - so, 2),
+                        "si_prev": si_prev, "alarm": (si_prev is not None and so > si_prev)})
+    return result
+
+
+def fetch_sellinout_fer_pat_local_weekly(creds, weeks=12):
+    """Sell-in vs sell-out Feriado Patagonia por local × semana."""
+    from google.cloud import bigquery as _bq
+    bq_dest = _bq.Client(project="temple-brewery",     credentials=creds)
+    bq_pat  = _bq.Client(project="patagonia-refugios", credentials=creds)
+
+    q_si = f"""
+    SELECT DATE_TRUNC(FechaPedido, WEEK(MONDAY)) AS semana,
+           TRIM(NombreDeFantasia)                AS local,
+           ROUND(SUM(COALESCE(Litros, 0)), 2)   AS litros
+    FROM `temple-brewery.Destileria.Ventas_Maestro_Con_Cluster_Final`
+    WHERE LOWER(TRIM(Clusterizacion)) = 'cadena patagonia'
+      AND REGEXP_CONTAINS(UPPER(TRIM(Producto)), r'FERIADO')
+      AND FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana, local
+    """
+    _prods_sql = ', '.join(f"'{p}'" for p in _FER_PAT_SO_PRODUCTS)
+    q_so = f"""
+    SELECT DATE_TRUNC(fecha, WEEK(MONDAY))                   AS semana,
+           TRIM(establecimiento)                              AS local,
+           ROUND(SUM(COALESCE(tragos_total, 0)) * 0.12, 2)  AS litros
+    FROM `patagonia-refugios.curated_database.curated_mix`
+    WHERE fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+      AND UPPER(TRIM(producto)) IN ({_prods_sql})
+      AND categoria = 'VERMUTH'
+    GROUP BY semana, local
+    """
+    si_data: dict[tuple, float] = {}
+    for r in bq_dest.query(q_si).result(timeout=60):
+        canon = _FER_PAT_SI_ALIAS.get(r.local, r.local)
+        if canon is None:
+            continue
+        key = (str(r.semana), canon)
+        si_data[key] = si_data.get(key, 0.0) + float(r.litros)
+
+    # Completar compra reciente desde Contabilium (Ventas_Maestro congelada, ver
+    # lesson_sin-compra-datos-reales) — mismo mecanismo que Cadena Grupo Temple.
+    for (local, wk), litros in _fetch_cbl_sellin_by_week_local(
+            creds, r'FERIADO', alias_map=_CBL_PAT_SI_ALIAS, cluster_name='Cadena Patagonia').items():
+        key = (wk, local)
+        si_data[key] = si_data.get(key, 0.0) + litros
+
+    so_data: dict[tuple, float] = {}
+    for r in bq_pat.query(q_so).result(timeout=60):
+        raw = r.local or ""
+        canon = _FER_PAT_SO_ALIAS.get(raw, raw.title())
+        if canon is None:
+            continue
+        key = (str(r.semana), canon)
+        so_data[key] = so_data.get(key, 0.0) + float(r.litros)
+
+    all_keys = set(si_data) | set(so_data)
+    result = []
+    for (wk, local) in sorted(all_keys):
+        si = round(si_data.get((wk, local), 0.0), 2)
+        so = round(so_data.get((wk, local), 0.0), 2)
+        if si == 0 and so == 0:
+            continue
+        result.append({"w": wk, "local": local, "si": si, "so": so})
+    return result
+
+
+def fetch_sellinout_fer_pat_local_monthly(creds, months=3):
+    """Compra vs venta Feriado Cadena Patagonia por local y MES CALENDARIO — usado
+    por los filtros Mes Actual / Mes Anterior cuando la vista está en Cadena
+    Patagonia (mismo objetivo que fetch_sellinout_local_monthly para Grupo Temple,
+    pero con las queries dedicadas de Patagonia — el sell-out no es un SUM simple,
+    sino tragos_total*0.12 filtrado por producto/categoria)."""
+    from google.cloud import bigquery as _bq
+    bq_dest = _bq.Client(project="temple-brewery",     credentials=creds)
+    bq_pat  = _bq.Client(project="patagonia-refugios", credentials=creds)
+
+    q_si = f"""
+    SELECT FORMAT_DATE('%Y-%m', FechaPedido) AS mes,
+           TRIM(NombreDeFantasia)            AS local,
+           ROUND(SUM(COALESCE(Litros, 0)), 2) AS litros
+    FROM `temple-brewery.Destileria.Ventas_Maestro_Con_Cluster_Final`
+    WHERE LOWER(TRIM(Clusterizacion)) = 'cadena patagonia'
+      AND REGEXP_CONTAINS(UPPER(TRIM(Producto)), r'FERIADO')
+      AND FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {months} MONTH)
+    GROUP BY mes, local
+    """
+    _prods_sql = ', '.join(f"'{p}'" for p in _FER_PAT_SO_PRODUCTS)
+    q_so = f"""
+    SELECT FORMAT_DATE('%Y-%m', fecha)                     AS mes,
+           TRIM(establecimiento)                             AS local,
+           ROUND(SUM(COALESCE(tragos_total, 0)) * 0.12, 2) AS litros
+    FROM `patagonia-refugios.curated_database.curated_mix`
+    WHERE fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {months} MONTH)
+      AND UPPER(TRIM(producto)) IN ({_prods_sql})
+      AND categoria = 'VERMUTH'
+    GROUP BY mes, local
+    """
+
+    si_map: dict[tuple, float] = {}
+    for r in bq_dest.query(q_si).result(timeout=60):
+        canon = _FER_PAT_SI_ALIAS.get(r.local, r.local)
+        if canon is None:
+            continue
+        key = (canon, r.mes)
+        si_map[key] = si_map.get(key, 0.0) + float(r.litros)
+
+    for (local, mes), litros in _fetch_cbl_sellin_by_month_local(
+            creds, r'FERIADO', alias_map=_CBL_PAT_SI_ALIAS, cluster_name='Cadena Patagonia').items():
+        key = (local, mes)
+        si_map[key] = si_map.get(key, 0.0) + litros
+
+    so_map: dict[tuple, float] = {}
+    for r in bq_pat.query(q_so).result(timeout=60):
+        raw = r.local or ""
+        canon = _FER_PAT_SO_ALIAS.get(raw, raw.title())
+        if canon is None:
+            continue
+        key = (canon, r.mes)
+        so_map[key] = so_map.get(key, 0.0) + float(r.litros)
+
+    result = []
+    for (local, mes) in sorted(set(si_map) | set(so_map)):
+        si = round(si_map.get((local, mes), 0.0), 2)
+        so = round(so_map.get((local, mes), 0.0), 2)
+        if si == 0 and so == 0:
+            continue
+        result.append({"local": local, "mo": mes, "si": si, "so": so})
+    return result
 
 
 # ── Productos Patagonia que usan 50ml de Gin Bosque en receta ───────────────
@@ -1050,7 +2217,10 @@ _PAT_SI_ALIAS: dict[str, str | None] = {
     "Refugio Patagonia Parana":  "Parana",
 }
 # Alias Establecimiento → nombre canónico. Completar con las sucursales de Patagonia.
-_PAT_SO_ALIAS: dict[str, str | None] = {}
+_PAT_SO_ALIAS: dict[str, str | None] = {
+    "MIS - PUERTO IGUAZU":   "Mis - Puerto Iguazu (Ambos)",
+    "MIS - PUERTO IGUAZU 2": "Mis - Puerto Iguazu (Ambos)",
+}
 
 
 def fetch_sellinout_by_local(creds, weeks=12):
@@ -1067,6 +2237,7 @@ def fetch_sellinout_by_local(creds, weeks=12):
     WHERE LOWER(TRIM(Clusterizacion)) = 'cadena grupo temple'
       AND REGEXP_CONTAINS(UPPER(TRIM(Producto)), r'GIN BOSQUE.*(500|750)')
       AND FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks} WEEK)
+      AND FechaPedido < '{_CBL_SELLIN_CUTOFF}'
     GROUP BY local
     """
 
@@ -1089,6 +2260,10 @@ def fetch_sellinout_by_local(creds, weeks=12):
         if canon is None:
             continue
         si_map[canon] = si_map.get(canon, 0.0) + litros
+
+    # Sell-in desde el corte: Ventas_Maestro está congelada desde 2026-07-01, se completa con Contabilium
+    for (local, _wk), litros in _fetch_cbl_sellin_by_week_local(creds, r'GIN BOSQUE.*(500|750)').items():
+        si_map[local] = si_map.get(local, 0.0) + litros
 
     # Aplicar alias sell-out
     so_map: dict[str, float] = {}
@@ -1122,6 +2297,7 @@ def fetch_sellinout_local_weekly(creds, weeks=12):
     WHERE LOWER(TRIM(Clusterizacion)) = 'cadena grupo temple'
       AND REGEXP_CONTAINS(UPPER(TRIM(Producto)), r'GIN BOSQUE.*(500|750)')
       AND FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+      AND FechaPedido < '{_CBL_SELLIN_CUTOFF}'
     GROUP BY semana, local
     """
 
@@ -1143,6 +2319,11 @@ def fetch_sellinout_local_weekly(creds, weeks=12):
             continue
         key = (canon, str(r.semana))
         si_map[key] = si_map.get(key, 0.0) + float(r.litros)
+
+    # Sell-in desde el corte: Ventas_Maestro está congelada desde 2026-07-01, se completa con Contabilium
+    for (local, wk), litros in _fetch_cbl_sellin_by_week_local(creds, r'GIN BOSQUE.*(500|750)').items():
+        key = (local, wk)
+        si_map[key] = si_map.get(key, 0.0) + litros
 
     so_map: dict[tuple, float] = {}
     for r in bq_temple.query(q_so).result(timeout=60):
@@ -1183,6 +2364,7 @@ def fetch_sellinout_pat_weekly(creds, weeks=12):
     WHERE LOWER(TRIM(Clusterizacion)) = 'cadena patagonia'
       AND REGEXP_CONTAINS(UPPER(TRIM(Producto)), r'GIN BOSQUE.*(500|750)')
       AND FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+      AND FechaPedido < '{_CBL_SELLIN_CUTOFF}'
     GROUP BY semana
     """
 
@@ -1199,6 +2381,12 @@ def fetch_sellinout_pat_weekly(creds, weeks=12):
 
     si_map = {str(r.semana): float(r.litros) for r in bq_dest.query(q_si).result(timeout=60)}
     so_map = {str(r.semana): float(r.litros) for r in bq_pat.query(q_so).result(timeout=60)}
+
+    # Sell-in desde el corte: Ventas_Maestro está congelada desde 2026-06-25 para
+    # Cadena Patagonia, se completa con Contabilium (mismo patrón que Grupo Temple).
+    for (_local, wk), litros in _fetch_cbl_sellin_by_week_local(
+            creds, r'GIN BOSQUE.*(500|750)', alias_map=_CBL_PAT_SI_ALIAS, cluster_name='Cadena Patagonia').items():
+        si_map[wk] = si_map.get(wk, 0.0) + litros
 
     all_weeks = sorted(set(list(si_map) + list(so_map)), reverse=True)[:weeks]
     result = []
@@ -1233,6 +2421,7 @@ def fetch_sellinout_pat_local_weekly(creds, weeks=12):
     WHERE LOWER(TRIM(Clusterizacion)) = 'cadena patagonia'
       AND REGEXP_CONTAINS(UPPER(TRIM(Producto)), r'GIN BOSQUE.*(500|750)')
       AND FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+      AND FechaPedido < '{_CBL_SELLIN_CUTOFF}'
     GROUP BY semana, local
     """
 
@@ -1256,6 +2445,13 @@ def fetch_sellinout_pat_local_weekly(creds, weeks=12):
         key = (canon, str(r.semana))
         si_map[key] = si_map.get(key, 0.0) + float(r.litros)
 
+    # Sell-in desde el corte: Ventas_Maestro está congelada desde 2026-06-25 para
+    # Cadena Patagonia, se completa con Contabilium (mismo patrón que Grupo Temple).
+    for (local, wk), litros in _fetch_cbl_sellin_by_week_local(
+            creds, r'GIN BOSQUE.*(500|750)', alias_map=_CBL_PAT_SI_ALIAS, cluster_name='Cadena Patagonia').items():
+        key = (local, wk)
+        si_map[key] = si_map.get(key, 0.0) + litros
+
     so_map: dict[tuple, float] = {}
     for r in bq_pat.query(q_so).result(timeout=60):
         canon = _PAT_SO_ALIAS.get(r.local, r.local.title() if r.local else r.local)
@@ -1272,6 +2468,72 @@ def fetch_sellinout_pat_local_weekly(creds, weeks=12):
             so = so_map.get((local, wk), 0.0)
             if si > 0 or so > 0:
                 result.append({"local": local, "w": wk, "si": si, "so": so})
+    return result
+
+
+def fetch_sellinout_pat_local_monthly(creds, months=3):
+    """Compra vs venta Bosque Cadena Patagonia por local y MES CALENDARIO — usado
+    por los filtros Mes Actual / Mes Anterior cuando la vista está en Cadena
+    Patagonia (mismo objetivo que fetch_sellinout_local_monthly para Grupo Temple
+    y fetch_sellinout_fer_pat_local_monthly para Feriado, evita el sesgo del
+    bucket semanal en los bordes del mes)."""
+    from google.cloud import bigquery as _bq
+    bq_dest = _bq.Client(project="temple-brewery",     credentials=creds)
+    bq_pat  = _bq.Client(project="patagonia-refugios", credentials=creds)
+
+    q_si = f"""
+    SELECT FORMAT_DATE('%Y-%m', FechaPedido) AS mes,
+           TRIM(NombreDeFantasia)            AS local,
+           ROUND(SUM(COALESCE(Litros, 0)), 2) AS litros
+    FROM `temple-brewery.Destileria.Ventas_Maestro_Con_Cluster_Final`
+    WHERE LOWER(TRIM(Clusterizacion)) = 'cadena patagonia'
+      AND REGEXP_CONTAINS(UPPER(TRIM(Producto)), r'GIN BOSQUE.*(500|750)')
+      AND FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {months} MONTH)
+      AND FechaPedido < '{_CBL_SELLIN_CUTOFF}'
+    GROUP BY mes, local
+    """
+    _prods_sql = ', '.join(f"'{p}'" for p in _PAT_SO_PRODUCTS)
+    q_so = f"""
+    SELECT FORMAT_DATE('%Y-%m', Fecha)  AS mes,
+           TRIM(Establecimiento)        AS local,
+           ROUND(SUM(Cantidad) * 0.05, 2) AS litros
+    FROM `patagonia-refugios.curated_database.curated_mix`
+    WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {months} MONTH)
+      AND UPPER(TRIM(Producto)) IN ({_prods_sql})
+    GROUP BY mes, local
+    """
+
+    si_map: dict[tuple, float] = {}
+    for r in bq_dest.query(q_si).result(timeout=60):
+        canon = _PAT_SI_ALIAS.get(r.local, r.local)
+        if canon is None:
+            continue
+        key = (canon, r.mes)
+        si_map[key] = si_map.get(key, 0.0) + float(r.litros)
+
+    # Sell-in desde el corte: Ventas_Maestro está congelada desde 2026-06-25 para
+    # Cadena Patagonia, se completa con Contabilium (mismo patrón que Grupo Temple).
+    for (local, mes), litros in _fetch_cbl_sellin_by_month_local(
+            creds, r'GIN BOSQUE.*(500|750)', alias_map=_CBL_PAT_SI_ALIAS, cluster_name='Cadena Patagonia').items():
+        key = (local, mes)
+        si_map[key] = si_map.get(key, 0.0) + litros
+
+    so_map: dict[tuple, float] = {}
+    for r in bq_pat.query(q_so).result(timeout=60):
+        raw = r.local or ""
+        canon = _PAT_SO_ALIAS.get(raw, raw.title())
+        if canon is None:
+            continue
+        key = (canon, r.mes)
+        so_map[key] = so_map.get(key, 0.0) + float(r.litros)
+
+    result = []
+    for (local, mes) in sorted(set(si_map) | set(so_map)):
+        si = round(si_map.get((local, mes), 0.0), 2)
+        so = round(so_map.get((local, mes), 0.0), 2)
+        if si == 0 and so == 0:
+            continue
+        result.append({"local": local, "mo": mes, "si": si, "so": so})
     return result
 
 

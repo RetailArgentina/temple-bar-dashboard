@@ -231,6 +231,26 @@ function renderRanking(locales){
   }).join('');
 }
 
+var RESENAS_DIAS_UMBRAL = 60; // umbral de "actual" para la sección de tarjetas recientes
+
+function parseReviewDate(r){
+  if(r.time) return new Date(r.time * 1000);
+  if(r.date_str){
+    var parts = r.date_str.split('/');
+    if(parts.length === 3){
+      return new Date(parseInt(parts[2], 10), parseInt(parts[1], 10) - 1, parseInt(parts[0], 10));
+    }
+  }
+  return null;
+}
+
+function isReviewRecent(r, dias){
+  var d = parseReviewDate(r);
+  if(!d || isNaN(d.getTime())) return false;
+  var limiteMs = dias * 24 * 60 * 60 * 1000;
+  return (Date.now() - d.getTime()) <= limiteMs;
+}
+
 function reviewCardHtml(r){
   var stars = starsHtml(r.rating);
   var timeParts = [];
@@ -250,16 +270,17 @@ function reviewCardHtml(r){
 function renderCards(locales){
   var wrap = document.getElementById('cardsWrap');
   if(!wrap) return;
-  if(!locales.length){
-    wrap.innerHTML = '<div style="color:#484f58;font-size:12px;padding:12px 0">Sin reseñas disponibles para esta selección</div>';
+  var conResenasRecientes = locales.filter(function(l){
+    return (l.reviews || []).some(function(r){ return isReviewRecent(r, RESENAS_DIAS_UMBRAL); });
+  });
+  if(!conResenasRecientes.length){
+    wrap.innerHTML = '<div style="color:#484f58;font-size:12px;padding:12px 0">Sin reseñas recientes (últimos '+RESENAS_DIAS_UMBRAL+' días) para esta selección</div>';
     return;
   }
-  wrap.innerHTML = locales.map(function(l){
+  wrap.innerHTML = conResenasRecientes.map(function(l){
     var mc = MARCA_COLORS[l.marca] || '#8b949e';
-    var reviews = (l.reviews || []).slice(0, 3);
-    var cardsHtml = reviews.length
-      ? reviews.map(reviewCardHtml).join('')
-      : '<p class="review-text" style="color:#484f58">Sin reseñas disponibles</p>';
+    var reviews = (l.reviews || []).filter(function(r){ return isReviewRecent(r, RESENAS_DIAS_UMBRAL); }).slice(0, 3);
+    var cardsHtml = reviews.map(reviewCardHtml).join('');
     return '<div class="reviews-local">'
       +'<div class="reviews-local-head" style="background:'+mc+'">'+(l.local || '—')+'</div>'
       +'<div class="reviews-cards-inner">'+cardsHtml+'</div>'

@@ -23,6 +23,13 @@ def query_retail(bq_client, fecha_desde: str, fecha_hasta: str, agrupar_por: str
     agrupar_por: "marca" | "local" | "canal" | "dia"
     Retorna lista de dicts con grupo, facturacion, ordenes, ticket.
     """
+    # Validar fechas
+    try:
+        date.fromisoformat(fecha_desde)
+        date.fromisoformat(fecha_hasta)
+    except ValueError:
+        raise ValueError(f"Fecha inválida: {fecha_desde} / {fecha_hasta}")
+
     group_map = {
         "marca": "Marca",
         "local": "Local",
@@ -91,7 +98,20 @@ def query_product(bq_client, fecha_desde: str, fecha_hasta: str, marca: str) -> 
     Consulta datos de producto (litros, mix, top productos) desde la vista curada.
     marca: "TEMPLE" | "PATAGONIA" | "FERIADO" | "TODAS"
     """
-    if marca.upper() == "FERIADO":
+    # Validar fechas
+    try:
+        date.fromisoformat(fecha_desde)
+        date.fromisoformat(fecha_hasta)
+    except ValueError:
+        raise ValueError(f"Fecha inválida: {fecha_desde} / {fecha_hasta}")
+
+    # Validar marca
+    marca_upper = marca.upper()
+    valid_marcas = {"TEMPLE", "PATAGONIA", "FERIADO", "TODAS"}
+    if marca_upper not in valid_marcas:
+        raise ValueError(f"Marca inválida: {marca}")
+
+    if marca_upper == "FERIADO":
         date_col = "Fecha_de_creacion"
         prod_col  = "Nombre"
         fam_col   = "Categor__as_de_Productos_Platos"
@@ -102,7 +122,7 @@ def query_product(bq_client, fecha_desde: str, fecha_hasta: str, marca: str) -> 
         fam_col   = "familia"
         lts_col   = "Litros_Totales"
 
-    marca_filter = f"AND marca = '{marca.upper()}'" if marca.upper() != "TODAS" else ""
+    marca_filter = f"AND marca = '{marca_upper}'" if marca_upper != "TODAS" else ""
 
     query_mix = f"""
     SELECT

@@ -139,17 +139,17 @@ def fetch_patagonia(client, desde, hasta):
         SUM(COALESCE(cerveza_total, 0))
         + SUM(CASE WHEN REGEXP_CONTAINS(UPPER(TRIM(producto)), r'BOSQUE GIN')
                    THEN cantidad * 50.0  / 1000 ELSE 0 END)
-        + SUM(CASE WHEN REGEXP_CONTAINS(UPPER(TRIM(producto)), r'VERMU FERIADO')
+        + SUM(CASE WHEN categoria = 'VERMUTH'
                    THEN cantidad * 120.0 / 1000 ELSE 0 END)
-        + SUM(CASE WHEN REGEXP_CONTAINS(UPPER(TRIM(producto)), r'FERNET')
+        + SUM(CASE WHEN categoria = 'FERNET'
                    THEN cantidad * 75.0  / 1000 ELSE 0 END),
       2)                                        AS lts_total,
       SUM(COALESCE(cerveza_total, 0))           AS lts_cerveza,
       ROUND(SUM(CASE WHEN REGEXP_CONTAINS(UPPER(TRIM(producto)), r'BOSQUE GIN')
                      THEN cantidad * 50.0  / 1000 ELSE 0 END), 2) AS lts_gin,
-      ROUND(SUM(CASE WHEN REGEXP_CONTAINS(UPPER(TRIM(producto)), r'FERNET')
+      ROUND(SUM(CASE WHEN categoria = 'FERNET'
                      THEN cantidad * 75.0  / 1000 ELSE 0 END), 2) AS lts_fernet,
-      ROUND(SUM(CASE WHEN REGEXP_CONTAINS(UPPER(TRIM(producto)), r'VERMU FERIADO')
+      ROUND(SUM(CASE WHEN categoria = 'VERMUTH'
                      THEN cantidad * 120.0 / 1000 ELSE 0 END), 2) AS lts_feriado,
       SUM(COALESCE(tragos_total, 0))            AS lts_tragos,
       0.0                                       AS lts_burger
@@ -200,6 +200,20 @@ def fetch_feriado(client, desde, hasta):
     return rows
 
 
+def fetch_feriado_total_oficial(client, desde, hasta):
+    """Facturación oficial de Feriado: Total_Orden deduplicado por orden
+    (cuenta_orden=1). Mismo método que usa vw_KPI_Facturacion_Actual — evita
+    el sobreconteo de SUM(Facturacion), que suma a nivel ítem."""
+    tbl = '`temple-bar-439715.Feriado.vw_Ventas_Feriado`'
+    q = f"""
+    SELECT SUM(Total_Orden) AS facturacion
+    FROM {tbl}
+    WHERE Fecha BETWEEN '{desde}' AND '{hasta}' AND cuenta_orden = 1
+    """
+    rows = list(client.query(q).result())
+    return fl(rows[0].facturacion) if rows else 0.0
+
+
 def feriado_lts_by_tipo(rows):
     """Desglosa litros de Feriado por tipo usando Categoria_por_Empresa."""
     totals = {k: 0.0 for k in ('lts_cerveza','lts_gin','lts_fernet','lts_feriado','lts_tragos','lts_burger')}
@@ -240,18 +254,18 @@ def fetch_locales_patagonia(client, desde, hasta):
       ROUND(SUM(COALESCE(cerveza_total, 0)), 2)                                        AS lts_cerveza,
       ROUND(SUM(CASE WHEN REGEXP_CONTAINS(UPPER(TRIM(producto)), r'BOSQUE GIN')
                      THEN cantidad * 50.0 / 1000 ELSE 0 END), 2)                      AS lts_gin,
-      ROUND(SUM(CASE WHEN REGEXP_CONTAINS(UPPER(TRIM(producto)), r'FERNET')
+      ROUND(SUM(CASE WHEN categoria = 'FERNET'
                      THEN cantidad * 75.0 / 1000 ELSE 0 END), 2)                      AS lts_fernet,
-      ROUND(SUM(CASE WHEN REGEXP_CONTAINS(UPPER(TRIM(producto)), r'VERMU FERIADO')
+      ROUND(SUM(CASE WHEN categoria = 'VERMUTH'
                      THEN cantidad * 120.0 / 1000 ELSE 0 END), 2)                     AS lts_feriado,
       ROUND(SUM(COALESCE(tragos_total, 0)), 2)                                         AS lts_tragos,
       ROUND(
         SUM(COALESCE(cerveza_total, 0))
         + SUM(CASE WHEN REGEXP_CONTAINS(UPPER(TRIM(producto)), r'BOSQUE GIN')
                    THEN cantidad * 50.0  / 1000 ELSE 0 END)
-        + SUM(CASE WHEN REGEXP_CONTAINS(UPPER(TRIM(producto)), r'FERNET')
+        + SUM(CASE WHEN categoria = 'FERNET'
                    THEN cantidad * 75.0  / 1000 ELSE 0 END)
-        + SUM(CASE WHEN REGEXP_CONTAINS(UPPER(TRIM(producto)), r'VERMU FERIADO')
+        + SUM(CASE WHEN categoria = 'VERMUTH'
                    THEN cantidad * 120.0 / 1000 ELSE 0 END),
       2)                                                                                AS lts_total
     FROM {tbl}
@@ -435,11 +449,26 @@ def fetch_all(desde, hasta, clients):
                 brand_rows[marca]       = fetch_feriado(client, desde, hasta)
                 brand_prev_rows[marca]  = fetch_feriado(client, desde_ant, hasta_ant)
                 brand_local_rows[marca] = fetch_locales_feriado(client, desde, hasta)
+                feriado_fac_oficial     = fetch_feriado_total_oficial(client, desde, hasta)
+                feriado_fac_oficial_ant = fetch_feriado_total_oficial(client, desde_ant, hasta_ant)
         except Exception as e:
             print(f"  ⚠ [{marca}] Sin acceso: {e}")
             brand_rows[marca]       = []
             brand_prev_rows[marca]  = []
             brand_local_rows[marca] = []
+
+    # Ajuste de facturación Feriado: SUM(Facturacion) suma a nivel ítem y
+    # sobreestima vs. el método oficial corporativo (Total_Orden, cuenta_orden=1).
+    # El ranking/mix por producto sigue usando el detalle a nivel ítem (no hay forma
+    # de atribuir el total de una orden a un solo producto); solo el total
+    # agregado (KPI) se corrige contra el valor oficial.
+    feriado_fac_item     = sum(fl(getattr(r, 'facturacion', 0)) for r in brand_rows.get('FERIADO', []))
+    feriado_fac_item_ant = sum(fl(getattr(r, 'facturacion', 0)) for r in brand_prev_rows.get('FERIADO', []))
+    if brand_rows.get('FERIADO'):
+        feriado_ajuste     = feriado_fac_oficial     - feriado_fac_item
+        feriado_ajuste_ant = feriado_fac_oficial_ant - feriado_fac_item_ant
+    else:
+        feriado_ajuste = feriado_ajuste_ant = 0.0
 
     # Construir datos por marca
     for marca, rows in brand_rows.items():
@@ -449,7 +478,12 @@ def fetch_all(desde, hasta, clients):
                 feriado_lts = feriado_lts_by_tipo(rows)
                 for k, v in feriado_lts.items():
                     data[k] = round(v, 1)
+                data['total_fac'] = round(data['total_fac'] + feriado_ajuste, 0)
             _apply_deltas(data, brand_prev_rows.get(marca, []))
+            if marca == 'FERIADO':
+                prev_oficial = feriado_fac_item_ant + feriado_ajuste_ant
+                if prev_oficial > 0:
+                    data['vs_ant_pct'] = round((data['total_fac'] - prev_oficial) / prev_oficial * 100, 1)
         else:
             data = _empty_brand(marca)
         locales = build_locales_data(brand_local_rows.get(marca, []))
@@ -463,11 +497,16 @@ def fetch_all(desde, hasta, clients):
     all_prev_rows = [r for rows in brand_prev_rows.values() for r in rows]
     if all_rows:
         todas = build_brand_data(all_rows)
+        todas['total_fac'] = round(todas['total_fac'] + feriado_ajuste, 0)
         if brand_rows.get('FERIADO'):
             feriado_lts = feriado_lts_by_tipo(brand_rows['FERIADO'])
             for k, v in feriado_lts.items():
                 todas[k] = round(todas.get(k, 0) + v, 1)
         _apply_deltas(todas, all_prev_rows)
+        total_prev_item    = sum(fl(getattr(r, 'facturacion', 0)) for r in all_prev_rows)
+        total_prev_oficial = total_prev_item + feriado_ajuste_ant
+        if total_prev_oficial > 0:
+            todas['vs_ant_pct'] = round((todas['total_fac'] - total_prev_oficial) / total_prev_oficial * 100, 1)
     else:
         todas = _empty_brand('TODAS')
     todas_locales = [l for m in SOURCES for l in result.get(m, {}).get('locales', [])]

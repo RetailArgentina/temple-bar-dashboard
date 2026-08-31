@@ -30,10 +30,10 @@ from google.cloud import bigquery
 
 # ── Configuración Toteat ──────────────────────────────────────────────────────
 TOTEAT_BASE  = "https://api.toteat.com/mw/or/1.0"
-TOTEAT_XIU   = os.environ.get("TOTEAT_XIU",   "1003")
-TOTEAT_XIR   = os.environ.get("TOTEAT_XIR",   "5862845152100352")
-TOTEAT_XIL   = os.environ.get("TOTEAT_XIL",   "1")
-TOTEAT_TOKEN = os.environ.get("TOTEAT_TOKEN", "Cp7U3WnJGPrIR4urdU2u7pYxNkbJxiVT")
+TOTEAT_XIU   = os.environ.get("TOTEAT_XIU",   "")
+TOTEAT_XIR   = os.environ.get("TOTEAT_XIR",   "")
+TOTEAT_XIL   = os.environ.get("TOTEAT_XIL",   "")
+TOTEAT_TOKEN = os.environ.get("TOTEAT_TOKEN", "")
 LOCAL_NOMBRE = os.environ.get("TOTEAT_LOCAL", "COGHLAN")  # nombre canónico del local en BQ
 MARCA        = "FERIADO"
 MAX_DIAS_POR_REQ = 14              # Toteat permite máx 15 días; usamos 14 por seguridad
@@ -294,7 +294,6 @@ def sync_rango(client: bigquery.Client, desde: date, hasta: date, dry_run: bool)
     Acumula todas las filas en memoria y deduplica por row_key antes de insertar,
     para evitar duplicados cuando la API devuelve la misma orden en dos chunks."""
     log(f"Sincronizando {desde} → {hasta} ({(hasta - desde).days + 1} días)")
-    borrar_rango(client, desde, hasta, dry_run)
 
     all_filas     = {}   # row_key → fila  (dedup en memoria)
     total_ordenes = 0
@@ -327,6 +326,10 @@ def sync_rango(client: bigquery.Client, desde: date, hasta: date, dry_run: bool)
         chunk_ini      = chunk_fin + timedelta(days=1)
 
     filas_unicas = list(all_filas.values())
+    if not filas_unicas:
+        log("ERROR: Fetch vacío tras reintentos — abortando sin borrar")
+        sys.exit(1)
+    borrar_rango(client, desde, hasta, dry_run)
     n = insertar_filas(client, filas_unicas, dry_run)
     log(f"  Total: {total_ordenes} órdenes, {n} filas únicas en BQ")
     return n
@@ -339,6 +342,10 @@ def main():
     parser.add_argument("--recrear",  action="store_true", help="Borra y recrea la tabla antes de cargar (útil para backfill completo)")
     parser.add_argument("--dry-run",  action="store_true", help="No escribe en BQ")
     args = parser.parse_args()
+
+    if not TOTEAT_TOKEN:
+        log("ERROR: falta TOTEAT_TOKEN en el entorno")
+        sys.exit(1)
 
     ayer = date.today() - timedelta(days=1)
 
@@ -362,10 +369,14 @@ def main():
     else:
         ultima = ultima_fecha_en_bq(client)
         if ultima:
-            # Re-sincronizamos desde el último día registrado para capturar
-            # órdenes que cruzaron la medianoche y tienen Fecha del día siguiente
-            desde = ultima
-            log(f"Modo incremental: último en BQ = {ultima}, re-sync desde {desde}")
+            # Re-sincronizamos con 14 días hacia atrás (igual a MAX_DIAS_POR_REQ,
+            # entra en un solo request). Con 3 días (fix anterior) julio quedó
+            # con un gap de 258 órdenes / ~$12M: algunas órdenes de Toteat
+            # (delivery, pagos con conciliación demorada) tardan más de 3 días
+            # en asentarse, y una vez que un día sale de la ventana de re-sync
+            # nunca se vuelve a corregir solo. Ver lesson_toteat-api-rango-minimo.
+            desde = ultima - timedelta(days=MAX_DIAS_POR_REQ - 1)
+            log(f"Modo incremental: último en BQ = {ultima}, re-sync desde {desde} (ventana {MAX_DIAS_POR_REQ} días)")
             # Verificar gaps: comparar fechas únicas vs rango esperado
             try:
                 q_gap = f"""

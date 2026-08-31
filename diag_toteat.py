@@ -10,6 +10,7 @@ Uso:
 """
 
 import argparse
+import os
 import requests
 from datetime import datetime
 
@@ -17,7 +18,7 @@ TOTEAT_BASE  = "https://api.toteat.com/mw/or/1.0"
 TOTEAT_XIU   = "1003"
 TOTEAT_XIR   = "5862845152100352"
 TOTEAT_XIL   = "1"
-TOTEAT_TOKEN = "Cp7U3WnJGPrIR4urdU2u7pYxNkbJxiVT"
+TOTEAT_TOKEN = os.environ.get("TOTEAT_TOKEN", "")
 
 
 def main():

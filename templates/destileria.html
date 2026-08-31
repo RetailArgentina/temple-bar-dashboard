@@ -193,7 +193,7 @@ a,button,select{touch-action:manipulation}
 
   /* Cerveza */
   .cerv-tables-grid{grid-template-columns:1fr !important}
-  #cerv-kpi-row{grid-template-columns:1fr 1fr}
+  #cerv-kpi-row{grid-template-columns:1fr 1fr 1fr}
   #cerv-prod-row{gap:8px}
   #cerv-prod-row>div{min-width:calc(50% - 4px);flex:0 0 calc(50% - 4px)}
 }
@@ -325,6 +325,7 @@ a,button,select{touch-action:manipulation}
 </head>
 <body>
 __PERMISSIONS_INJECT__
+__STALE_BANNER__
 <div class="wrap">
 
   <!-- Tab navigation -->
@@ -338,6 +339,7 @@ __PERMISSIONS_INJECT__
         <button class="tab-sub-btn" data-tab="feriado-tabla"    onclick="switchTab('feriado-tabla');closeTabGroup('grp-feriado')">Litros / Mes</button>
         <button class="tab-sub-btn" data-tab="feriado-semanas" onclick="switchTab('feriado-semanas');closeTabGroup('grp-feriado')">Semanas</button>
         <button class="tab-sub-btn" data-tab="feriado-precio"  onclick="switchTab('feriado-precio');closeTabGroup('grp-feriado')">Precio Prom.</button>
+        <button class="tab-sub-btn" data-tab="feriado-sellinout" onclick="switchTab('feriado-sellinout');closeTabGroup('grp-feriado')">Sell In/Out</button>
       </div>
     </div>
 
@@ -520,6 +522,17 @@ __PERMISSIONS_INJECT__
             <div class="p-track"><div class="p-fill" id="bar-bosque-refugios" style="background:#10b981"></div></div>
             <span class="p-share" id="share-bosque-refugios"></span>
             <span class="p-yoy" id="pct-bosque-refugios"></span>
+          </div>
+        </div>
+        <div class="p-row">
+          <div class="p-row-top">
+            <span class="p-row-lbl">Miniatura</span>
+            <span class="p-row-val" style="color:#059669" id="val-bosque-mini">—</span>
+          </div>
+          <div class="p-row-bot">
+            <div class="p-track"><div class="p-fill" id="bar-bosque-mini" style="background:#059669"></div></div>
+            <span class="p-share" id="share-bosque-mini"></span>
+            <span class="p-yoy" id="pct-bosque-mini"></span>
           </div>
         </div>
       </div>
@@ -707,6 +720,34 @@ __PERMISSIONS_INJECT__
     </div>
   </div><!-- /view-feriado-precio -->
 
+  <!-- ═══ VISTA FERIADO SELL IN / OUT ════════════════════════════ -->
+  <div id="view-feriado-sellinout" style="display:none">
+    <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px 20px;margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+        <div class="bos-pivot-title" style="margin-bottom:0">SELL IN / SELL OUT · FERIADO</div>
+        <div style="display:flex;gap:6px">
+          <button id="sio-fer-brand-temple"    onclick="switchSioFerBrand('temple')"    style="padding:5px 16px;border-radius:6px;border:1px solid #c8102e;background:#c8102e;color:#fff;font-size:11px;font-weight:700;cursor:pointer">Grupo Temple</button>
+          <button id="sio-fer-brand-patagonia" onclick="switchSioFerBrand('patagonia')" style="padding:5px 16px;border-radius:6px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer">Cadena Patagonia</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <button id="sio-fer-btn-semana" onclick="switchSioFerView('semana')" style="flex:1;padding:9px 12px;border-radius:8px;border:1px solid #c8102e;background:#c8102e;color:#fff;font-size:12px;font-weight:700;cursor:pointer;text-align:center">Por Semana</button>
+        <button id="sio-fer-btn-local"  onclick="switchSioFerView('local')"  style="flex:1;padding:9px 12px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:12px;font-weight:700;cursor:pointer;text-align:center">Por Local</button>
+        <button id="sio-fer-btn-lw"     onclick="switchSioFerView('lw')"     style="flex:1;padding:9px 12px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:12px;font-weight:700;cursor:pointer;text-align:center">Sem × Local</button>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button id="sio-fer-filter-semana"      onclick="switchSioFerFilter('semana')"      style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer;text-align:center">Sem. Actual</button>
+        <button id="sio-fer-filter-anterior"    onclick="switchSioFerFilter('anterior')"    style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer;text-align:center">Sem. Anterior</button>
+        <button id="sio-fer-filter-mes"         onclick="switchSioFerFilter('mes')"         style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer;text-align:center">Mes Actual</button>
+        <button id="sio-fer-filter-mesanterior" onclick="switchSioFerFilter('mesanterior')" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer;text-align:center">Mes Anterior</button>
+        <button id="sio-fer-filter-ytd"         onclick="switchSioFerFilter('ytd')"         style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #58a6ff;background:#58a6ff22;color:#58a6ff;font-size:11px;font-weight:700;cursor:pointer;text-align:center">YTD</button>
+      </div>
+    </div>
+    <div id="siofer-table-wrap" style="padding:0 4px 24px"></div>
+    <div id="siofer-local-wrap" style="padding:0 4px 24px;display:none"></div>
+    <div id="siofer-lw-wrap"    style="padding:0 4px 24px;display:none"></div>
+  </div><!-- /view-feriado-sellinout -->
+
   <!-- ═══ VISTA FERIADO ═══════════════════════════════════ -->
   <div id="view-feriado" style="display:none">
     <div class="fer-main">
@@ -859,6 +900,11 @@ __PERMISSIONS_INJECT__
           <div class="fer-kpi-val" id="bos-kpi-refugios">—</div>
           <div class="fer-kpi-sub" id="bos-kpi-refugios-sub"></div>
         </div>
+        <div class="fer-kpi-card" style="border-top-color:#b89456">
+          <div class="fer-kpi-lbl" style="color:#b89456">MINIATURA (Litros)</div>
+          <div class="fer-kpi-val" id="bos-kpi-mini">—</div>
+          <div class="fer-kpi-sub" id="bos-kpi-mini-sub"></div>
+        </div>
       </div>
 
     </div><!-- /fer-main -->
@@ -918,10 +964,11 @@ __PERMISSIONS_INJECT__
         <button id="sio-btn-lw"     onclick="switchSioView('lw')"     style="flex:1;padding:9px 12px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:12px;font-weight:700;cursor:pointer;text-align:center">Sem × Local</button>
       </div>
       <div style="display:flex;gap:6px">
-        <button id="sio-filter-semana"   onclick="switchSioFilter('semana')"   style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer;text-align:center">Sem. Actual</button>
-        <button id="sio-filter-anterior" onclick="switchSioFilter('anterior')" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer;text-align:center">Sem. Anterior</button>
-        <button id="sio-filter-mes"      onclick="switchSioFilter('mes')"      style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer;text-align:center">Mes Actual</button>
-        <button id="sio-filter-ytd"      onclick="switchSioFilter('ytd')"      style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #58a6ff;background:#58a6ff22;color:#58a6ff;font-size:11px;font-weight:700;cursor:pointer;text-align:center">YTD</button>
+        <button id="sio-filter-semana"      onclick="switchSioFilter('semana')"      style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer;text-align:center">Sem. Actual</button>
+        <button id="sio-filter-anterior"    onclick="switchSioFilter('anterior')"    style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer;text-align:center">Sem. Anterior</button>
+        <button id="sio-filter-mes"         onclick="switchSioFilter('mes')"         style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer;text-align:center">Mes Actual</button>
+        <button id="sio-filter-mesanterior" onclick="switchSioFilter('mesanterior')" style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer;text-align:center">Mes Anterior</button>
+        <button id="sio-filter-ytd"         onclick="switchSioFilter('ytd')"         style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid #58a6ff;background:#58a6ff22;color:#58a6ff;font-size:11px;font-weight:700;cursor:pointer;text-align:center">YTD</button>
       </div>
     </div>
     <div id="sellinout-table-wrap" style="padding:0 4px 24px"></div>
@@ -951,7 +998,7 @@ __PERMISSIONS_INJECT__
   <!-- ═══ VISTA CERVEZA LATAS ════════════════════════════════════ -->
   <div id="view-cerveza" style="display:none">
     <!-- KPIs (rellena JS) -->
-    <div id="cerv-kpi-row" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px"></div>
+    <div id="cerv-kpi-row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:18px"></div>
     <!-- Tarjetas de producto (rellena JS) -->
     <div id="cerv-prod-row" style="display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap"></div>
     <!-- Tablas en dos columnas -->
@@ -1001,8 +1048,16 @@ const OBJ        = __OBJ_JSON__;
 const SELLINOUT       = __SELLINOUT_JSON__;
 const SELLINOUT_LOCAL    = __SELLINOUT_LOCAL_JSON__;
 const SELLINOUT_LOCAL_WK = __SELLINOUT_LOCAL_WK_JSON__;
+const SELLINOUT_LOCAL_MO = __SELLINOUT_LOCAL_MO_JSON__;
 const SELLINOUT_PAT          = __SELLINOUT_PAT_JSON__;
 const SELLINOUT_PAT_LOCAL_WK = __SELLINOUT_PAT_LOCAL_WK_JSON__;
+const SELLINOUT_PAT_LOCAL_MO = __SELLINOUT_PAT_LOCAL_MO_JSON__;
+const SELLINOUT_FER              = __SELLINOUT_FER_JSON__;
+const SELLINOUT_FER_LOCAL_WK     = __SELLINOUT_FER_LOCAL_WK_JSON__;
+const SELLINOUT_FER_LOCAL_MO     = __SELLINOUT_FER_LOCAL_MO_JSON__;
+const SELLINOUT_FER_PAT          = __SELLINOUT_FER_PAT_JSON__;
+const SELLINOUT_FER_PAT_LOCAL_WK = __SELLINOUT_FER_PAT_LOCAL_WK_JSON__;
+const SELLINOUT_FER_PAT_LOCAL_MO = __SELLINOUT_FER_PAT_LOCAL_MO_JSON__;
 
 // ============================================================
 // ESTADO
@@ -1260,6 +1315,8 @@ function applyFilters() {
     try { renderBosqueSemanasTabla(rows); } catch(e) { console.error('[DEST] renderBosqueSemanasTabla error:', e); }
   } else if (activeTab === 'bosque-sellinout') {
     try { renderBosqueSellInOut(); } catch(e) { console.error('[DEST] renderBosqueSellInOut error:', e); }
+  } else if (activeTab === 'feriado-sellinout') {
+    try { renderFeriadoSellInOut(); } catch(e) { console.error('[DEST] renderFeriadoSellInOut error:', e); }
   } else if (activeTab === 'bosque-precio') {
     try { renderBosquePrecio(rows, rowsPop); } catch(e) { console.error('[DEST] renderBosquePrecio error:', e); }
     try { renderBosqueClientesSemana(rows); } catch(e) { console.error('[DEST] renderBosqueClientesSemana error:', e); }
@@ -1339,13 +1396,19 @@ function renderBosqueFeriado(rows, rowsYoY, rowsPop) {
   const faPop = byKey(rowsPop, 'fa');
 
   // — Bosque — litros
-  const bKeys  = ['bosque_nativo','bosque_alta_montana','bosque_refugios','bosque_otro'];
-  const bTotal = bKeys.reduce((s,k) => s + (fa[k]?.li || 0), 0);
+  const bKeys      = ['bosque_nativo','bosque_alta_montana','bosque_refugios','bosque_otro'];
+  const bKeysTotal = [...bKeys, 'bosque_nativo_mini', 'bosque_alta_montana_mini'];
+  const bTotal = bKeysTotal.reduce((s,k) => s + (fa[k]?.li || 0), 0);
   document.getElementById('bosque-total').textContent = fmtNum(bTotal, 1);
 
   const bSlug = { bosque_nativo:'bosque-nativo', bosque_alta_montana:'bosque-alta_montana',
                   bosque_refugios:'bosque-refugios', bosque_otro:'bosque-otro' };
   bKeys.forEach(k => setPanelRow(bSlug[k], fa[k]?.li||0, faYoY[k]?.li||0, faPop[k]?.li||0, bTotal));
+
+  // Miniatura — combina Nativo Mini + Alta Montaña Mini en una sola tarjeta
+  const miniKeys = ['bosque_nativo_mini', 'bosque_alta_montana_mini'];
+  const sumLi = (src, keys) => keys.reduce((s,k) => s + (src[k]?.li || 0), 0);
+  setPanelRow('bosque-mini', sumLi(fa, miniKeys), sumLi(faYoY, miniKeys), sumLi(faPop, miniKeys), bTotal);
 
   // — Feriado — litros
   const fKeys  = ['feriado_rojo','feriado_rosado','feriado_barril_20','feriado_barril_50'];
@@ -1510,11 +1573,12 @@ function renderCanalChart(rows) {
 function renderMarcaChart(rows) {
   const fa = byKey(rows, 'fa');
 
-  const bosqueEnv  = ['bosque_nativo','bosque_alta_montana','bosque_refugios','bosque_otro'].reduce((s,k)=>s+(fa[k]?.ce||0),0);
+  const bosqueFam  = ['bosque_nativo','bosque_alta_montana','bosque_refugios','bosque_otro','bosque_nativo_mini','bosque_alta_montana_mini'];
+  const bosqueEnv  = bosqueFam.reduce((s,k)=>s+(fa[k]?.ce||0),0);
   const feriadoEnv = ['feriado_rojo','feriado_rosado','feriado_barril_20','feriado_barril_50'].reduce((s,k)=>s+(fa[k]?.ce||0),0);
   const merchEnv   = fa['merch']?.ce || 0;
 
-  const bosqueLit  = ['bosque_nativo','bosque_alta_montana','bosque_refugios','bosque_otro'].reduce((s,k)=>s+(fa[k]?.li||0),0);
+  const bosqueLit  = bosqueFam.reduce((s,k)=>s+(fa[k]?.li||0),0);
   const feriadoLit = ['feriado_rojo','feriado_rosado','feriado_barril_20','feriado_barril_50'].reduce((s,k)=>s+(fa[k]?.li||0),0);
   const merchLit   = fa['merch']?.li || 0;
 
@@ -1732,7 +1796,10 @@ function renderEvolChart(rows, rowsYoY) {
 // HELPERS
 // ============================================================
 function fmt(d) {
-  return d.toISOString().split('T')[0];
+  // Usar fecha local (no UTC) para evitar desfase de día en UTC-3 (Argentina)
+  return d.getFullYear() + '-'
+    + String(d.getMonth() + 1).padStart(2, '0') + '-'
+    + String(d.getDate()).padStart(2, '0');
 }
 function fmtDisp(s) {
   if (!s) return '';
@@ -1809,10 +1876,11 @@ function switchTab(tab) {
   document.getElementById('view-bosque-semanas').style.display    = tab === 'bosque-semanas'    ? 'block' : 'none';
   document.getElementById('view-bosque-precio').style.display     = tab === 'bosque-precio'     ? 'block' : 'none';
   document.getElementById('view-bosque-sellinout').style.display  = tab === 'bosque-sellinout'  ? 'block' : 'none';
+  document.getElementById('view-feriado-sellinout').style.display = tab === 'feriado-sellinout' ? 'block' : 'none';
   document.getElementById('view-feriado-precio').style.display    = tab === 'feriado-precio'    ? 'block' : 'none';
   document.getElementById('view-cerveza').style.display           = tab === 'cerveza'            ? 'block' : 'none';
   const bosqueTab = tab === 'bosque-tabla' || tab === 'bosque-semanas' || tab === 'bosque-precio' || tab === 'bosque-sellinout'
-                 || tab === 'feriado' || tab === 'feriado-tabla' || tab === 'feriado-semanas' || tab === 'feriado-precio';
+                 || tab === 'feriado' || tab === 'feriado-tabla' || tab === 'feriado-semanas' || tab === 'feriado-precio' || tab === 'feriado-sellinout';
   document.getElementById('bos-prod-fg').style.display = bosqueTab ? 'flex' : 'none';
   // Standalone tabs
   document.querySelectorAll('.tab-btn').forEach(b =>
@@ -3048,9 +3116,10 @@ function renderObjPanel(brand, brandRows, panelId) {
 
   const COLORS = { bosque:'#e8d5a3', feriado:'#c8102e', cerveza:'#38bdf8' };
   const color  = COLORS[brand] || '#e8d5a3';
+  const _objYear = new Date().getFullYear();
   const mesLbl = months.length === 1
-    ? OBJ_MES[months[0]] + ' 2026'
-    : OBJ_MES[months[0]] + '–' + OBJ_MES[months[months.length-1]] + ' 2026';
+    ? OBJ_MES[months[0]] + ' ' + _objYear
+    : OBJ_MES[months[0]] + '–' + OBJ_MES[months[months.length-1]] + ' ' + _objYear;
 
   // Acumulados reales por producto y cluster
   const actProd = {}, actCl = {};
@@ -3064,13 +3133,14 @@ function renderObjPanel(brand, brandRows, panelId) {
   const realByMonth = {};
   var _faKeys = BRAND_FA_KEYS[brand];
   (ROWS || []).forEach(function(r) {
-    if (r.f && r.f.substring(0,4) === '2026' && (!_faKeys || _faKeys.includes(r.fa))) {
+    if (r.f && r.f.substring(0,4) === String(_objYear) && (!_faKeys || _faKeys.includes(r.fa))) {
       var mm = parseInt(r.f.substring(5,7)) - 1;
       realByMonth[mm] = (realByMonth[mm] || 0) + r.li;
     }
   });
 
-  const totalObj = objSum(bObj.cluster?._TOTAL || bObj.product?._TOTAL, months);
+  const objTotalArr = bObj.product?._TOTAL || bObj.cluster?._TOTAL;
+  const totalObj = objSum(objTotalArr, months);
   const pctTot   = totalObj ? totalReal / totalObj * 100 : null;
   const cTot     = objBarColor(pctTot);
   const delta    = totalObj ? (totalReal - totalObj) : 0;
@@ -3145,7 +3215,7 @@ function renderObjPanel(brand, brandRows, panelId) {
     var daysInMonth = new Date(todayYear, todayMonth + 1, 0).getDate();
     var daysElapsed = today.getDate();
     var paceRatio = daysElapsed / daysInMonth;
-    var totalArr0 = (bObj.cluster && bObj.cluster._TOTAL) || (bObj.product && bObj.product._TOTAL);
+    var totalArr0 = (bObj.product && bObj.product._TOTAL) || (bObj.cluster && bObj.cluster._TOTAL);
     var monthObj0 = totalArr0 ? (totalArr0[todayMonth] || 0) : 0;
     var paceTarget = monthObj0 * paceRatio;
     var monthReal = realByMonth[todayMonth] || 0;
@@ -3177,7 +3247,7 @@ function renderObjPanel(brand, brandRows, panelId) {
 
   // --- Proyección al cierre por cluster ---
   var actClMes = {};
-  var mesStr = '2026-' + String(todayMonth + 1).padStart(2, '0');
+  var mesStr = String(new Date().getFullYear()) + '-' + String(todayMonth + 1).padStart(2, '0');
   (ROWS || []).forEach(function(r) {
     if (r.f && r.f.substring(0, 7) === mesStr && (!_faKeys || _faKeys.includes(r.fa))) {
       actClMes[r.cl] = (actClMes[r.cl] || 0) + r.li;
@@ -3231,13 +3301,13 @@ function renderObjPanel(brand, brandRows, panelId) {
   }
 
   // --- Mes a mes ---
-  var totalArr = (bObj.cluster && bObj.cluster._TOTAL) || (bObj.product && bObj.product._TOTAL);
+  var totalArr = objTotalArr;
   var mesAMesHtml = '';
   if (totalArr) {
     var mesRows = [];
     totalArr.forEach(function(ov, m) { if (ov > 0) mesRows.push({ m: m, ov: ov, rv: realByMonth[m] || 0 }); });
     if (mesRows.length > 1) {
-      mesAMesHtml = '<div style="margin-top:16px"><div class="obj-sub-hdr">MES A MES 2026</div>'
+      mesAMesHtml = '<div style="margin-top:16px"><div class="obj-sub-hdr">MES A MES ' + _objYear + '</div>'
         + '<table class="obj-tbl" style="table-layout:fixed;width:100%"><colgroup>'
         + '<col style="width:46px">'
         + '<col style="width:76px">'
@@ -3309,6 +3379,7 @@ const BOS_GENERAL_PRODUCTS = [
   { fa:'bosque_nativo',       label:'Bosque Nativo', color:'#e8d5a3', kpiId:'bos-kpi-nativo',      subId:'bos-kpi-nativo-sub' },
   { fa:'bosque_alta_montana', label:'Alta Montaña',  color:'#d4b880', kpiId:'bos-kpi-altamontana', subId:'bos-kpi-altamontana-sub' },
   { fa:'bosque_refugios',     label:'Refugios',      color:'#c9a96e', kpiId:'bos-kpi-refugios',    subId:'bos-kpi-refugios-sub' },
+  { fa:['bosque_nativo_mini','bosque_alta_montana_mini'], label:'Miniatura', color:'#b89456', kpiId:'bos-kpi-mini', subId:'bos-kpi-mini-sub' },
   { fa:'bosque_otro',         label:'Otros Gin',     color:'#8b949e', kpiId:'bos-kpi-otro',        subId:'bos-kpi-otro-sub' },
 ];
 
@@ -3364,9 +3435,11 @@ function renderBosqueTab(rows, rowsYoY, rowsPop) {
   const faMapYoY = byKey(bRowsYoY, 'fa');
   const faMapPop = byKey(bRowsPop, 'fa');
   BOS_GENERAL_PRODUCTS.forEach(prod => {
-    const li    = faMap[prod.fa]?.li    || 0;
-    const liYoY = faMapYoY[prod.fa]?.li || 0;
-    const liPop = faMapPop[prod.fa]?.li || 0;
+    const faKeys = Array.isArray(prod.fa) ? prod.fa : [prod.fa];
+    const sumLi  = (src) => faKeys.reduce((s,k) => s + (src[k]?.li || 0), 0);
+    const li    = sumLi(faMap);
+    const liYoY = sumLi(faMapYoY);
+    const liPop = sumLi(faMapPop);
     const vEl   = document.getElementById(prod.kpiId);
     const sEl   = document.getElementById(prod.subId);
     if (vEl) vEl.textContent = li > 0 ? fmtNum(li, 1) : '—';
@@ -3748,11 +3821,12 @@ function renderBosqueCanalTable(rows, rowsYoY) {
 }
 
 // ── Bosque · Sell In / Sell Out ───────────────────────────────
-var _sioFilter = 'ytd'; // 'semana' | 'anterior' | 'mes' | 'ytd'
+var _sioFilter = 'ytd'; // 'semana' | 'anterior' | 'mes' | 'mesanterior' | 'ytd'
 var _sioBrand  = 'temple'; // 'temple' | 'patagonia'
 
 function _sioRows()      { return _sioBrand === 'temple' ? SELLINOUT          : SELLINOUT_PAT; }
 function _sioLocalWkRows(){ return _sioBrand === 'temple' ? SELLINOUT_LOCAL_WK : SELLINOUT_PAT_LOCAL_WK; }
+function _sioLocalMoRows(){ return _sioBrand === 'temple' ? SELLINOUT_LOCAL_MO : SELLINOUT_PAT_LOCAL_MO; }
 function _sioSoLabel()   { return _sioBrand === 'temple' ? 'Sell-Out gin Temple' : 'Sell-Out gin Patagonia'; }
 function _sioFlowLabel() { return _sioBrand === 'temple' ? ['Nativo → Temple','Temple → Cliente'] : ['Nativo → Patagonia','Patagonia → Cliente']; }
 
@@ -3790,11 +3864,31 @@ function _sioFilterFn() {
   var prevMonStr = _dateStr(prevD);
   var mesStart   = now.getFullYear() + '-' + _pad(now.getMonth()+1) + '-01';
   var ytdStart   = now.getFullYear() + '-01-01';
+  // Primer lunes ≤ día 1 del mes (para incluir semana parcial del inicio del mes)
+  var _mesD = new Date(mesStart + 'T12:00:00');
+  var _mesDow = _mesD.getDay();
+  var _mesBack = (_mesDow === 0) ? 6 : _mesDow - 1;
+  var mesFilterStart = _dateStr(new Date(_mesD.getFullYear(), _mesD.getMonth(), _mesD.getDate() - _mesBack));
 
-  if (_sioFilter === 'semana')   return function(w){ return w === curMonStr; };
-  if (_sioFilter === 'anterior') return function(w){ return w === prevMonStr; };
-  if (_sioFilter === 'mes')      return function(w){ return w >= mesStart; };
+  var prevMesD2      = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  var prevMesStart2  = prevMesD2.getFullYear() + '-' + _pad(prevMesD2.getMonth()+1) + '-01';
+  if (_sioFilter === 'semana')      return function(w){ return w === curMonStr; };
+  if (_sioFilter === 'anterior')    return function(w){ return w === prevMonStr; };
+  if (_sioFilter === 'mes')         return function(w){ return w >= mesFilterStart; };
+  if (_sioFilter === 'mesanterior') return function(w){ return w >= prevMesStart2 && w < mesStart; };
   return function(w){ return w >= ytdStart; };
+}
+
+// 'YYYY-MM' del mes calendario exacto — usado por las vistas 'Por Local' y 'Sem × Local'
+// agregado para Mes Actual/Mes Anterior en lugar del bucket semanal (que arrastra días
+// del mes vecino cuando el 1° no cae lunes).
+function _sioTargetMonth(filter) {
+  var now = new Date();
+  if (filter === 'mesanterior') {
+    var d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return d.getFullYear() + '-' + _pad(d.getMonth() + 1);
+  }
+  return now.getFullYear() + '-' + _pad(now.getMonth() + 1);
 }
 
 function _sioPeriodBar(nWeeks) {
@@ -3806,9 +3900,10 @@ function _sioPeriodBar(nWeeks) {
 }
 
 function _sioFilterLabel() {
-  if (_sioFilter === 'semana')   return 'Semana Actual';
-  if (_sioFilter === 'anterior') return 'Semana Anterior';
-  if (_sioFilter === 'mes')      return 'Mes Actual';
+  if (_sioFilter === 'semana')      return 'Semana Actual';
+  if (_sioFilter === 'anterior')    return 'Semana Anterior';
+  if (_sioFilter === 'mes')         return 'Mes Actual';
+  if (_sioFilter === 'mesanterior') return 'Mes Anterior';
   return 'YTD';
 }
 
@@ -3816,7 +3911,7 @@ function switchSioFilter(f) {
   _sioFilter = f;
   var ON  = 'flex:1;padding:7px 10px;border-radius:8px;border:1px solid #58a6ff;background:#58a6ff22;color:#58a6ff;font-size:11px;font-weight:700;cursor:pointer;text-align:center';
   var OFF = 'flex:1;padding:7px 10px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer;text-align:center';
-  ['semana','anterior','mes','ytd'].forEach(function(fl) {
+  ['semana','anterior','mes','mesanterior','ytd'].forEach(function(fl) {
     var btn = document.getElementById('sio-filter-' + fl);
     if (btn) btn.setAttribute('style', fl === f ? ON : OFF);
   });
@@ -3932,22 +4027,32 @@ function renderBosqueSellInOutLocalWk(selWeek) {
     return;
   }
 
-  // ── Vista AGREGADA: Mes Actual / YTD ─────────────────────────
-  if (_sioFilter === 'mes' || _sioFilter === 'ytd') {
-    var filterFn = _sioFilterFn();
-    var siMap = {}, soMap = {}, wkSet2 = {};
-    _lwData.forEach(function(r) {
-      if (!filterFn(r.w)) return;
-      wkSet2[r.w] = true;
-      siMap[r.local] = (siMap[r.local] || 0) + r.si;
-      soMap[r.local] = (soMap[r.local] || 0) + r.so;
-    });
-    var nWeeks = Object.keys(wkSet2).length;
-    var allLocals2 = Object.keys(Object.assign({}, siMap, soMap)).sort();
-    var rows2 = allLocals2.map(function(loc) {
-      var si = siMap[loc] || 0, so = soMap[loc] || 0;
-      return { local: loc, si: si, so: so, diff: si - so };
-    }).filter(function(r) { return r.si > 0 || r.so > 0; });
+  // ── Vista AGREGADA: Mes Actual / Mes Anterior / YTD ─────────────────────
+  if (_sioFilter === 'mes' || _sioFilter === 'mesanterior' || _sioFilter === 'ytd') {
+    var nWeeks, rows2;
+    if (_sioFilter === 'mes' || _sioFilter === 'mesanterior') {
+      // Mes calendario exacto — evita el sesgo de los buckets semanales
+      var targetMo = _sioTargetMonth(_sioFilter);
+      nWeeks = null;
+      rows2 = _sioLocalMoRows().filter(function(r){ return r.mo === targetMo; })
+        .map(function(r){ return { local: r.local, si: r.si, so: r.so, diff: r.si - r.so }; });
+    } else {
+      var filterFn = _sioFilterFn();
+      var siMap = {}, soMap = {}, wkSet2 = {};
+      _lwData.forEach(function(r) {
+        if (!filterFn(r.w)) return;
+        wkSet2[r.w] = true;
+        siMap[r.local] = (siMap[r.local] || 0) + r.si;
+        soMap[r.local] = (soMap[r.local] || 0) + r.so;
+      });
+      nWeeks = Object.keys(wkSet2).length;
+      var allLocals2 = Object.keys(Object.assign({}, siMap, soMap)).sort();
+      rows2 = allLocals2.map(function(loc) {
+        var si = siMap[loc] || 0, so = soMap[loc] || 0;
+        return { local: loc, si: si, so: so, diff: si - so };
+      });
+    }
+    rows2 = rows2.filter(function(r) { return r.si > 0 || r.so > 0; });
     rows2.sort(function(a, b) { return (b.si - a.si) || (b.so - a.so); });
     if (!rows2.length) {
       wrap.innerHTML = '<p style="color:#888;padding:20px;font-family:sans-serif">Sin datos para "' + _sioFilterLabel() + '".</p>';
@@ -3957,7 +4062,7 @@ function renderBosqueSellInOutLocalWk(selWeek) {
     var tSO2 = rows2.reduce(function(s,r){ return s+r.so; }, 0);
     var tD2  = tSI2 - tSO2;
     var dc2  = tD2 >= 0 ? '#3fb950' : '#f85149';
-    var sub2 = _sioFilterLabel() + ' · ' + nWeeks + ' sem.';
+    var sub2 = nWeeks != null ? (_sioFilterLabel() + ' · ' + nWeeks + ' sem.') : _sioFilterLabel();
     var h2 = _sioPeriodBar(nWeeks);
     h2 += '<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">'
       + _sioKpiCard('Compra Total', tSI2.toFixed(1) + ' L', '#58a6ff', sub2)
@@ -3997,11 +4102,38 @@ function renderBosqueSellInOutLocalWk(selWeek) {
   _lwData.forEach(function(r) { weekSet[r.w] = true; });
   var filterFn = _sioFilterFn();
   var allWeeks = Object.keys(weekSet).sort().reverse().filter(filterFn);
+  // Semana actual sin datos → mostrar ceros con el label correcto, sin fallback a semana previa
+  if (!allWeeks.length && _sioFilter === 'semana') {
+    var _nowBZ = new Date();
+    var _dowBZ = _nowBZ.getDay();
+    var _backBZ = (_dowBZ === 0) ? 6 : _dowBZ - 1;
+    var _monBZ = new Date(_nowBZ.getFullYear(), _nowBZ.getMonth(), _nowBZ.getDate() - _backBZ);
+    var _wkLblBZ = (function(d) {
+      var thu = new Date(d); thu.setDate(d.getDate() - ((d.getDay()+6)%7) + 3);
+      var jan4 = new Date(thu.getFullYear(), 0, 4);
+      return 'Semana ' + (1 + Math.round(((thu-jan4)/86400000 - 3 + ((jan4.getDay()+6)%7))/7)) + ' · ' + thu.getFullYear();
+    })(_monBZ);
+    wrap.innerHTML = '<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">'
+      + _sioKpiCard('Compra', '0.0 L', '#58a6ff', 'Sell-In Bosque')
+      + _sioKpiCard('Venta', '0.0 L', '#a78bfa', 'Sell-Out Bosque')
+      + _sioKpiCard('Diferencia', '0.0 L', '#6e7681', 'Compra − Venta')
+      + '</div>'
+      + '<div style="text-align:center;font-family:sans-serif;padding:24px 0">'
+      + '<div style="color:#e6edf3;font-weight:700;font-size:15px;margin-bottom:6px">' + _wkLblBZ + '</div>'
+      + '<div style="color:#8b949e;font-size:12px">Sin órdenes registradas aún para la semana en curso.</div>'
+      + '</div>';
+    return;
+  }
+  // Sem. Anterior sin datos para la semana calculada → fallback a semana más reciente disponible
+  if (!allWeeks.length && _sioFilter === 'anterior') {
+    var _allAvailBos = Object.keys(weekSet).sort().reverse();
+    if (_allAvailBos.length) allWeeks = [_allAvailBos[0]];
+  }
   if (!allWeeks.length) {
     wrap.innerHTML = '<p style="color:#888;padding:20px;font-family:sans-serif">Sin datos para "' + _sioFilterLabel() + '".</p>';
     return;
   }
-  if (!selWeek || !weekSet[selWeek] || !filterFn(selWeek)) selWeek = allWeeks[0];
+  if (!selWeek || !weekSet[selWeek]) selWeek = allWeeks[0];
   var selIdx  = allWeeks.indexOf(selWeek);
   var prevWk  = allWeeks[selIdx + 1] || null;
   var nextWk  = allWeeks[selIdx - 1] || null;
@@ -4039,6 +4171,7 @@ function renderBosqueSellInOutLocalWk(selWeek) {
     + '<div style="text-align:center">'
     + '<div style="color:#e6edf3;font-weight:700;font-size:15px;text-transform:capitalize">' + wkLabel + '</div>'
     + '<div style="color:#8b949e;font-size:11px;margin-top:2px">Semana ' + (selIdx + 1) + ' de ' + allWeeks.length + '</div>'
+    + ''
     + '</div>'
     + navBtn('Siguiente →', nextWk)
     + '</div>';
@@ -4097,19 +4230,28 @@ function renderBosqueSellInOutLocal() {
     if (d == null) return '—';
     return (d >= 0 ? '+' : '') + d.toFixed(1) + ' L';
   };
-  // Agregar desde datos local×semana filtrado por período activo
-  var filterFn = _sioFilterFn();
-  var siMap = {}, soMap = {};
-  _lwData.forEach(function(r) {
-    if (!filterFn(r.w)) return;
-    siMap[r.local] = (siMap[r.local] || 0) + r.si;
-    soMap[r.local] = (soMap[r.local] || 0) + r.so;
-  });
-  var allLocals = Object.keys(Object.assign({}, siMap, soMap)).sort();
-  var rows = allLocals.map(function(local) {
-    var si = siMap[local] || 0, so = soMap[local] || 0;
-    return { local: local, si: si, so: so, diff: si - so };
-  }).filter(function(r){ return r.si > 0 || r.so > 0; });
+  var rows;
+  if (_sioFilter === 'mes' || _sioFilter === 'mesanterior') {
+    // Mes calendario exacto (evita el sesgo de los buckets semanales en los bordes del mes)
+    var targetMo = _sioTargetMonth(_sioFilter);
+    rows = _sioLocalMoRows().filter(function(r){ return r.mo === targetMo; })
+      .map(function(r){ return { local: r.local, si: r.si, so: r.so, diff: r.si - r.so }; });
+  } else {
+    // Agregar desde datos local×semana filtrado por período activo
+    var filterFn = _sioFilterFn();
+    var siMap = {}, soMap = {};
+    _lwData.forEach(function(r) {
+      if (!filterFn(r.w)) return;
+      siMap[r.local] = (siMap[r.local] || 0) + r.si;
+      soMap[r.local] = (soMap[r.local] || 0) + r.so;
+    });
+    var allLocals = Object.keys(Object.assign({}, siMap, soMap)).sort();
+    rows = allLocals.map(function(local) {
+      var si = siMap[local] || 0, so = soMap[local] || 0;
+      return { local: local, si: si, so: so, diff: si - so };
+    });
+  }
+  rows = rows.filter(function(r){ return r.si > 0 || r.so > 0; });
   rows.sort(function(a,b){ return (b.si - a.si) || (b.so - a.so); });
   if (!rows.length) {
     wrap.innerHTML = '<p style="color:#888;padding:20px;font-family:sans-serif">Sin datos para "' + _sioFilterLabel() + '".</p>';
@@ -4143,6 +4285,422 @@ function renderBosqueSellInOutLocal() {
     + '<td style="padding:10px 14px;text-align:right;color:' + (totDiff >= 0 ? '#3fb950' : '#f85149') + '">' + fmtDiff(totDiff) + '</td>'
     + '</tr>';
   html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// ── Feriado · Sell In / Sell Out ──────────────────────────────
+var _sioFerFilter = 'ytd'; // 'semana' | 'anterior' | 'mes' | 'mesanterior' | 'ytd'
+var _sioFerBrand  = 'temple'; // 'temple' | 'patagonia'
+
+function _sioFerRows()      { return _sioFerBrand === 'temple' ? SELLINOUT_FER          : SELLINOUT_FER_PAT; }
+function _sioFerLocalWkRows(){ return _sioFerBrand === 'temple' ? SELLINOUT_FER_LOCAL_WK : SELLINOUT_FER_PAT_LOCAL_WK; }
+function _sioFerLocalMoRows(){ return _sioFerBrand === 'temple' ? SELLINOUT_FER_LOCAL_MO : SELLINOUT_FER_PAT_LOCAL_MO; }
+
+function switchSioFerBrand(b) {
+  _sioFerBrand = b;
+  var ON  = 'padding:5px 16px;border-radius:6px;border:1px solid #c8102e;background:#c8102e;color:#fff;font-size:11px;font-weight:700;cursor:pointer';
+  var OFF = 'padding:5px 16px;border-radius:6px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer';
+  var bT = document.getElementById('sio-fer-brand-temple');
+  var bP = document.getElementById('sio-fer-brand-patagonia');
+  if (bT) bT.setAttribute('style', b === 'temple'    ? ON : OFF);
+  if (bP) bP.setAttribute('style', b === 'patagonia' ? ON : OFF);
+  _sioFerRender();
+}
+
+function _sioFerFilterFn() {
+  var now  = new Date();
+  var dow  = now.getDay();
+  var back = (dow === 0) ? 6 : dow - 1;
+  var mon  = new Date(now.getFullYear(), now.getMonth(), now.getDate() - back);
+  var curMonStr  = _dateStr(mon);
+  var prevD      = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() - 7);
+  var prevMonStr = _dateStr(prevD);
+  var mesStart   = now.getFullYear() + '-' + _pad(now.getMonth()+1) + '-01';
+  var ytdStart   = now.getFullYear() + '-01-01';
+  var prevMesD   = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  var prevMesStart = prevMesD.getFullYear() + '-' + _pad(prevMesD.getMonth()+1) + '-01';
+  // Primer lunes ≤ día 1 del mes actual (incluye semana parcial del inicio del mes)
+  var _mesD2 = new Date(mesStart + 'T12:00:00');
+  var _mesDow2 = _mesD2.getDay();
+  var _mesBack2 = (_mesDow2 === 0) ? 6 : _mesDow2 - 1;
+  var mesFilterStart = _dateStr(new Date(_mesD2.getFullYear(), _mesD2.getMonth(), _mesD2.getDate() - _mesBack2));
+  if (_sioFerFilter === 'semana')      return function(w){ return w === curMonStr; };
+  if (_sioFerFilter === 'anterior')    return function(w){ return w === prevMonStr; };
+  if (_sioFerFilter === 'mes')         return function(w){ return w >= mesFilterStart; };
+  if (_sioFerFilter === 'mesanterior') return function(w){ return w >= prevMesStart && w < mesStart; };
+  return function(w){ return w >= ytdStart; };
+}
+
+function _sioFerFilterLabel() {
+  if (_sioFerFilter === 'semana')      return 'Semana Actual';
+  if (_sioFerFilter === 'anterior')    return 'Semana Anterior';
+  if (_sioFerFilter === 'mes')         return 'Mes Actual';
+  if (_sioFerFilter === 'mesanterior') return 'Mes Anterior';
+  return 'YTD';
+}
+
+function _sioFerPeriodBar(nWeeks) {
+  var label = _sioFerFilterLabel();
+  return '<div style="font-family:sans-serif;font-size:11px;color:#8b949e;margin-bottom:10px;padding:6px 12px;background:#161b22;border:1px solid #21262d;border-radius:6px;display:inline-block">'
+    + '📅 Período: <strong style="color:#c9d1d9">' + label + '</strong>'
+    + (nWeeks != null ? ' &nbsp;·&nbsp; <span style="color:#58a6ff">' + nWeeks + ' semana' + (nWeeks !== 1 ? 's' : '') + '</span>' : '')
+    + '</div>';
+}
+
+function switchSioFerFilter(f) {
+  _sioFerFilter = f;
+  var ON  = 'flex:1;padding:7px 10px;border-radius:8px;border:1px solid #58a6ff;background:#58a6ff22;color:#58a6ff;font-size:11px;font-weight:700;cursor:pointer;text-align:center';
+  var OFF = 'flex:1;padding:7px 10px;border-radius:8px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:11px;font-weight:700;cursor:pointer;text-align:center';
+  ['semana','anterior','mes','mesanterior','ytd'].forEach(function(fl) {
+    var btn = document.getElementById('sio-fer-filter-' + fl);
+    if (btn) btn.setAttribute('style', fl === f ? ON : OFF);
+  });
+  _sioFerRender();
+}
+
+function switchSioFerView(view) {
+  var wSemana = document.getElementById('siofer-table-wrap');
+  var wLocal  = document.getElementById('siofer-local-wrap');
+  var wLW     = document.getElementById('siofer-lw-wrap');
+  var bSemana = document.getElementById('sio-fer-btn-semana');
+  var bLocal  = document.getElementById('sio-fer-btn-local');
+  var bLW     = document.getElementById('sio-fer-btn-lw');
+  var ON  = {background:'#c8102e', color:'#fff', borderColor:'#c8102e'};
+  var OFF = {background:'transparent', color:'#8b949e', borderColor:'#30363d'};
+  function applyStyle(btn, s) { if(btn){btn.style.background=s.background;btn.style.color=s.color;btn.style.borderColor=s.borderColor;} }
+  if(wSemana) wSemana.style.display = 'none';
+  if(wLocal)  wLocal.style.display  = 'none';
+  if(wLW)     wLW.style.display     = 'none';
+  applyStyle(bSemana, OFF); applyStyle(bLocal, OFF); applyStyle(bLW, OFF);
+  if (view === 'local') {
+    if(wLocal) { wLocal.style.display = 'block'; applyStyle(bLocal, ON); wLocal.innerHTML = ''; renderFeriadoSellInOutLocal(); }
+  } else if (view === 'lw') {
+    if(wLW) { wLW.style.display = 'block'; applyStyle(bLW, ON); wLW.innerHTML = ''; renderFeriadoSellInOutLocalWk(); }
+  } else {
+    if(wSemana) { wSemana.style.display = 'block'; applyStyle(bSemana, ON); wSemana.innerHTML = ''; renderFeriadoSellInOut(); }
+  }
+}
+
+function _sioFerRender() {
+  var wSemana = document.getElementById('siofer-table-wrap');
+  var wLocal  = document.getElementById('siofer-local-wrap');
+  var wLW     = document.getElementById('siofer-lw-wrap');
+  if (!wSemana) return;
+  if (wLW && wLW.style.display !== 'none')            { wLW.innerHTML = '';    renderFeriadoSellInOutLocalWk(); }
+  else if (wLocal && wLocal.style.display !== 'none') { wLocal.innerHTML = ''; renderFeriadoSellInOutLocal(); }
+  else                                                 { wSemana.innerHTML = ''; renderFeriadoSellInOut(); }
+}
+
+function renderFeriadoSellInOut() {
+  var wrap = document.getElementById('siofer-table-wrap');
+  if (!wrap) return;
+  var _data = _sioFerRows();
+  if (!_data || !_data.length) {
+    wrap.innerHTML = '<p style="color:#888;padding:20px;font-family:sans-serif">Sin datos disponibles.</p>';
+    return;
+  }
+  var fmt = function(n) { return n == null ? '—' : n.toFixed(1) + ' L'; };
+  var fmtDiff = function(d) { if (d == null) return '—'; return (d >= 0 ? '+' : '') + d.toFixed(1) + ' L'; };
+  var wkLabel = function(s) {
+    var d = new Date(s + 'T12:00:00');
+    return d.toLocaleDateString('es-AR', { day:'2-digit', month:'short' });
+  };
+  var filterFn = _sioFerFilterFn();
+  var rows = _data.filter(function(r){ return filterFn(r.w); });
+  if (!rows.length) {
+    wrap.innerHTML = '<p style="color:#888;padding:20px;font-family:sans-serif">Sin datos para "' + _sioFerFilterLabel() + '".</p>';
+    return;
+  }
+  var html = _sioFerPeriodBar(rows.length);
+  html += '<table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px">';
+  html += '<thead><tr style="background:#1c2128;color:#8b949e;font-size:11px;letter-spacing:.05em;text-transform:uppercase">'
+    + '<th style="padding:10px 14px;text-align:left;border-bottom:2px solid #21262d">Semana</th>'
+    + '<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #21262d">Sell-In<br><span style="font-weight:400;color:#6e7681">Feriado → Temple</span></th>'
+    + '<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #21262d">Sell-Out<br><span style="font-weight:400;color:#6e7681">Temple → Cliente</span></th>'
+    + '<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #21262d">Diferencia<br><span style="font-weight:400;color:#6e7681">In − Out</span></th>'
+    + '<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #21262d">Ref. sem. ant.<br><span style="font-weight:400;color:#6e7681">Sell-In N−1</span></th>'
+    + '<th style="padding:10px 14px;text-align:center;border-bottom:2px solid #21262d">Estado</th>'
+    + '</tr></thead><tbody>';
+  rows.forEach(function(r, i) {
+    var isAlarm = r.alarm;
+    var rowBg   = isAlarm ? 'background:#2d1515' : (i % 2 === 0 ? 'background:#0d1117' : 'background:#161b22');
+    var diffCol = r.diff > 0 ? '#3fb950' : (r.diff < -5 ? '#f85149' : '#e3b341');
+    var badge   = isAlarm
+      ? '<span style="background:#b91c1c;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">⚠ ALARMA</span>'
+      : '<span style="background:#1a3a1a;color:#3fb950;padding:2px 8px;border-radius:10px;font-size:11px">✓ OK</span>';
+    html += '<tr style="' + rowBg + ';border-bottom:1px solid #21262d">'
+      + '<td style="padding:9px 14px;color:#c9d1d9;font-weight:600">' + wkLabel(r.w) + '<br><span style="font-size:10px;color:#6e7681">' + r.w + '</span></td>'
+      + '<td style="padding:9px 14px;text-align:right;color:#58a6ff;font-variant-numeric:tabular-nums">' + fmt(r.si) + '</td>'
+      + '<td style="padding:9px 14px;text-align:right;color:#a78bfa;font-variant-numeric:tabular-nums">' + fmt(r.so) + '</td>'
+      + '<td style="padding:9px 14px;text-align:right;color:' + diffCol + ';font-weight:700;font-variant-numeric:tabular-nums">' + fmtDiff(r.diff) + '</td>'
+      + '<td style="padding:9px 14px;text-align:right;color:#8b949e;font-variant-numeric:tabular-nums">' + fmt(r.si_prev) + '</td>'
+      + '<td style="padding:9px 14px;text-align:center">' + badge + '</td>'
+      + '</tr>';
+  });
+  var totSI = rows.reduce(function(s,r){ return s + (r.si||0); }, 0);
+  var totSO = rows.reduce(function(s,r){ return s + (r.so||0); }, 0);
+  var totDiff = totSI - totSO;
+  html += '<tr style="background:#1c2128;border-top:2px solid #30363d;font-weight:700">'
+    + '<td style="padding:10px 14px;color:#c9d1d9">TOTAL ' + rows.length + ' sem.</td>'
+    + '<td style="padding:10px 14px;text-align:right;color:#58a6ff">' + totSI.toFixed(1) + ' L</td>'
+    + '<td style="padding:10px 14px;text-align:right;color:#a78bfa">' + totSO.toFixed(1) + ' L</td>'
+    + '<td style="padding:10px 14px;text-align:right;color:' + (totDiff >= 0 ? '#3fb950' : '#f85149') + '">' + fmtDiff(totDiff) + '</td>'
+    + '<td colspan="2"></td>'
+    + '</tr></tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderFeriadoSellInOutLocal() {
+  var wrap = document.getElementById('siofer-local-wrap');
+  if (!wrap) return;
+  var _lwData = _sioFerLocalWkRows();
+  if (!_lwData || !_lwData.length) {
+    wrap.innerHTML = '<p style="color:#888;padding:20px;font-family:sans-serif">Sin datos disponibles.</p>';
+    return;
+  }
+  var fmt = function(n) { return n == null ? '—' : n.toFixed(1) + ' L'; };
+  var fmtDiff = function(d) { if (d == null) return '—'; return (d >= 0 ? '+' : '') + d.toFixed(1) + ' L'; };
+  var rows;
+  if (_sioFerFilter === 'mes' || _sioFerFilter === 'mesanterior') {
+    var targetMoFer = _sioTargetMonth(_sioFerFilter);
+    rows = _sioFerLocalMoRows().filter(function(r){ return r.mo === targetMoFer; })
+      .map(function(r){ return { local: r.local, si: r.si, so: r.so, diff: r.si - r.so }; });
+  } else {
+    var filterFn = _sioFerFilterFn();
+    var siMap = {}, soMap = {};
+    _lwData.forEach(function(r) {
+      if (!filterFn(r.w)) return;
+      siMap[r.local] = (siMap[r.local] || 0) + r.si;
+      soMap[r.local] = (soMap[r.local] || 0) + r.so;
+    });
+    var allLocals = Object.keys(Object.assign({}, siMap, soMap)).sort();
+    rows = allLocals.map(function(local) {
+      var si = siMap[local] || 0, so = soMap[local] || 0;
+      return { local: local, si: si, so: so, diff: si - so };
+    });
+  }
+  rows = rows.filter(function(r){ return r.si > 0 || r.so > 0; });
+  rows.sort(function(a,b){ return (b.si - a.si) || (b.so - a.so); });
+  if (!rows.length) {
+    wrap.innerHTML = '<p style="color:#888;padding:20px;font-family:sans-serif">Sin datos para "' + _sioFerFilterLabel() + '".</p>';
+    return;
+  }
+  var html = _sioFerPeriodBar(null);
+  html += '<table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px">'
+    + '<thead><tr style="background:#1c2128;color:#8b949e;font-size:11px;letter-spacing:.05em;text-transform:uppercase">'
+    + '<th style="padding:10px 14px;text-align:left;border-bottom:2px solid #21262d">Local</th>'
+    + '<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #21262d">Sell-In (L)<br><span style="font-weight:400;color:#6e7681">Feriado → Temple</span></th>'
+    + '<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #21262d">Sell-Out (L)<br><span style="font-weight:400;color:#6e7681">Temple → Cliente</span></th>'
+    + '<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #21262d">Diferencia<br><span style="font-weight:400;color:#6e7681">In − Out</span></th>'
+    + '</tr></thead><tbody>';
+  rows.forEach(function(r, i) {
+    var rowBg   = i % 2 === 0 ? 'background:#0d1117' : 'background:#161b22';
+    var diffCol = r.diff > 0 ? '#3fb950' : (r.diff < -5 ? '#f85149' : '#e3b341');
+    html += '<tr style="' + rowBg + ';border-bottom:1px solid #21262d">'
+      + '<td style="padding:9px 14px;color:#c9d1d9;font-weight:600">' + (r.local || '—') + '</td>'
+      + '<td style="padding:9px 14px;text-align:right;color:#58a6ff;font-variant-numeric:tabular-nums">' + fmt(r.si) + '</td>'
+      + '<td style="padding:9px 14px;text-align:right;color:#a78bfa;font-variant-numeric:tabular-nums">' + fmt(r.so) + '</td>'
+      + '<td style="padding:9px 14px;text-align:right;color:' + diffCol + ';font-weight:700;font-variant-numeric:tabular-nums">' + fmtDiff(r.diff) + '</td>'
+      + '</tr>';
+  });
+  var totSI = rows.reduce(function(s,r){ return s+(r.si||0); }, 0);
+  var totSO = rows.reduce(function(s,r){ return s+(r.so||0); }, 0);
+  var totDiff = totSI - totSO;
+  html += '<tr style="background:#1c2128;border-top:2px solid #30363d;font-weight:700">'
+    + '<td style="padding:10px 14px;color:#c9d1d9">TOTAL ' + rows.length + ' locales</td>'
+    + '<td style="padding:10px 14px;text-align:right;color:#58a6ff">' + totSI.toFixed(1) + ' L</td>'
+    + '<td style="padding:10px 14px;text-align:right;color:#a78bfa">' + totSO.toFixed(1) + ' L</td>'
+    + '<td style="padding:10px 14px;text-align:right;color:' + (totDiff >= 0 ? '#3fb950' : '#f85149') + '">' + fmtDiff(totDiff) + '</td>'
+    + '</tr></tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderFeriadoSellInOutLocalWk(selWeek) {
+  var wrap = document.getElementById('siofer-lw-wrap');
+  if (!wrap) return;
+  var _lwData = _sioFerLocalWkRows();
+  if (!_lwData || !_lwData.length) {
+    wrap.innerHTML = '<p style="color:#888;padding:20px;font-family:sans-serif">Sin datos disponibles.</p>';
+    return;
+  }
+
+  // ── Vista AGREGADA: Mes Actual / Mes Anterior / YTD ─────────────────────
+  if (_sioFerFilter === 'mes' || _sioFerFilter === 'mesanterior' || _sioFerFilter === 'ytd') {
+    var nWeeks, rows2;
+    if (_sioFerFilter === 'mes' || _sioFerFilter === 'mesanterior') {
+      var targetMoFer2 = _sioTargetMonth(_sioFerFilter);
+      nWeeks = null;
+      rows2 = _sioFerLocalMoRows().filter(function(r){ return r.mo === targetMoFer2; })
+        .map(function(r){ return { local: r.local, si: r.si, so: r.so, diff: r.si - r.so }; });
+    } else {
+      var filterFn = _sioFerFilterFn();
+      var siMap = {}, soMap = {}, wkSet2 = {};
+      _lwData.forEach(function(r) {
+        if (!filterFn(r.w)) return;
+        wkSet2[r.w] = true;
+        siMap[r.local] = (siMap[r.local] || 0) + r.si;
+        soMap[r.local] = (soMap[r.local] || 0) + r.so;
+      });
+      nWeeks = Object.keys(wkSet2).length;
+      var allLocals2 = Object.keys(Object.assign({}, siMap, soMap)).sort();
+      rows2 = allLocals2.map(function(loc) {
+        var si = siMap[loc] || 0, so = soMap[loc] || 0;
+        return { local: loc, si: si, so: so, diff: si - so };
+      });
+    }
+    rows2 = rows2.filter(function(r){ return r.si > 0 || r.so > 0; });
+    rows2.sort(function(a,b){ return (b.si - a.si) || (b.so - a.so); });
+    if (!rows2.length) {
+      wrap.innerHTML = '<p style="color:#888;padding:20px;font-family:sans-serif">Sin datos para "' + _sioFerFilterLabel() + '".</p>';
+      return;
+    }
+    var tSI2 = rows2.reduce(function(s,r){ return s+r.si; }, 0);
+    var tSO2 = rows2.reduce(function(s,r){ return s+r.so; }, 0);
+    var tD2  = tSI2 - tSO2;
+    var dc2  = tD2 >= 0 ? '#3fb950' : '#f85149';
+    var sub2 = nWeeks != null ? (_sioFerFilterLabel() + ' · ' + nWeeks + ' sem.') : _sioFerFilterLabel();
+    var h2 = _sioFerPeriodBar(nWeeks);
+    h2 += '<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">'
+      + _sioKpiCard('Compra Total', tSI2.toFixed(1) + ' L', '#58a6ff', sub2)
+      + _sioKpiCard('Venta Total',  tSO2.toFixed(1) + ' L', '#a78bfa', sub2)
+      + _sioKpiCard('Diferencia', (tD2 >= 0 ? '+' : '') + tD2.toFixed(1) + ' L', dc2, 'Compra − Venta')
+      + '</div>';
+    h2 += '<table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px">'
+      + '<thead><tr style="background:#1c2128;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.05em">'
+      + '<th style="padding:10px 14px;text-align:left;border-bottom:2px solid #21262d">Local</th>'
+      + '<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #21262d">Compra (L)</th>'
+      + '<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #21262d">Venta (L)</th>'
+      + '<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #21262d">Diferencia</th>'
+      + '</tr></thead><tbody>';
+    rows2.forEach(function(r, i) {
+      var bg = i % 2 === 0 ? '#0d1117' : '#161b22';
+      var dc = r.diff > 0 ? '#3fb950' : (r.diff < -5 ? '#f85149' : '#e3b341');
+      h2 += '<tr style="background:' + bg + ';border-bottom:1px solid #21262d">'
+        + '<td style="padding:10px 14px;color:#c9d1d9;font-weight:600">' + r.local + '</td>'
+        + '<td style="padding:10px 14px;text-align:right;color:#58a6ff;font-weight:700;font-variant-numeric:tabular-nums">' + (r.si > 0 ? r.si.toFixed(1) : '—') + '</td>'
+        + '<td style="padding:10px 14px;text-align:right;color:#a78bfa;font-weight:700;font-variant-numeric:tabular-nums">' + (r.so > 0 ? r.so.toFixed(1) : '—') + '</td>'
+        + '<td style="padding:10px 14px;text-align:right;color:' + dc + ';font-weight:700;font-variant-numeric:tabular-nums">'
+        + (r.si > 0 || r.so > 0 ? (r.diff >= 0 ? '+' : '') + r.diff.toFixed(1) : '—') + '</td>'
+        + '</tr>';
+    });
+    h2 += '<tr style="background:#1c2128;border-top:2px solid #30363d;font-weight:700">'
+      + '<td style="padding:10px 14px;color:#c9d1d9">TOTAL — ' + rows2.length + ' locales</td>'
+      + '<td style="padding:10px 14px;text-align:right;color:#58a6ff;font-variant-numeric:tabular-nums">' + tSI2.toFixed(1) + '</td>'
+      + '<td style="padding:10px 14px;text-align:right;color:#a78bfa;font-variant-numeric:tabular-nums">' + tSO2.toFixed(1) + '</td>'
+      + '<td style="padding:10px 14px;text-align:right;color:' + dc2 + ';font-variant-numeric:tabular-nums">' + (tD2 >= 0 ? '+' : '') + tD2.toFixed(1) + '</td>'
+      + '</tr></tbody></table>';
+    wrap.innerHTML = h2;
+    return;
+  }
+
+  // ── Vista SEMANAL: Semana Actual / Anterior ───────────────────
+  var weekSet = {};
+  _lwData.forEach(function(r) { weekSet[r.w] = true; });
+  var filterFn2 = _sioFerFilterFn();
+  var allWeeks = Object.keys(weekSet).sort().reverse().filter(filterFn2);
+  // Semana actual sin datos → mostrar ceros con el label correcto, sin fallback a semana previa
+  if (!allWeeks.length && _sioFerFilter === 'semana') {
+    var _nowZ = new Date();
+    var _dowZ = _nowZ.getDay();
+    var _backZ = (_dowZ === 0) ? 6 : _dowZ - 1;
+    var _monZ = new Date(_nowZ.getFullYear(), _nowZ.getMonth(), _nowZ.getDate() - _backZ);
+    var _wkLblZ = (function(d) {
+      var thu = new Date(d); thu.setDate(d.getDate() - ((d.getDay()+6)%7) + 3);
+      var jan4 = new Date(thu.getFullYear(), 0, 4);
+      return 'Semana ' + (1 + Math.round(((thu-jan4)/86400000 - 3 + ((jan4.getDay()+6)%7))/7)) + ' · ' + thu.getFullYear();
+    })(_monZ);
+    wrap.innerHTML = '<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">'
+      + _sioKpiCard('Compra', '0.0 L', '#58a6ff', 'Sell-In Feriado')
+      + _sioKpiCard('Venta', '0.0 L', '#a78bfa', 'Sell-Out Feriado')
+      + _sioKpiCard('Diferencia', '0.0 L', '#6e7681', 'Compra − Venta')
+      + '</div>'
+      + '<div style="text-align:center;font-family:sans-serif;padding:24px 0">'
+      + '<div style="color:#e6edf3;font-weight:700;font-size:15px;margin-bottom:6px">' + _wkLblZ + '</div>'
+      + '<div style="color:#8b949e;font-size:12px">Sin órdenes registradas aún para la semana en curso.</div>'
+      + '</div>';
+    return;
+  }
+  // Sem. Anterior sin datos para la semana calculada → fallback a semana más reciente disponible
+  if (!allWeeks.length && _sioFerFilter === 'anterior') {
+    var _allAvailFer = Object.keys(weekSet).sort().reverse();
+    if (_allAvailFer.length) allWeeks = [_allAvailFer[0]];
+  }
+  if (!allWeeks.length) {
+    wrap.innerHTML = '<p style="color:#888;padding:20px;font-family:sans-serif">Sin datos para "' + _sioFerFilterLabel() + '".</p>';
+    return;
+  }
+  if (!selWeek || !weekSet[selWeek]) selWeek = allWeeks[0];
+  var selIdx = allWeeks.indexOf(selWeek);
+  var prevWk = allWeeks[selIdx + 1] || null;
+  var nextWk = allWeeks[selIdx - 1] || null;
+
+  var rows = _lwData.filter(function(r) { return r.w === selWeek; });
+  rows.sort(function(a,b){ return (b.si - a.si) || (b.so - a.so); });
+
+  var totSI = rows.reduce(function(s,r){ return s+r.si; }, 0);
+  var totSO = rows.reduce(function(s,r){ return s+r.so; }, 0);
+  var totDiff = totSI - totSO;
+  var diffCol = totDiff >= 0 ? '#3fb950' : '#f85149';
+
+  var wkDate = new Date(selWeek + 'T12:00:00');
+  var _isoWeek = function(d) {
+    var thu = new Date(d); thu.setDate(d.getDate() - ((d.getDay()+6)%7) + 3);
+    var jan4 = new Date(thu.getFullYear(), 0, 4);
+    var wk = 1 + Math.round(((thu - jan4)/86400000 - 3 + ((jan4.getDay()+6)%7))/7);
+    return 'Semana ' + wk + ' · ' + thu.getFullYear();
+  };
+  var wkLabel = _isoWeek(wkDate);
+
+  var navBtn = function(label, week) {
+    if (!week) return '<button disabled style="padding:5px 14px;border-radius:6px;border:1px solid #21262d;background:transparent;color:#30363d;font-size:12px;cursor:default">' + label + '</button>';
+    return '<button onclick="renderFeriadoSellInOutLocalWk(\'' + week + '\')" style="padding:5px 14px;border-radius:6px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:12px;font-weight:600;cursor:pointer">' + label + '</button>';
+  };
+
+  var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;font-family:sans-serif">'
+    + navBtn('← Anterior', prevWk)
+    + '<div style="text-align:center">'
+    + '<div style="color:#e6edf3;font-weight:700;font-size:15px;text-transform:capitalize">' + wkLabel + '</div>'
+    + '<div style="color:#8b949e;font-size:11px;margin-top:2px">Semana ' + (selIdx + 1) + ' de ' + allWeeks.length + '</div>'
+    + ''
+    + '</div>'
+    + navBtn('Siguiente →', nextWk)
+    + '</div>';
+
+  html += '<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap">'
+    + _sioKpiCard('Compra', totSI.toFixed(1) + ' L', '#58a6ff', 'Sell-In Feriado')
+    + _sioKpiCard('Venta', totSO.toFixed(1) + ' L', '#a78bfa', 'Sell-Out Feriado Temple')
+    + _sioKpiCard('Diferencia', (totDiff >= 0 ? '+' : '') + totDiff.toFixed(1) + ' L', diffCol, 'Compra − Venta')
+    + '</div>';
+
+  html += '<table style="width:100%;border-collapse:collapse;font-family:sans-serif;font-size:13px">'
+    + '<thead><tr style="background:#1c2128;color:#8b949e;font-size:11px;text-transform:uppercase;letter-spacing:.05em">'
+    + '<th style="padding:10px 14px;text-align:left;border-bottom:2px solid #21262d">Local</th>'
+    + '<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #21262d">Compra (L)</th>'
+    + '<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #21262d">Venta (L)</th>'
+    + '<th style="padding:10px 14px;text-align:right;border-bottom:2px solid #21262d">Diferencia</th>'
+    + '</tr></thead><tbody>';
+
+  rows.forEach(function(r, i) {
+    if (r.si === 0 && r.so === 0) return;
+    var bg   = i % 2 === 0 ? '#0d1117' : '#161b22';
+    var diff = r.si - r.so;
+    var dc   = diff > 0 ? '#3fb950' : (diff < -5 ? '#f85149' : '#e3b341');
+    html += '<tr style="background:' + bg + ';border-bottom:1px solid #21262d">'
+      + '<td style="padding:10px 14px;color:#c9d1d9;font-weight:600">' + r.local + '</td>'
+      + '<td style="padding:10px 14px;text-align:right;color:#58a6ff;font-weight:700;font-variant-numeric:tabular-nums">' + (r.si > 0 ? r.si.toFixed(1) : '—') + '</td>'
+      + '<td style="padding:10px 14px;text-align:right;color:#a78bfa;font-weight:700;font-variant-numeric:tabular-nums">' + (r.so > 0 ? r.so.toFixed(1) : '—') + '</td>'
+      + '<td style="padding:10px 14px;text-align:right;color:' + dc + ';font-weight:700;font-variant-numeric:tabular-nums">'
+      + (r.si > 0 || r.so > 0 ? (diff >= 0 ? '+' : '') + diff.toFixed(1) : '—') + '</td>'
+      + '</tr>';
+  });
+
+  html += '<tr style="background:#1c2128;border-top:2px solid #30363d;font-weight:700">'
+    + '<td style="padding:10px 14px;color:#c9d1d9">TOTAL — ' + rows.length + ' locales</td>'
+    + '<td style="padding:10px 14px;text-align:right;color:#58a6ff;font-variant-numeric:tabular-nums">' + totSI.toFixed(1) + '</td>'
+    + '<td style="padding:10px 14px;text-align:right;color:#a78bfa;font-variant-numeric:tabular-nums">' + totSO.toFixed(1) + '</td>'
+    + '<td style="padding:10px 14px;text-align:right;color:' + diffCol + ';font-variant-numeric:tabular-nums">' + (totDiff >= 0 ? '+' : '') + totDiff.toFixed(1) + '</td>'
+    + '</tr></tbody></table>';
+
   wrap.innerHTML = html;
 }
 
@@ -4757,10 +5315,13 @@ function renderCervezaTab(rows, rowsYoY, rowsPop) {
 
   const totCe    = lRows.reduce((s,r) => s+r.ce, 0);
   const totLi    = lRows.reduce((s,r) => s+r.li, 0);
+  const totFac   = lRows.reduce((s,r) => s+r.to, 0);
   const yoyCe    = lYoY.reduce((s,r)  => s+r.ce, 0);
   const yoyLi    = lYoY.reduce((s,r)  => s+r.li, 0);
+  const yoyFac   = lYoY.reduce((s,r)  => s+r.to, 0);
   const popCe    = lPop.reduce((s,r)   => s+r.ce, 0);
   const popLi    = lPop.reduce((s,r)   => s+r.li, 0);
+  const popFac   = lPop.reduce((s,r)   => s+r.to, 0);
 
   function dPct(cur, prv) { return prv ? (cur-prv)/prv : null; }
   function badge1(d, color) {
@@ -4780,6 +5341,11 @@ function renderCervezaTab(rows, rowsYoY, rowsPop) {
   // ── KPI cards ──────────────────────────────────────────────────
   const kpiWrap = document.getElementById('cerv-kpi-row');
   if (kpiWrap) kpiWrap.innerHTML = `
+    <div style="background:#0c1f35;border:1px solid #1e3a5f;border-radius:12px;padding:18px 22px;text-align:center">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#38bdf8;margin-bottom:10px">Facturación Bruta</div>
+      <div style="font-size:36px;font-weight:900;color:#e6edf3;font-variant-numeric:tabular-nums">${totFac >= 1e6 ? '$ ' + (totFac/1e6).toLocaleString('es-AR',{minimumFractionDigits:1,maximumFractionDigits:1}) + 'M' : '$ ' + Math.round(totFac).toLocaleString('es-AR')}</div>
+      <div style="margin-top:10px">${dBadgeDual(dPct(totFac,yoyFac), dPct(totFac,popFac))}</div>
+    </div>
     <div style="background:#0c1f35;border:1px solid #1e3a5f;border-radius:12px;padding:18px 22px;text-align:center">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#38bdf8;margin-bottom:10px">Cantidad de Latas</div>
       <div style="font-size:36px;font-weight:900;color:#e6edf3;font-variant-numeric:tabular-nums">${totCe.toLocaleString('es-AR')}</div>
@@ -5336,7 +5902,7 @@ function renderBosqueTabla(rows) {
   if (!tbl) return;
   tbl.innerHTML = '';
 
-  const bRows = rows.filter(r => BOS_KEYS.includes(r.fa));
+  const bRows = rows.filter(r => BOS_KEYS.includes(r.fa) && (!S_bosque_prod || r.fa === S_bosque_prod));
   if (!bRows.length) {
     tbl.innerHTML = '<tr><td style="color:#8b949e;padding:20px">Sin datos para el período seleccionado.</td></tr>';
     return;

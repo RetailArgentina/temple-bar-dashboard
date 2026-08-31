@@ -308,7 +308,7 @@ def api_data():
         logger.exception("Error consultando BigQuery en /api/data")
         return jsonify({
             "ok": False,
-            "error": str(e)
+            "error": "Error interno consultando datos"
         }), 500
 
 
@@ -424,25 +424,71 @@ _dest_cache: dict = {"html": None, "ts": 0.0}
 @destileria_login_required
 def destileria():
     global _dest_cache
-    now = time.time()
-    if _dest_cache["html"] is None or now - _dest_cache["ts"] > _DASH_CACHE_TTL:
-        try:
-            gcs = storage.Client()
-            blob = gcs.bucket(config.CACHE_BUCKET).blob("destileria_dashboard.html")
-            _dest_cache["html"] = blob.download_as_text(encoding="utf-8")
-            _dest_cache["ts"] = now
-            logger.info("Destileria HTML refreshed from GCS")
-        except Exception as exc:
-            logger.error("Error reading destileria from GCS: %s", exc)
-            if _dest_cache["html"] is None:
-                return "Tablero temporalmente no disponible.", 503
+    # Siempre releer de GCS: este dashboard se actualiza manualmente y sin
+    # patrón fijo, así que un TTL en memoria puede mostrarle a algunos
+    # usuarios una versión vieja por hasta 5 min (o distinta entre instancias
+    # de Cloud Run) justo después de una regeneración. _dest_cache queda solo
+    # como fallback si GCS falla.
+    try:
+        gcs = storage.Client()
+        blob = gcs.bucket(config.CACHE_BUCKET).blob("destileria_dashboard.html")
+        _dest_cache["html"] = blob.download_as_text(encoding="utf-8")
+        _dest_cache["ts"] = time.time()
+        logger.info("Destileria HTML refreshed from GCS")
+    except Exception as exc:
+        logger.error("Error reading destileria from GCS: %s", exc)
+        if _dest_cache["html"] is None:
+            return "Tablero temporalmente no disponible.", 503
+        logger.warning("Using cached destileria HTML after GCS read failure")
+
+    # ── Defensa en profundidad — incidente 2026-08-31 ────────────────────────
+    # Valida lo que está publicado en GCS AHORA MISMO, sin importar qué
+    # proceso lo haya subido (el script con el guardrail, una copia vieja,
+    # lo que sea). Si parece incompleto (mismo patrón del incidente: caída de
+    # facturación/litros/envases o COT desaparecidas), no se lo mostramos al
+    # usuario — servimos la última versión que sí pasó esta validación.
+    # Best-effort: cualquier falla acá nunca debe tumbar la página.
+    integrity_banner = ''
+    try:
+        from generar_destileria_dashboard import (
+            is_contabilium_data_healthy, load_cbl_hwm, _CBL_LAST_GOOD_BLOB,
+        )
+        hwm = load_cbl_hwm(config.CACHE_BUCKET)
+        healthy, reasons = is_contabilium_data_healthy(_dest_cache["html"], hwm)
+        if not healthy:
+            logger.error("destileria: datos publicados no pasaron la validación de integridad: %s", reasons)
+            fallback_ok = False
+            try:
+                good_blob = gcs.bucket(config.CACHE_BUCKET).blob(_CBL_LAST_GOOD_BLOB)
+                if good_blob.exists():
+                    _dest_cache["html"] = good_blob.download_as_text(encoding="utf-8")
+                    fallback_ok = True
+            except Exception as good_exc:
+                logger.error("destileria: tampoco se pudo leer %s: %s", _CBL_LAST_GOOD_BLOB, good_exc)
+            detalle = " | ".join(reasons)[:400].replace('<', '&lt;')
+            msg = (
+                f'&#9888; Se detectó un problema con los últimos datos publicados — mostrando la '
+                f'última versión validada. Motivo: {detalle}'
+                if fallback_ok else
+                f'&#9888; Los datos publicados parecen incompletos y no hay una versión anterior '
+                f'validada disponible todavía — no confiar en estos números sin confirmar con Darwin. '
+                f'Motivo: {detalle}'
+            )
+            integrity_banner = (
+                '<div style="background:#3d1f1f;border:1px solid #c8102e;border-radius:8px;'
+                'padding:12px 18px;margin:0 auto 14px;max-width:1400px;color:#fca5a5;'
+                'font-size:13px;font-weight:600;font-family:system-ui,sans-serif">'
+                f'{msg}</div>'
+            )
+    except Exception as health_exc:
+        logger.warning("No se pudo correr la validación de integridad al servir destileria: %s", health_exc)
 
     user = session["dest_user"]
     perms_json = json.dumps({
         "role": user["role"],
         "brands": user["brands"],
         "canEditObjectives": user["can_edit_objectives"],
-    }, ensure_ascii=False)
+    }, ensure_ascii=False).replace('<', '\\u003c')
 
     perms_script = f'<script>window.__USER_PERMISSIONS__={perms_json};</script>'
 
@@ -451,7 +497,7 @@ def destileria():
     overrides = permissions.list_cluster_overrides(db)
     overrides_script = ''
     if overrides:
-        overrides_json = json.dumps(overrides, ensure_ascii=False)
+        overrides_json = json.dumps(overrides, ensure_ascii=False).replace('<', '\\u003c')
         overrides_script = f'<script>window.__CLUSTER_OVERRIDES__={overrides_json};</script>'
 
     admin_link = ''
@@ -463,7 +509,30 @@ def destileria():
             'font-family:system-ui,sans-serif">&#9881; Admin</a>'
         )
 
-    inject = perms_script + overrides_script + admin_link
+    # Bandera de falla del guardrail de integridad Contabilium (escrita por
+    # generar_destileria_dashboard.py cuando aborta una publicación) — se
+    # muestra acá para que la falla se vea en el tablero real, no solo en un
+    # log local que nadie mira. Best-effort: si GCS falla, no rompe la página.
+    alert_banner = ''
+    try:
+        alert_blob = gcs.bucket(config.CACHE_BUCKET).blob("destileria_alert.json")
+        if alert_blob.exists():
+            alert_data = json.loads(alert_blob.download_as_text(encoding="utf-8"))
+            alert_reason = str(alert_data.get("reason", ""))[:500].replace('<', '&lt;')
+            alert_when = str(alert_data.get("failed_at", ""))
+            alert_banner = (
+                '<div style="background:#3d1f1f;border:1px solid #c8102e;border-radius:8px;'
+                'padding:12px 18px;margin:0 auto 14px;max-width:1400px;color:#fca5a5;'
+                'font-size:13px;font-weight:600;font-family:system-ui,sans-serif">'
+                f'&#9888; La última actualización automática ({alert_when}) no se publicó por un '
+                f'problema de integridad de datos — estás viendo la versión anterior (correcta). '
+                f'Motivo: {alert_reason}'
+                '</div>'
+            )
+    except Exception as _alert_exc:
+        logger.warning("No se pudo leer destileria_alert.json: %s", _alert_exc)
+
+    inject = perms_script + overrides_script + admin_link + alert_banner + integrity_banner
     if "__PERMISSIONS_INJECT__" in _dest_cache["html"]:
         html = _dest_cache["html"].replace("__PERMISSIONS_INJECT__", inject)
     else:
@@ -779,8 +848,8 @@ def _resenas_weekly_report(items: dict) -> dict:
 
         por_local = {}  # (marca, local) -> [(fecha_snapshot, rating), ...] ordenado por fecha
         for row in rows:
-            # BQ guarda marca en title case ("Temple"); el resto de esta pagina
-            # (Firestore, template) usa mayusculas ("TEMPLE") -- normalizar aca.
+            # BQ guarda marca en title case ("Temple"); el resto de esta página
+            # (Firestore, template) usa mayúsculas ("TEMPLE") — normalizar acá.
             key = ((row["marca"] or "").upper(), row["local"])
             por_local.setdefault(key, []).append((row["fecha_snapshot"], row["rating"]))
 
@@ -990,15 +1059,34 @@ def admin_list_destileria_users():
 def admin_create_destileria_user():
     if session["user"]["role"] not in ("superadmin", "gerencia"):
         abort(403)
-    data = request.get_json()
+    data = request.get_json() or {}
+
+    # Validate required fields
+    email = data.get("email", "").strip()
+    name = data.get("name", "").strip()
+    password = data.get("password", "")
+    role = data.get("role", "")
+    brands = data.get("brands", [])
+
+    if not email or not name or not password or not role:
+        return jsonify({"ok": False, "error": "Faltan campos requeridos"}), 400
+
+    # Validate role
+    if role not in ("gerencia", "editor", "viewer"):
+        return jsonify({"ok": False, "error": "Rol inválido"}), 400
+
+    # Validate password length
+    if len(password) < 8:
+        return jsonify({"ok": False, "error": "Password muy corta"}), 400
+
     db = _get_firestore_client()
     destileria_auth.create_destileria_user(
         db,
-        email=data["email"],
-        name=data["name"],
-        password=data["password"],
-        role=data["role"],
-        brands=data["brands"],
+        email=email,
+        name=name,
+        password=password,
+        role=role,
+        brands=brands,
         can_edit_objectives=data.get("can_edit_objectives", False),
         created_by=session["user"]["email"],
     )
@@ -1010,13 +1098,26 @@ def admin_create_destileria_user():
 def admin_update_destileria_user(email):
     if session["user"]["role"] not in ("superadmin", "gerencia"):
         abort(403)
-    data = request.get_json()
+    data = request.get_json() or {}
+
+    # Validate required fields
+    name = data.get("name", "").strip()
+    role = data.get("role", "")
+    brands = data.get("brands")
+
+    if not name or not role or brands is None:
+        return jsonify({"ok": False, "error": "Faltan campos requeridos"}), 400
+
+    # Validate role
+    if role not in ("gerencia", "editor", "viewer"):
+        return jsonify({"ok": False, "error": "Rol inválido"}), 400
+
     db = _get_firestore_client()
     destileria_auth.update_destileria_user(
         db, email,
-        name=data["name"],
-        role=data["role"],
-        brands=data["brands"],
+        name=name,
+        role=role,
+        brands=brands,
         can_edit_objectives=data.get("can_edit_objectives", False),
     )
     return jsonify({"ok": True})
@@ -1027,9 +1128,20 @@ def admin_update_destileria_user(email):
 def admin_reset_destileria_password(email):
     if session["user"]["role"] not in ("superadmin", "gerencia"):
         abort(403)
-    data = request.get_json()
+    data = request.get_json() or {}
+
+    # Validate required fields
+    password = data.get("password", "")
+
+    if not password:
+        return jsonify({"ok": False, "error": "Faltan campos requeridos"}), 400
+
+    # Validate password length
+    if len(password) < 8:
+        return jsonify({"ok": False, "error": "Password muy corta"}), 400
+
     db = _get_firestore_client()
-    destileria_auth.reset_destileria_password(db, email, data["password"])
+    destileria_auth.reset_destileria_password(db, email, password)
     return jsonify({"ok": True})
 
 
@@ -1071,11 +1183,14 @@ def _get_bq_client():
 def whatsapp_webhook():
     """Recibe mensajes entrantes de Twilio WhatsApp."""
     auth_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
-    if auth_token:
-        validator = RequestValidator(auth_token)
-        signature = request.headers.get("X-Twilio-Signature", "")
-        if not validator.validate(request.url, request.form, signature):
-            return "", 403
+    if not auth_token:
+        logger.error("TWILIO_AUTH_TOKEN no configurado — webhook deshabilitado")
+        return "", 403
+
+    validator = RequestValidator(auth_token)
+    signature = request.headers.get("X-Twilio-Signature", "")
+    if not validator.validate(request.url, request.form, signature):
+        return "", 403
 
     from_number  = request.form.get("From", "")
     user_message = request.form.get("Body", "").strip()
@@ -1133,7 +1248,11 @@ def whatsapp_weekly_report():
     expected_token = config_data.get("scheduler_token", "")
     provided_token = request.headers.get("X-Scheduler-Token", "")
 
-    if expected_token and provided_token != expected_token:
+    if not expected_token:
+        logger.error("scheduler_token no configurado — endpoint deshabilitado")
+        return {"error": "Unauthorized"}, 403
+
+    if provided_token != expected_token:
         return {"error": "Unauthorized"}, 403
 
     bq     = _get_bq_client()

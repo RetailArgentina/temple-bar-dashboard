@@ -141,6 +141,9 @@
     .badge-viewer      { background: rgba(139,148,158,0.18); color: #8b949e; border: 1px solid rgba(139,148,158,0.4); }
     .badge-gerencia  { background: rgba(52,211,153,0.18); color: #34d399; border: 1px solid rgba(52,211,153,0.4); }
     .badge-dest { background: rgba(201,162,39,0.15); color: #c9a227; border: 1px solid rgba(201,162,39,0.3); font-size:10px; font-weight:700; padding:2px 7px; border-radius:10px; }
+    .badge-pending  { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.35); }
+    .badge-verified { background: rgba(52,211,153,0.18); color: #34d399; border: 1px solid rgba(52,211,153,0.4); }
+    .badge-rejected { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.35); }
 
     /* Brand tags */
     .brand-tag {
@@ -423,6 +426,32 @@
     }
     .btn-undo:hover { background: #30363d; color: #e6edf3; }
 
+    .btn-reject {
+      border: none;
+      border-radius: 5px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      background: #2d0d0d;
+      color: #f87171;
+      border: 1px solid #7f1d1d;
+    }
+    .btn-reject:hover { background: #7f1d1d; color: #fff; }
+
+    .pm-edit-row { display: flex; gap: 6px; margin-top: 6px; }
+    .pm-edit-row input {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 5px;
+      color: #e6edf3;
+      padding: 4px 8px;
+      font-size: 11px;
+      outline: none;
+      width: 160px;
+    }
+    .pm-edit-row input:focus { border-color: #c9a227; }
+
     .override-badge {
       display: inline-block;
       background: rgba(56,139,253,0.15);
@@ -519,6 +548,7 @@
     {% if user_role == 'superadmin' %}
     <button class="tab-btn active" onclick="switchTab('usuarios')">Usuarios</button>
     <button class="tab-btn" onclick="switchTab('clusters')">Clusterizacion</button>
+    <button class="tab-btn" onclick="switchTab('places')">Reseñas Google</button>
     {% endif %}
     <button class="tab-btn {% if user_role == 'gerencia' %}active{% endif %}" onclick="switchTab('objetivos')">Objetivos</button>
   </div>
@@ -617,6 +647,39 @@
         <button id="cl-prev" onclick="clPage(-1)" disabled>&lt; Anterior</button>
         <button id="cl-next" onclick="clPage(1)" disabled>Siguiente &gt;</button>
       </div>
+    </div>
+
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- TAB: Reseñas Google — Mapeo de locales                       -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <div id="tab-places" class="tab-panel">
+
+    <div class="cl-toolbar">
+      <select id="pm-filter" onchange="renderPlacesMapping()">
+        <option value="pending">Solo pendientes</option>
+        <option value="all">Todos</option>
+      </select>
+      <button class="btn-add" style="margin-bottom:0" onclick="loadPlacesMapping()">&#8635; Recargar</button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Marca</th>
+            <th>Local</th>
+            <th>Query usada</th>
+            <th>Candidato de Google</th>
+            <th>Status</th>
+            <th style="width:260px">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="pm-body">
+          <tr class="empty-row"><td colspan="6">Cargando mapeos...</td></tr>
+        </tbody>
+      </table>
     </div>
 
   </div>
@@ -946,6 +1009,11 @@
         var objBtn = document.querySelector('.tab-btn[onclick*="objetivos"]');
         if (objBtn) objBtn.classList.add('active');
         document.getElementById('tab-objetivos').classList.add('active');
+      } else if (tab === 'places') {
+        var pmBtn = document.querySelector('.tab-btn[onclick*="places"]');
+        if (pmBtn) pmBtn.classList.add('active');
+        document.getElementById('tab-places').classList.add('active');
+        if (!pmDataLoaded) loadPlacesMapping();
       } else {
         btns[1].classList.add('active');
         document.getElementById('tab-clusters').classList.add('active');
@@ -1437,6 +1505,154 @@
       a.download = 'clientes_clusters_' + new Date().toISOString().slice(0,10) + '.csv';
       a.click();
       URL.revokeObjectURL(url);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // RESEÑAS GOOGLE — Mapeo de locales (google_places_mapping)
+    // ═══════════════════════════════════════════════════════════════
+
+    var pmDataLoaded = false;
+    var pmAllMappings = {};
+
+    function pmEsc(s) {
+      if (s === null || s === undefined) return '';
+      return String(s).replace(/[&<>"']/g, function(c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    function loadPlacesMapping() {
+      document.getElementById('pm-body').innerHTML = '<tr class="empty-row"><td colspan="6">Cargando mapeos...</td></tr>';
+      fetch('/api/admin/places-mapping', { headers: { 'X-CSRFToken': CSRF_TOKEN } })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data.ok) throw new Error(data.error || 'Error al cargar');
+          pmAllMappings = data.mappings || {};
+          pmDataLoaded = true;
+          renderPlacesMapping();
+        })
+        .catch(function() {
+          document.getElementById('pm-body').innerHTML = '<tr class="empty-row"><td colspan="6">Error al cargar mapeos.</td></tr>';
+        });
+    }
+
+    function renderPlacesMapping() {
+      var filter = document.getElementById('pm-filter').value;
+      var tbody = document.getElementById('pm-body');
+      var ids = Object.keys(pmAllMappings);
+
+      var rows = [];
+      for (var i = 0; i < ids.length; i++) {
+        var docId = ids[i];
+        var m = pmAllMappings[docId] || {};
+        var status = m.status || 'pending';
+        if (filter === 'pending' && status !== 'pending') continue;
+        rows.push({ docId: docId, m: m, status: status });
+      }
+
+      if (rows.length === 0) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No hay mapeos para mostrar.</td></tr>';
+        return;
+      }
+
+      var html = '';
+      for (var j = 0; j < rows.length; j++) {
+        var docId = rows[j].docId;
+        var m = rows[j].m;
+        var status = rows[j].status;
+        var safeId = docId.replace(/'/g, "\\'");
+
+        var candidato = pmEsc(m.display_name_google || '(sin nombre)');
+        if (m.formatted_address) candidato += '<br><span style="color:#8b949e;font-size:11px">' + pmEsc(m.formatted_address) + '</span>';
+        if (m.candidates && m.candidates.length && m.candidates[0].rating) {
+          candidato += '<br><span style="color:#8b949e;font-size:11px">Rating: ' + pmEsc(m.candidates[0].rating) + '</span>';
+        }
+
+        var badge = '<span class="badge badge-' + status + '">' + status + '</span>';
+
+        var acciones = '';
+        if (status === 'pending') {
+          acciones += '<button class="btn-assign" onclick="pmApprove(\'' + safeId + '\')">Aprobar</button> ';
+          acciones += '<button class="btn-reject" onclick="pmReject(\'' + safeId + '\')">Rechazar</button>';
+          acciones += '<div class="pm-edit-row">'
+            + '<input type="text" id="pm-edit-' + j + '" placeholder="place_id manual...">'
+            + '<button class="btn-undo" onclick="pmEdit(\'' + safeId + '\', ' + j + ')">Guardar</button>'
+            + '</div>';
+        } else {
+          acciones += '<button class="btn-undo" onclick="pmDelete(\'' + safeId + '\')">Eliminar</button>';
+        }
+
+        html += '<tr>'
+          + '<td>' + pmEsc(m.marca) + '</td>'
+          + '<td>' + pmEsc(m.local) + '</td>'
+          + '<td>' + pmEsc(m.search_query_used) + '</td>'
+          + '<td>' + candidato + '</td>'
+          + '<td>' + badge + '</td>'
+          + '<td>' + acciones + '</td>'
+          + '</tr>';
+      }
+      tbody.innerHTML = html;
+    }
+
+    function pmApprove(docId) {
+      fetch('/api/admin/places-mapping/' + encodeURIComponent(docId) + '/approve', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF_TOKEN }
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.ok) { showMsg(d.error || 'Error al aprobar.', false); return; }
+        showMsg('Mapeo aprobado.', true);
+        loadPlacesMapping();
+      })
+      .catch(function() { showMsg('Error de red al aprobar.', false); });
+    }
+
+    function pmReject(docId) {
+      fetch('/api/admin/places-mapping/' + encodeURIComponent(docId) + '/reject', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF_TOKEN }
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.ok) { showMsg(d.error || 'Error al rechazar.', false); return; }
+        showMsg('Mapeo rechazado.', true);
+        loadPlacesMapping();
+      })
+      .catch(function() { showMsg('Error de red al rechazar.', false); });
+    }
+
+    function pmEdit(docId, rowIdx) {
+      var input = document.getElementById('pm-edit-' + rowIdx);
+      var placeId = input.value.trim();
+      if (!placeId) { showMsg('Pega un place_id antes de guardar.', false); return; }
+      fetch('/api/admin/places-mapping/' + encodeURIComponent(docId) + '/edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+        body: JSON.stringify({ place_id: placeId })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.ok) { showMsg(d.error || 'Error al guardar place_id.', false); return; }
+        showMsg('place_id actualizado. Queda en pendiente para aprobacion.', true);
+        loadPlacesMapping();
+      })
+      .catch(function() { showMsg('Error de red al guardar place_id.', false); });
+    }
+
+    function pmDelete(docId) {
+      if (!confirm('Eliminar este mapeo? Esta accion no se puede deshacer.')) return;
+      fetch('/api/admin/places-mapping/' + encodeURIComponent(docId), {
+        method: 'DELETE',
+        headers: { 'X-CSRFToken': CSRF_TOKEN }
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.ok) { showMsg(d.error || 'Error al eliminar.', false); return; }
+        showMsg('Mapeo eliminado.', true);
+        loadPlacesMapping();
+      })
+      .catch(function() { showMsg('Error de red al eliminar.', false); });
     }
 
     // ═══════════════════════════════════════════════════════════════

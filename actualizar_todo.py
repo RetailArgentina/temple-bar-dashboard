@@ -11,7 +11,7 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE    = os.path.join(SCRIPT_DIR, "logs", "dashboard_update.log")
@@ -27,6 +27,7 @@ SCRIPTS = [
         "label":    "Feriado Toteat → BQ",
         "cmd":      [sys.executable, "-X", "utf8", "sync_feriado_toteat.py"],
         "critical": False,
+        "timeout":  120,   # 2 min máx — si cuelga, falla rápido y el pipeline sigue
     },
     {
         "label":    "Feriado Catálogo → BQ",
@@ -51,9 +52,49 @@ SCRIPTS = [
             "--output",     os.path.join(_OUT_DIR, "preview_producto.html"),
         ],
     },
-    # Destilería: actualización MANUAL únicamente — no corre en el pipeline automático.
-    # Para actualizar: correr generar_destileria_dashboard.py directamente.
+    {
+        "label": "Reseñas Google",
+        "cmd":   [
+            sys.executable, "-X", "utf8", "google_reviews_sync.py",
+            "--gcs-bucket", "temple-bar-dashboard-cache",
+            "--gcs-blob",   "resenas.html",
+            "--output",     os.path.join(_OUT_DIR, "resenas.html"),
+        ],
+        "critical": False,
+    },
+    # ── Sync Contabilium → BQ (antes de generar destilería) ──────────────────
+    {
+        "label":    "Contabilium → BQ",
+        "cmd":      [
+            sys.executable, "-X", "utf8",
+            os.path.join(os.path.dirname(os.path.dirname(SCRIPT_DIR)), "contabilium_sync_bq.py"),
+            "--modo", "incremental",
+            # Sin --desde/--hasta, el script defaultea a 2020-01-01 → recorre
+            # 7 años de comprobantes en la API de Contabilium todos los días.
+            # Acotamos a los últimos 30 días, suficiente para un sync incremental diario.
+            "--desde", (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
+            "--hasta", datetime.now().strftime("%Y-%m-%d"),
+        ],
+        "critical": False,
+        "timeout":  300,   # 5 min máx
+    },
+    {
+        "label": "Destilería",
+        "cmd":   [
+            sys.executable, "-X", "utf8", "generar_destileria_dashboard.py",
+            "--gcs-bucket", "temple-bar-dashboard-cache",
+            "--output", os.path.join(_OUT_DIR, "destileria_dashboard.html"),
+        ],
+    },
 ]
+
+# Pausa puntual pedida por Darwin: no republicar el tablero de Destilería en la
+# corrida de las 12:00 del 2026-08-25 (está en reunión y no quiere que cambie
+# la visual). Autolimitado a esta fecha/franja horaria — no requiere revertir
+# manualmente, deja de aplicar solo después de hoy.
+_now = datetime.now()
+if _now.date() == datetime(2026, 8, 25).date() and 11 <= _now.hour <= 13:
+    SCRIPTS = [s for s in SCRIPTS if s["label"] != "Destilería"]
 
 
 def ts():
@@ -72,33 +113,14 @@ def log(msg):
 
 
 def notify_error(label, returncode):
-    """Muestra una notificación de escritorio Windows via PowerShell.
-    En Linux/Cloud Run no hace nada (no hay escritorio)."""
-    if sys.platform != "win32":
-        return
-    title   = "Dashboard Temple \u2014 Error"
-    message = f"Fall\u00f3: {label} (c\u00f3digo {returncode}). Revis\u00e1 logs\\dashboard_update.log"
-    script = (
-        "$ErrorActionPreference = 'SilentlyContinue';"
-        "Add-Type -AssemblyName System.Windows.Forms;"
-        "$b = New-Object System.Windows.Forms.NotifyIcon;"
-        "$b.Icon = [System.Drawing.SystemIcons]::Warning;"
-        "$b.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Warning;"
-        f"$b.BalloonTipTitle = '{title}';"
-        f"$b.BalloonTipText = '{message}';"
-        "$b.Visible = $true;"
-        "$b.ShowBalloonTip(15000);"
-        "Start-Sleep -Seconds 5;"
-        "$b.Dispose()"
-    )
+    """Escribe el error en un archivo separado para fácil detección.
+    No usa Windows Forms (cuelga en Task Scheduler sin desktop)."""
     try:
-        subprocess.run(
-            ["powershell", "-WindowStyle", "Hidden", "-NonInteractive", "-Command", script],
-            capture_output=True,
-            timeout=20,
-        )
-    except Exception as e:
-        log(f"  \u26a0 No se pudo mostrar notificaci\u00f3n: {e}")
+        error_file = os.path.join(os.path.dirname(LOG_FILE), "dashboard_errors.log")
+        with open(error_file, "a", encoding="utf-8") as f:
+            f.write(f"[{ts()}] ERROR: {label} (código {returncode})\n")
+    except Exception:
+        pass
 
 
 def run_script(entry):
@@ -107,6 +129,14 @@ def run_script(entry):
     log("\u2500\u2500 " + label + " \u2500" + "\u2500" * 40)
     start = time.time()
 
+    # CREATE_NEW_PROCESS_GROUP aísla al hijo del CTRL+C del padre en Windows
+    # (evita que una señal externa mate el subprocess con código 3221225786)
+    extra = {}
+    if sys.platform == "win32":
+        extra["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        extra["stdin"] = subprocess.DEVNULL
+
+    timeout = entry.get("timeout", 600)
     try:
         result = subprocess.run(
             entry["cmd"],
@@ -115,10 +145,12 @@ def run_script(entry):
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=600,
+            timeout=timeout,
+            **extra,
         )
     except subprocess.TimeoutExpired:
-        log(f"  \u2717 {label} TIMEOUT (>10 min) \u2014 proceso terminado")
+        mins = timeout // 60
+        log(f"  \u2717 {label} TIMEOUT (>{mins} min) \u2014 proceso terminado")
         return False
 
     elapsed = int(time.time() - start)

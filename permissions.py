@@ -397,7 +397,8 @@ def save_objectives(db, docs: "list[dict]", updated_by: str) -> dict:
 
     now = datetime.now(timezone.utc)
     for row in docs:
-        doc_id = f"{row['marca']}__{row['dimension']}__{row['nombre']}"
+        # Firestore no permite "/" en un doc ID (lo interpreta como separador de path)
+        doc_id = f"{row['marca']}__{row['dimension']}__{row['nombre']}".replace("/", "-")
         db.collection(OBJECTIVES_COLLECTION).document(doc_id).set({
             **row,
             "updated_at": now,

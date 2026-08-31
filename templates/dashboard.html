@@ -299,6 +299,7 @@ canvas{max-width:100%;display:block}
     </div>
   </div>
   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <a href="/admin" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;border-radius:8px;padding:5px 11px;border:1px solid #30363d;background:#161b22;color:#8b949e;text-decoration:none">&#9881;&#65039; Admin</a>
     <span class="data-badge __BADGE_CLASS__" title="Último registro en BigQuery: __LAST_DATA_DATE__">
       <span class="dot"></span>
       Datos al __LAST_DATA_DATE__ &middot; __DAYS_STALE_LABEL__
@@ -395,6 +396,10 @@ canvas{max-width:100%;display:block}
         <span style="font-size:9px;color:#6e7681;font-weight:700;letter-spacing:.4px">&#128197; A&#209;O ANT.</span>
         <div style="display:flex;align-items:center;gap:6px"><span class="badge yoy-na" id="k-fac-yoy">—</span><span class="kpi-sub" id="k-fac-yoys">—</span></div>
       </div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:9px;color:#6e7681;font-weight:700;letter-spacing:.4px">&#127970; SAME-STORE</span>
+        <div style="display:flex;align-items:center;gap:6px"><span class="badge yoy-na" id="k-fac-ss">—</span><span class="kpi-sub" id="k-fac-sss">—</span></div>
+      </div>
     </div>
   </div>
 
@@ -424,6 +429,10 @@ canvas{max-width:100%;display:block}
         <span style="font-size:9px;color:#6e7681;font-weight:700;letter-spacing:.4px">&#128197; A&#209;O ANT.</span>
         <div style="display:flex;align-items:center;gap:6px"><span class="badge yoy-na" id="k-ord-yoy">—</span><span class="kpi-sub" id="k-ord-yoys">—</span></div>
       </div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:9px;color:#6e7681;font-weight:700;letter-spacing:.4px">&#127970; SAME-STORE</span>
+        <div style="display:flex;align-items:center;gap:6px"><span class="badge yoy-na" id="k-ord-ss">—</span><span class="kpi-sub" id="k-ord-sss">—</span></div>
+      </div>
     </div>
   </div>
 
@@ -451,6 +460,10 @@ canvas{max-width:100%;display:block}
       <div style="display:flex;align-items:center;justify-content:space-between">
         <span style="font-size:9px;color:#6e7681;font-weight:700;letter-spacing:.4px">&#128197; A&#209;O ANT.</span>
         <div style="display:flex;align-items:center;gap:6px"><span class="badge yoy-na" id="k-tick-yoy">—</span><span class="kpi-sub" id="k-tick-yoys">—</span></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:9px;color:#6e7681;font-weight:700;letter-spacing:.4px">&#127970; SAME-STORE</span>
+        <div style="display:flex;align-items:center;gap:6px"><span class="badge yoy-na" id="k-tick-ss">—</span><span class="kpi-sub" id="k-tick-sss">—</span></div>
       </div>
     </div>
   </div>
@@ -490,7 +503,7 @@ canvas{max-width:100%;display:block}
 
 <div class="g2">
   <div class="card" style="margin-bottom:0">
-    <h2>&#128176; Royalties 2026</h2>
+    <h2 id="royaltiesTitle">&#128176; Royalties 2026</h2>
     <div class="csub">Real Ene–Mar · Estimado Abr–Dic · se adapta al filtro de marca</div>
     <div id="royaltiesCard"></div>
   </div>
@@ -519,7 +532,7 @@ canvas{max-width:100%;display:block}
 
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-    <div><h2>&#128200; Tendencia Mensual</h2><div class="csub">2026 vs 2025 &middot; filtrado por marca</div></div>
+    <div><h2>&#128200; Tendencia Mensual</h2><div class="csub" id="tendencia-subtitle">2026 vs 2025 &middot; filtrado por marca</div></div>
     <div style="display:flex;gap:5px" id="tendToggle">
       <button class="fb active-per" onclick="setTendView('fac',this)">Facturación</button>
       <button class="fb" onclick="setTendView('ord',this)">Órdenes</button>
@@ -663,6 +676,9 @@ const LOC_COUNT_BY_MES = __LOC_COUNT_BY_MES_JSON__;
 /* ── Objetivos mensuales (BigQuery · Corporativo.Ventas_vs_Objetivos_Mensual) ── */
 const OBJETIVOS = __OBJETIVOS_JSON__;
 
+/* ── Datos por local/mes (BigQuery), usados para comparaciones "same-store" ── */
+const LOCAL_MENSUAL = __LOCAL_MENSUAL_JSON__;
+
 /* ── Royalties (Google Sheet · Resumen) ── */
 const ROYALTY_DATA = __ROYALTY_JSON__;
 
@@ -670,6 +686,9 @@ const BCOLOR = {Patagonia:"#38bdf8",Temple:"#f472b6",Feriado:"#fbbf24",todas:"#5
 let STATE = {marca:"todas", periodo:"mes_actual", tendView:"fac", locMetric:"fac", locSort:"real", fromMes:"__STATE_FROM_MES__", toMes:"__STATE_TO_MES__"};
 let _potMarca = "Patagonia"; // brand filter for Locales con Mayor Potencial card
 let CHARTS = {};
+
+const YR  = new Date().getFullYear();
+const YRP = YR - 1;
 
 const fmtM  = v => "$"+Math.round(v).toLocaleString("es-AR")+"M";
 const fmtN  = v => Math.round(v).toLocaleString("es-AR");
@@ -687,6 +706,25 @@ function getYoyBadge(c,y){
   const v=pctCh(c,y); if(!v) return {cls:"yoy-na",txt:"—"};
   const n=parseFloat(v);
   return n>=0 ? {cls:"yoy-up",txt:"▲ "+Math.abs(n)+"%"} : {cls:"yoy-dn",txt:"▼ "+Math.abs(n)+"%"};
+}
+/* Compara solo los locales presentes tanto en `meses` como en `yoyMeses`
+   (same-store), respetando el filtro de marca activo (STATE.marca). */
+function computeSameStore(meses,yoyMeses){
+  if(!meses||!meses.length||!yoyMeses||!yoyMeses.length) return null;
+  const rows=STATE.marca==="todas"?LOCAL_MENSUAL:LOCAL_MENSUAL.filter(r=>r.m===STATE.marca);
+  const key=r=>r.m+"|"+r.l;
+  const curKeys=new Set(rows.filter(r=>meses.includes(r.mes)).map(key));
+  const yoyKeys=new Set(rows.filter(r=>yoyMeses.includes(r.mes)).map(key));
+  const common=new Set([...curKeys].filter(k=>yoyKeys.has(k)));
+  if(!common.size) return null;
+  let curFac=0,curOrd=0,yoyFac=0,yoyOrd=0;
+  rows.forEach(r=>{
+    if(!common.has(key(r))) return;
+    if(meses.includes(r.mes)){curFac+=r.fac;curOrd+=r.ord;}
+    if(yoyMeses.includes(r.mes)){yoyFac+=r.fac;yoyOrd+=r.ord;}
+  });
+  return {n:common.size, curFac, curOrd, yoyFac, yoyOrd,
+          curTick: curOrd>0?(curFac*1e6)/curOrd:0, yoyTick: yoyOrd>0?(yoyFac*1e6)/yoyOrd:0};
 }
 function getObjBadge(real,obj){
   if(!obj||obj===0) return {cls:"yoy-na",txt:"sin obj"};
@@ -726,7 +764,11 @@ function updateBannerKPI(){
     const span=toIdx-fromIdx+1;
     const prevStart=Math.max(0,fromIdx-span), prevEnd=fromIdx-1;
     prevMeses=prevEnd>=prevStart?all.slice(prevStart,prevEnd+1):null;
-    yoyMeses=null; yoyLabel="";
+    // año anterior: mismos meses del rango, desplazados -1 año (solo los que existan en MENSUAL)
+    const toYoy=m=>{const [y,mm]=m.split("-");return (parseInt(y,10)-1)+"-"+mm;};
+    const yoyCandidates=meses.map(toYoy).filter(m=>all.includes(m));
+    yoyMeses=yoyCandidates.length?yoyCandidates:null;
+    yoyLabel=yoyMeses?yoyMeses[0]+" → "+yoyMeses[yoyMeses.length-1]:"";
     periodLabel=STATE.fromMes+" → "+STATE.toMes;
     prevLabel=prevMeses?prevMeses[0]+" → "+prevMeses[prevMeses.length-1]:"";
   } else {
@@ -871,7 +913,7 @@ function updateBannerKPI(){
   _brkCard("k-fac-breakdown","fac");
   _brkCard("k-ord-breakdown","ord");
 
-  function sk(id,v,pv,yv,ov,oLbl,fmt){
+  function sk(id,v,pv,yv,ov,oLbl,fmt,ss){
     document.getElementById("k-"+id).textContent=fmt(v);
     // objetivo label bajo el valor principal
     const olbl=document.getElementById("k-"+id+"-obj-lbl");
@@ -893,6 +935,21 @@ function updateBannerKPI(){
     if(ely){ely.className="badge "+by.cls; ely.textContent=by.txt;}
     const elys=document.getElementById("k-"+id+"-yoys");
     if(elys) elys.textContent=yoyLabel?yoyLabel+" \u00b7 "+fmt(yv):"sin datos";
+    // same-store (cuarto): solo locales presentes en ambos per\u00edodos
+    const elss=document.getElementById("k-"+id+"-ss");
+    const elsss=document.getElementById("k-"+id+"-sss");
+    if(elss){
+      if(ss){
+        const curVal=id==="fac"?ss.curFac:id==="ord"?ss.curOrd:ss.curTick;
+        const yoyVal=id==="fac"?ss.yoyFac:id==="ord"?ss.yoyOrd:ss.yoyTick;
+        const bss=getYoyBadge(curVal,yoyVal);
+        elss.className="badge "+bss.cls; elss.textContent=bss.txt;
+        if(elsss) elsss.textContent=ss.n+" locales \u00b7 "+fmt(yoyVal);
+      } else {
+        elss.className="badge yoy-na"; elss.textContent="sin datos";
+        if(elsss) elsss.textContent="sin datos";
+      }
+    }
   }
   // Cuando el período está en curso, comparar contra el objetivo prorateado al ritmo
   // (días transcurridos / días totales), no contra el objetivo del mes completo.
@@ -905,9 +962,16 @@ function updateBannerKPI(){
   const oOrdLbl  = _mesAbierto && _pace!==null
     ? `${fmtN(Math.round(oOrdCmp))} esp. \u00b7 obj mes: ${fmtN(oOrd)}`
     : fmtN(oOrd);
-  sk("fac",cf,pf,yf,oFacCmp,oFacLbl,fmtM);
-  sk("ord",co,po,yo,oOrdCmp,oOrdLbl,fmtN);
-  sk("tick",Math.round(ct),Math.round(pt),Math.round(yt),Math.round(oTickCmp),fmtT(Math.round(oTickCmp)),fmtT);
+  const ssData=computeSameStore(meses,yoyMeses);
+  sk("fac",cf,pf,yf,oFacCmp,oFacLbl,fmtM,ssData);
+  sk("ord",co,po,yo,oOrdCmp,oOrdLbl,fmtN,ssData);
+  sk("tick",Math.round(ct),Math.round(pt),Math.round(yt),Math.round(oTickCmp),fmtT(Math.round(oTickCmp)),fmtT,ssData);
+
+  // Actualizar títulos dinámicos con año actual
+  const royaltiesTitle=document.getElementById("royaltiesTitle");
+  if(royaltiesTitle) royaltiesTitle.textContent="📊 Royalties "+YR;
+  const tendenciaSubtitle=document.getElementById("tendencia-subtitle");
+  if(tendenciaSubtitle) tendenciaSubtitle.textContent=YR+" vs "+YRP+" · filtrado por marca";
 }
 
 const MN=["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -1017,9 +1081,9 @@ function buildTend(){
   // Actualizar nota debajo del gráfico
   const note=document.getElementById("tendNote");
   note.style.display="block";
-  note.innerHTML="&#9473; <span style=\"color:"+col+"\">2026</span>&nbsp;&nbsp;"
-    +"<span style=\"letter-spacing:2px;color:#94a3b8\">- - -</span> <span style=\"color:#94a3b8\">2025</span>"
-    +"&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span style=\"color:#8b949e\">*Mar 26 parcial</span>";
+  note.innerHTML="&#9473; <span style=\"color:"+col+"\">"+YR+"</span>&nbsp;&nbsp;"
+    +"<span style=\"letter-spacing:2px;color:#94a3b8\">- - -</span> <span style=\"color:#94a3b8\">"+YRP+"</span>"
+    +"&nbsp;&nbsp;&middot;&nbsp;&nbsp;<span style=\"color:#8b949e\">*Mar "+String(YR).slice(2)+" parcial</span>";
 }
 
 function buildRoyalties(){
@@ -1066,7 +1130,7 @@ function buildRoyalties(){
     <div style="flex:1;text-align:center;padding:8px 6px;border-right:1px solid #21262d">
       <div style="font-size:9px;color:${b.col};font-weight:700;letter-spacing:.3px;margin-bottom:3px">${b.marca}</div>
       <div style="font-size:15px;font-weight:700;color:#f0f6fc">${fmtRoy(b.proyTotal)}</div>
-      <div style="font-size:9px;color:#6e7681;margin-top:1px">${b.pctAnual.toFixed(2)}% royalty est. 2026</div>
+      <div style="font-size:9px;color:#6e7681;margin-top:1px">${b.pctAnual.toFixed(2)}% royalty est. ${YR}</div>
       <div style="margin-top:5px;padding-top:5px;border-top:1px solid #21262d">
         <div style="font-size:8px;color:#6e7681;margin-bottom:1px">${b.mesLabel||"—"}</div>
         <div style="font-size:13px;font-weight:600;color:#e6edf3">${b.latestRealRoy>0?fmtRoy(b.latestRealRoy):"—"}</div>
@@ -1075,9 +1139,9 @@ function buildRoyalties(){
   const kpiStrip=`<div style="display:flex;background:#161b22;border:1px solid #21262d;border-radius:8px;overflow:hidden;margin-bottom:12px">
     ${kpiCols}
     <div style="flex:1;text-align:center;padding:8px 6px">
-      <div style="font-size:9px;color:#8b949e;font-weight:700;letter-spacing:.3px;margin-bottom:3px">TOTAL 2026</div>
+      <div style="font-size:9px;color:#8b949e;font-weight:700;letter-spacing:.3px;margin-bottom:3px">TOTAL ${YR}</div>
       <div style="font-size:15px;font-weight:700;color:#f0f6fc">${fmtRoy(totalProy)}</div>
-      <div style="font-size:9px;color:#6e7681;margin-top:1px">${totalPctAnual.toFixed(2)}% royalty est. 2026</div>
+      <div style="font-size:9px;color:#6e7681;margin-top:1px">${totalPctAnual.toFixed(2)}% royalty est. ${YR}</div>
       <div style="margin-top:5px;padding-top:5px;border-top:1px solid #21262d">
         <div style="font-size:8px;color:#6e7681;margin-bottom:1px">${latestMesLabel||"—"}</div>
         <div style="font-size:13px;font-weight:600;color:#e6edf3">${totalRoyMes>0?fmtRoy(totalRoyMes):"—"}</div>
@@ -1226,7 +1290,7 @@ function buildPlanAccion(){
     </div>
     ${planRows}
     <div style="margin-top:10px;padding-top:8px;border-top:1px solid #30363d">
-      <div style="font-size:9px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">Proyección Anual 2026 · ${daysRemainingAño}d restantes al 31/dic</div>
+      <div style="font-size:9px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">Proyección Anual ${YR} · ${daysRemainingAño}d restantes al 31/dic</div>
       ${añoRows}
     </div>`;
 }
@@ -1928,7 +1992,7 @@ function fmtYoyLoc(cur, prev) {
   const sign = d > 0 ? "+" : "";
   const css = d > 0 ? "up2" : d < 0 ? "dn2" : "na2";
   const arrow = d > 0 ? "▲" : d < 0 ? "▼" : "=";
-  return '<span class="'+css+'">'+arrow+' '+sign+d+'</span> vs '+prev+' en '+(new Date().getFullYear()-1);
+  return '<span class="'+css+'">'+arrow+' '+sign+d+'</span> vs '+prev+' en '+YRP;
 }
 function buildObjetivosResumen(){
   const el=document.getElementById("objResumen");
@@ -2174,7 +2238,7 @@ function buildObjetivosPorMarca(){
     // Sección anual
     const añoSection=objAño>0?`
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid #21262d">
-        <div style="font-size:9px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Anual 2026 · objetivo propio de la marca</div>
+        <div style="font-size:9px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Anual ${YR} · objetivo propio de la marca</div>
         <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:6px;flex-wrap:wrap;gap:2px">
           <span style="color:#8b949e">Objetivo: <span style="color:#f0f6fc;font-weight:600">${fmtML(objAño)}</span></span>
           <span style="color:#8b949e">Real YTD: <span style="color:${añoCol};font-weight:600">${fmtML(realAño)}</span></span>

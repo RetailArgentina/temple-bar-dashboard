@@ -76,6 +76,8 @@ def leer_hoja(service, rango: str) -> list[list]:
 
 def cargar_tabla(client: bigquery.Client, table_id: str, schema: list, filas: list):
     """Reemplaza la tabla completa con los nuevos datos (WRITE_TRUNCATE)."""
+    if not filas:
+        raise RuntimeError(f"0 filas para {table_id} — se aborta para no vaciar la tabla (WRITE_TRUNCATE)")
     job_config = bigquery.LoadJobConfig(
         schema=schema,
         write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,

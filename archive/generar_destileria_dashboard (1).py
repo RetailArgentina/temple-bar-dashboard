@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from __future__ import annotations
 """
 generar_destileria_dashboard.py
 Genera destileria_dashboard.html con datos de:
@@ -83,17 +84,25 @@ SKIP_CLUSTER_PATTERNS = ["OBJ TOTAL", "BXQ", "SUPERMERCADOS"]
 # GCS upload
 # ---------------------------------------------------------------------------
 
-def upload_to_gcs(local_path, bucket_name, blob_name="destileria_dashboard.html"):
+def upload_to_gcs(local_path, bucket_name, blob_name="destileria_dashboard.html", html_content=None):
     """Sube el HTML generado a GCS con cache-control adecuado."""
     from google.cloud import storage
     print(f"\nUploading to GCS: gs://{bucket_name}/{blob_name} ...")
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
-    file_size = os.path.getsize(local_path)
-    if file_size < 1024:
-        raise RuntimeError(f"HTML demasiado pequeño ({file_size} bytes) — posible archivo corrupto, abortando upload")
-    blob.upload_from_filename(local_path, content_type="text/html; charset=utf-8")
+    if html_content is not None:
+        # Upload directo desde memoria — evita race condition con Drive Sync
+        content_bytes = html_content.encode("utf-8")
+        file_size = len(content_bytes)
+        if file_size < 1024:
+            raise RuntimeError(f"HTML demasiado pequeño ({file_size} bytes) — posible archivo corrupto, abortando upload")
+        blob.upload_from_string(content_bytes, content_type="text/html; charset=utf-8")
+    else:
+        file_size = os.path.getsize(local_path)
+        if file_size < 1024:
+            raise RuntimeError(f"HTML demasiado pequeño ({file_size} bytes) — posible archivo corrupto, abortando upload")
+        blob.upload_from_filename(local_path, content_type="text/html; charset=utf-8")
     blob.cache_control = "no-cache, no-store, must-revalidate"
     blob.patch()
     blob.reload()
@@ -632,6 +641,80 @@ def main():
     with open(TEMPLATE, encoding="utf-8") as fh:
         template = fh.read()
 
+    # ── Validación estructural crítica ───────────────────────────────────────
+    # Estas secciones NO deben modificarse. Si el template pierde alguna (ej:
+    # Google Drive sync baja una versión vieja), el pipeline aborta antes de
+    # publicar un dashboard roto.
+    _CRITICAL_CHECKS = [
+        (
+            'data-tab="feriado-semanas"',
+            "Tab Semanas de Feriado (botón de navegación)",
+        ),
+        (
+            'id="view-feriado-semanas"',
+            "Vista Feriado Semanas (#view-feriado-semanas)",
+        ),
+        (
+            'id="bosque-obj-panel"',
+            "Panel de objetivos Bosque (#bosque-obj-panel)",
+        ),
+        (
+            'id="bosque-retention-panel"',
+            "Panel retención Bosque (#bosque-retention-panel)",
+        ),
+        (
+            'data-tab="bosque-sellinout"',
+            "Tab Sell In/Out Bosque (botón de navegación)",
+        ),
+        (
+            'id="view-bosque-sellinout"',
+            "Vista Sell In/Out Bosque (#view-bosque-sellinout)",
+        ),
+        (
+            '__SELLINOUT_LOCAL_JSON__',
+            "Placeholder sell-in/out por local (__SELLINOUT_LOCAL_JSON__)",
+        ),
+        (
+            '__SELLINOUT_LOCAL_WK_JSON__',
+            "Placeholder sell-in/out local × semana (__SELLINOUT_LOCAL_WK_JSON__)",
+        ),
+        (
+            '__SELLINOUT_PAT_JSON__',
+            "Placeholder sell-in/out Patagonia semanal (__SELLINOUT_PAT_JSON__)",
+        ),
+        (
+            '__SELLINOUT_PAT_LOCAL_WK_JSON__',
+            "Placeholder sell-in/out Patagonia local × semana (__SELLINOUT_PAT_LOCAL_WK_JSON__)",
+        ),
+        (
+            '__PERMISSIONS_INJECT__',
+            "Placeholder inyección de permisos y link Admin (__PERMISSIONS_INJECT__)",
+        ),
+    ]
+    _tpl_errors = []
+    for pattern, label in _CRITICAL_CHECKS:
+        if pattern not in template:
+            _tpl_errors.append(f"  ✗ FALTA: {label}  →  buscar: {pattern!r}")
+    # Verificar orden: objetivos ANTES que retención en Bosque General
+    _idx_obj = template.find('id="bosque-obj-panel"')
+    _idx_ret = template.find('id="bosque-retention-panel"')
+    if _idx_obj != -1 and _idx_ret != -1 and _idx_obj > _idx_ret:
+        _tpl_errors.append(
+            "  ✗ ORDEN INCORRECTO: bosque-obj-panel debe aparecer ANTES de bosque-retention-panel"
+        )
+    if _tpl_errors:
+        print(
+            f"\n{'!' * 60}\n"
+            f"ERROR CRÍTICO: El template tiene secciones faltantes o en orden incorrecto.\n"
+            f"Posible causa: Google Drive sincronizó una versión vieja del template.\n"
+            + "\n".join(_tpl_errors)
+            + f"\n{'!' * 60}\n",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    print(f"[{ts()}] Template OK — validación estructural superada ({len(_CRITICAL_CHECKS)} checks)")
+    # ── Fin validación ───────────────────────────────────────────────────────
+
     print(f"[{ts()}] Leyendo objetivos (Firestore → Drive → GCS cache → JSON local → vacío)...")
 
     # Cargar caché anterior para comparar después del fetch
@@ -666,7 +749,7 @@ def main():
     # ── 0. Intentar desde Firestore ──────────────────────────────────────────
     try:
         from google.cloud import firestore as _firestore
-        _fs_client = _firestore.Client(project=PROJECT)
+        _fs_client = _firestore.Client(project="temple-bar-439715")
         _fs_obj = load_objectives_from_firestore(_fs_client)
         if _fs_obj:
             obj = _fs_obj
@@ -763,6 +846,91 @@ def main():
     html = html.replace("__UPDATED_AT__",      now_str)
     html = html.replace("__RECORD_COUNT__",    f"{len(data):,}")
 
+    # ── Sell-in / Sell-out Bosque Nativo ────────────────────────────────────
+    try:
+        _sio = fetch_sellinout_weekly(creds, weeks=12)
+        html = html.replace("__SELLINOUT_JSON__", json.dumps(_sio, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT inyectado ({len(_sio)} semanas)")
+    except Exception as _sio_err:
+        print(f"WARN: SELLINOUT falló — {_sio_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_JSON__", "[]")
+
+    # ── Sell-in / Sell-out por local ────────────────────────────────────────
+    try:
+        _sio_local = fetch_sellinout_by_local(creds, weeks=12)
+        html = html.replace("__SELLINOUT_LOCAL_JSON__", json.dumps(_sio_local, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_LOCAL inyectado ({len(_sio_local)} locales)")
+    except Exception as _sio_local_err:
+        print(f"WARN: SELLINOUT_LOCAL falló — {_sio_local_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_LOCAL_JSON__", "[]")
+
+    # ── Sell-in / Sell-out por local × semana ───────────────────────────────
+    try:
+        _sio_lw = fetch_sellinout_local_weekly(creds, weeks=12)
+        html = html.replace("__SELLINOUT_LOCAL_WK_JSON__", json.dumps(_sio_lw, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_LOCAL_WK inyectado ({len(_sio_lw)} filas)")
+    except Exception as _sio_lw_err:
+        print(f"WARN: SELLINOUT_LOCAL_WK falló — {_sio_lw_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_LOCAL_WK_JSON__", "[]")
+
+    try:
+        _sio_pat = fetch_sellinout_pat_weekly(creds, weeks=12)
+        html = html.replace("__SELLINOUT_PAT_JSON__", json.dumps(_sio_pat, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_PAT inyectado ({len(_sio_pat)} semanas)")
+    except Exception as _sio_pat_err:
+        print(f"WARN: SELLINOUT_PAT falló — {_sio_pat_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_PAT_JSON__", "[]")
+
+    try:
+        _sio_pat_lw = fetch_sellinout_pat_local_weekly(creds, weeks=12)
+        html = html.replace("__SELLINOUT_PAT_LOCAL_WK_JSON__", json.dumps(_sio_pat_lw, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_PAT_LOCAL_WK inyectado ({len(_sio_pat_lw)} filas)")
+    except Exception as _sio_pat_lw_err:
+        print(f"WARN: SELLINOUT_PAT_LOCAL_WK falló — {_sio_pat_lw_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_PAT_LOCAL_WK_JSON__", "[]")
+
+    # ── Sell-in / Sell-out Feriado · Temple semanal ──────────────────────────
+    try:
+        _sio_fer = fetch_sellinout_fer_weekly(creds, weeks=12)
+        html = html.replace("__SELLINOUT_FER_JSON__", json.dumps(_sio_fer, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_FER inyectado ({len(_sio_fer)} semanas)")
+    except Exception as _sio_fer_err:
+        print(f"WARN: SELLINOUT_FER falló — {_sio_fer_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_FER_JSON__", "[]")
+
+    # ── Sell-in / Sell-out Feriado · Temple por local × semana ──────────────
+    try:
+        _sio_fer_lw = fetch_sellinout_fer_local_weekly(creds, weeks=12)
+        html = html.replace("__SELLINOUT_FER_LOCAL_WK_JSON__", json.dumps(_sio_fer_lw, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_FER_LOCAL_WK inyectado ({len(_sio_fer_lw)} filas)")
+    except Exception as _sio_fer_lw_err:
+        print(f"WARN: SELLINOUT_FER_LOCAL_WK falló — {_sio_fer_lw_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_FER_LOCAL_WK_JSON__", "[]")
+
+    # ── Sell-in / Sell-out Feriado · Patagonia semanal ───────────────────────
+    try:
+        _sio_fer_pat = fetch_sellinout_fer_pat_weekly(creds, weeks=12)
+        html = html.replace("__SELLINOUT_FER_PAT_JSON__", json.dumps(_sio_fer_pat, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_FER_PAT inyectado ({len(_sio_fer_pat)} semanas)")
+    except Exception as _sio_fer_pat_err:
+        print(f"WARN: SELLINOUT_FER_PAT falló — {_sio_fer_pat_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_FER_PAT_JSON__", "[]")
+
+    # ── Sell-in / Sell-out Feriado · Patagonia por local × semana ────────────
+    try:
+        _sio_fer_pat_lw = fetch_sellinout_fer_pat_local_weekly(creds, weeks=12)
+        html = html.replace("__SELLINOUT_FER_PAT_LOCAL_WK_JSON__", json.dumps(_sio_fer_pat_lw, ensure_ascii=False, separators=(",", ":")))
+        print(f"[{ts()}] ✓ SELLINOUT_FER_PAT_LOCAL_WK inyectado ({len(_sio_fer_pat_lw)} filas)")
+    except Exception as _sio_fer_pat_lw_err:
+        print(f"WARN: SELLINOUT_FER_PAT_LOCAL_WK falló — {_sio_fer_pat_lw_err}", file=sys.stderr)
+        html = html.replace("__SELLINOUT_FER_PAT_LOCAL_WK_JSON__", "[]")
+
+    # Garantía: __PERMISSIONS_INJECT__ siempre presente aunque Drive haya
+    # sincronizado una versión vieja del template que no lo tenga.
+    if "__PERMISSIONS_INJECT__" not in html:
+        html = html.replace("<body>", "<body>\n__PERMISSIONS_INJECT__", 1)
+        print(f"[{ts()}] WARN: __PERMISSIONS_INJECT__ no estaba en el template — insertado automáticamente")
+
     # Banner visible cuando los objetivos no están disponibles
     if _obj_missing:
         _banner = (
@@ -782,13 +950,572 @@ def main():
     print(f"[{ts()}] Generado: {args.output} ({kb} KB · {len(data):,} registros)")
 
     if args.gcs_bucket:
-        upload_to_gcs(args.output, args.gcs_bucket)
+        upload_to_gcs(args.output, args.gcs_bucket, html_content=html)
     else:
         print()
         print("Deploy:")
         print('  gsutil -h "Cache-Control:no-cache, no-store, must-revalidate" '
               'cp destileria_dashboard.html '
               'gs://temple-bar-dashboard-cache/destileria_dashboard.html')
+
+
+def fetch_sellinout_weekly(creds, weeks=12):
+    """
+    Retorna lista de semanas (más reciente primero) con sell-in y sell-out
+    de Bosque Nativo para el cluster Cadena Grupo Temple.
+
+    Sell-in : Ventas_Maestro_Con_Cluster_Final — cl='CADENA GRUPO TEMPLE',
+              fa='bosque_nativo' (cubre 500ml y 750ml), campo li (litros).
+    Sell-out: temple-bar-439715.curated_database.curated_gin — todos los
+              registros, campo Gin_Total (litros por serve ya calculado).
+
+    Alarma: sell-out[semana N] > sell-in[semana N-1]
+    """
+    from google.cloud import bigquery as _bq
+    bq_dest   = _bq.Client(project="temple-brewery",    credentials=creds)
+    bq_temple = _bq.Client(project="temple-bar-439715", credentials=creds)
+
+    q_si = f"""
+    {_DEDUP_SI_CTE}
+    SELECT
+      DATE_TRUNC(b.FechaPedido, WEEK(MONDAY)) AS semana,
+      ROUND(SUM(COALESCE(b.Litros, 0)), 2)   AS litros
+    FROM base b
+    JOIN cl_latest c ON b.NombreDeFantasia = c.NombreDeFantasia
+    WHERE LOWER(TRIM(c.Clusterizacion)) = 'cadena grupo temple'
+      AND REGEXP_CONTAINS(UPPER(TRIM(b.Producto)), r'GIN BOSQUE.*(500|750)')
+      AND b.FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana
+    """
+    q_so = f"""
+    SELECT
+      DATE_TRUNC(Fecha, WEEK(MONDAY)) AS semana,
+      ROUND(SUM(Gin_Total), 2)        AS litros
+    FROM `temple-bar-439715.curated_database.curated_gin`
+    WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana
+    """
+    si_map = {str(r.semana): float(r.litros) for r in bq_dest.query(q_si).result(timeout=60)}
+    so_map = {str(r.semana): float(r.litros) for r in bq_temple.query(q_so).result(timeout=60)}
+
+    all_weeks = sorted(set(list(si_map) + list(so_map)), reverse=True)[:weeks]
+
+    result = []
+    for i, wk in enumerate(all_weeks):
+        si      = si_map.get(wk, 0.0)
+        so      = so_map.get(wk, 0.0)
+        prev_wk = all_weeks[i + 1] if i + 1 < len(all_weeks) else None
+        si_prev = si_map.get(prev_wk) if prev_wk else None
+        result.append({
+            "w":       wk,
+            "si":      si,
+            "so":      so,
+            "diff":    round(si - so, 2),
+            "si_prev": si_prev,
+            "alarm":   (si_prev is not None and so > si_prev),
+        })
+    return result
+
+
+# ── Mapping sell-in NombreDeFantasia → nombre canónico ──────────────────────
+# None = excluir del análisis cadena (no son locales de la cadena Grupo Temple)
+_SI_ALIAS = {
+    "Temple Craft Madero":              "Puerto Madero",
+    "Temple Hollywood":                 "Hollywood",
+    "MINIMARKET (Distri Rio Gallegos)": "Rio Gallegos",
+    "Temple Barrio Chino":              "Barrio Chino",
+    "Temple Paseo La Plaza":            "Club Temple",
+    "Temple Craft Soho":                "Soho",
+    "Temple Monroe":                    "Monroe",
+    "Temple Recoleta":                  "Recoleta",
+    "Temple Santiago del Estero":       "Santiago del Estero",
+    "Temple Craft Pilar":               "Pilar",
+    "Temple Craft Salta":               "Salta",
+    "Temple Comodoro":                  "Comodoro Rivadavia",
+    "Temple Maschwitz":                 "Maschwitz",
+    "Temple Cordoba":                   "Córdoba",
+    "Temple Caminito":                  "Caminito",
+    "Temple Palermo":                   "Casa Temple",
+    "Temple Rio Gallegos":               "Rio Gallegos",
+    "Temple Rosario":                    "Rosario 2",
+    "Patagonia Santiago del estero":     None,   # cadena Patagonia, no Temple
+    "Barra Patio de los Lecheros":      None,   # no es cadena Grupo Temple
+    "Trenque Craft":                    None,   # no es cadena Grupo Temple
+}
+
+# ── Mapping sell-out Establecimiento → nombre canónico ──────────────────────
+_SO_ALIAS = {
+    "PUERTO MADERO":      "Puerto Madero",
+    "HOLLYWOOD":          "Hollywood",
+    "CLUB TEMPLE":        "Club Temple",
+    "SOHO":               "Soho",
+    "CASA TEMPLE":        "Casa Temple",
+    "MASCHWITZ":          "Maschwitz",
+    "RIO GALLEGOS":       "Rio Gallegos",
+    "BARRIO CHINO":       "Barrio Chino",
+    "SALTA":              "Salta",
+    "PILAR":              "Pilar",
+    "MONROE":             "Monroe",
+    "CORRIENTES":         "Corrientes",
+    "RECOLETA":           "Recoleta",
+    "SANTIAGO DEL ESTERO": "Santiago del Estero",
+    "ROSARIO 2":          "Rosario 2",
+    "COMODORO RIVADAVIA": "Comodoro Rivadavia",
+    "TUCUMAN 3":          "Tucumán 3",
+    "CAMINITO":           "Caminito",
+    "GUEMES":             "Güemes",
+    "PINAMAR":            "Pinamar",
+}
+
+
+# ── Productos Patagonia que usan 50ml de Gin Bosque en receta ───────────────
+_PAT_SO_PRODUCTS = [
+    'GIN TONIC - BOSQUE GIN',
+    'BOTELLA GIN TONIC - (BOSQUE GIN)',
+    'GIN TONIC LIMON',
+    'GIN TONIC LIMA',
+    'GIN TONIC POMELO',
+    'GIN TONIC NARANJA',
+    'GIN PEPINO',
+    'GIN FRUTOS',
+    'GIN MARACUYA',
+    'GIN PEPINO LIMON',
+    'GIN BOTELLA MEDIDA',
+    'DRAGON GIN',
+]
+# Alias NombreDeFantasia → nombre canónico (None = excluir).
+_PAT_SI_ALIAS: dict[str, str | None] = {
+    "Patagonia Casa Tango":          "Casa Del Tango",
+    "Patagonia Lanus":               "Ba - Lanus",
+    "Patagonia Leloir":              "Leloir",
+    "Patagonia Mendoza":             "Mendoza",
+    "Refugio Patagonia Parana":      "Parana",
+    "Patagonia Santiago del estero": "Santiago del Estero",
+    "Patagonia Riobamba":            "Riobamba",
+}
+# Alias Establecimiento → nombre canónico. Completar con las sucursales de Patagonia.
+_PAT_SO_ALIAS: dict[str, str | None] = {}
+
+
+def fetch_sellinout_by_local(creds, weeks=12):
+    """Sell-in (NombreDeFantasia) vs sell-out (Establecimiento) totales por local, últimas N semanas."""
+    from google.cloud import bigquery as _bq
+    bq_dest   = _bq.Client(project="temple-brewery",    credentials=creds)
+    bq_temple = _bq.Client(project="temple-bar-439715", credentials=creds)
+
+    q_si = f"""
+    {_DEDUP_SI_CTE}
+    SELECT
+      TRIM(b.NombreDeFantasia)             AS local,
+      ROUND(SUM(COALESCE(b.Litros, 0)), 2) AS litros
+    FROM base b
+    JOIN cl_latest c ON b.NombreDeFantasia = c.NombreDeFantasia
+    WHERE LOWER(TRIM(c.Clusterizacion)) = 'cadena grupo temple'
+      AND REGEXP_CONTAINS(UPPER(TRIM(b.Producto)), r'GIN BOSQUE.*(500|750)')
+      AND b.FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks} WEEK)
+    GROUP BY local
+    """
+
+    q_so = f"""
+    SELECT
+      TRIM(Establecimiento)    AS local,
+      ROUND(SUM(Gin_Total), 2) AS litros
+    FROM `temple-bar-439715.curated_database.curated_gin`
+    WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks} WEEK)
+    GROUP BY local
+    """
+
+    si_raw = {r.local: float(r.litros) for r in bq_dest.query(q_si).result(timeout=60)}
+    so_raw = {r.local: float(r.litros) for r in bq_temple.query(q_so).result(timeout=60)}
+
+    # Aplicar alias sell-in (None = excluir)
+    si_map: dict[str, float] = {}
+    for name, litros in si_raw.items():
+        canon = _SI_ALIAS.get(name, name)
+        if canon is None:
+            continue
+        si_map[canon] = si_map.get(canon, 0.0) + litros
+
+    # Aplicar alias sell-out
+    so_map: dict[str, float] = {}
+    for name, litros in so_raw.items():
+        canon = _SO_ALIAS.get(name, name.title())
+        so_map[canon] = so_map.get(canon, 0.0) + litros
+
+    all_locals = sorted(set(list(si_map) + list(so_map)))
+    result = []
+    for local in all_locals:
+        si = si_map.get(local, 0.0)
+        so = so_map.get(local, 0.0)
+        result.append({"local": local, "si": si, "so": so, "diff": round(si - so, 2)})
+
+    result.sort(key=lambda x: x["so"], reverse=True)
+    return result
+
+
+def fetch_sellinout_local_weekly(creds, weeks=12):
+    """Sell-in vs sell-out por local y por semana — pivot para vista Sem × Local."""
+    from google.cloud import bigquery as _bq
+    bq_dest   = _bq.Client(project="temple-brewery",    credentials=creds)
+    bq_temple = _bq.Client(project="temple-bar-439715", credentials=creds)
+
+    q_si = f"""
+    {_DEDUP_SI_CTE}
+    SELECT
+      DATE_TRUNC(b.FechaPedido, WEEK(MONDAY)) AS semana,
+      TRIM(b.NombreDeFantasia)                AS local,
+      ROUND(SUM(COALESCE(b.Litros, 0)), 2)   AS litros
+    FROM base b
+    JOIN cl_latest c ON b.NombreDeFantasia = c.NombreDeFantasia
+    WHERE LOWER(TRIM(c.Clusterizacion)) = 'cadena grupo temple'
+      AND REGEXP_CONTAINS(UPPER(TRIM(b.Producto)), r'GIN BOSQUE.*(500|750)')
+      AND b.FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana, local
+    """
+
+    q_so = f"""
+    SELECT
+      DATE_TRUNC(Fecha, WEEK(MONDAY)) AS semana,
+      TRIM(Establecimiento)           AS local,
+      ROUND(SUM(Gin_Total), 2)        AS litros
+    FROM `temple-bar-439715.curated_database.curated_gin`
+    WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana, local
+    """
+
+    # Build maps: (canon_local, week_str) -> litros
+    si_map: dict[tuple, float] = {}
+    for r in bq_dest.query(q_si).result(timeout=60):
+        canon = _SI_ALIAS.get(r.local, r.local)
+        if canon is None:
+            continue
+        key = (canon, str(r.semana))
+        si_map[key] = si_map.get(key, 0.0) + float(r.litros)
+
+    so_map: dict[tuple, float] = {}
+    for r in bq_temple.query(q_so).result(timeout=60):
+        canon = _SO_ALIAS.get(r.local, r.local.title())
+        key = (canon, str(r.semana))
+        so_map[key] = so_map.get(key, 0.0) + float(r.litros)
+
+    all_weeks  = sorted({k[1] for k in list(si_map) + list(so_map)}, reverse=True)[:weeks]
+    all_locals = sorted({k[0] for k in list(si_map) + list(so_map)})
+
+    result = []
+    for local in all_locals:
+        for wk in all_weeks:
+            si = si_map.get((local, wk), 0.0)
+            so = so_map.get((local, wk), 0.0)
+            if si > 0 or so > 0:
+                result.append({"local": local, "w": wk, "si": si, "so": so})
+    return result
+
+
+def fetch_sellinout_pat_weekly(creds, weeks=12):
+    """
+    Sell-in/out semanal para Cadena Patagonia.
+    Sell-in : Ventas_Maestro_Con_Cluster_Final — cl='cadena patagonia', GIN BOSQUE 500+750ml, campo Litros.
+    Sell-out: patagonia-refugios.curated_database.curated_mix — 12 productos con receta 50ml gin Bosque,
+              litros = SUM(Cantidad) * 0.05.
+    Alarma: sell-out[semana N] > sell-in[semana N-1].
+    """
+    from google.cloud import bigquery as _bq
+    bq_dest = _bq.Client(project="temple-brewery",     credentials=creds)
+    bq_pat  = _bq.Client(project="patagonia-refugios", credentials=creds)
+
+    q_si = f"""
+    {_DEDUP_SI_CTE}
+    SELECT
+      DATE_TRUNC(b.FechaPedido, WEEK(MONDAY)) AS semana,
+      ROUND(SUM(COALESCE(b.Litros, 0)), 2)   AS litros
+    FROM base b
+    JOIN cl_latest c ON b.NombreDeFantasia = c.NombreDeFantasia
+    WHERE LOWER(TRIM(c.Clusterizacion)) = 'cadena patagonia'
+      AND REGEXP_CONTAINS(UPPER(TRIM(b.Producto)), r'GIN BOSQUE.*(500|750)')
+      AND b.FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana
+    """
+
+    _prods_sql = ', '.join(f"'{p}'" for p in _PAT_SO_PRODUCTS)
+    q_so = f"""
+    SELECT
+      DATE_TRUNC(Fecha, WEEK(MONDAY))     AS semana,
+      ROUND(SUM(Cantidad) * 0.05, 2)     AS litros
+    FROM `patagonia-refugios.curated_database.curated_mix`
+    WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+      AND UPPER(TRIM(Producto)) IN ({_prods_sql})
+    GROUP BY semana
+    """
+
+    si_map = {str(r.semana): float(r.litros) for r in bq_dest.query(q_si).result(timeout=60)}
+    so_map = {str(r.semana): float(r.litros) for r in bq_pat.query(q_so).result(timeout=60)}
+
+    all_weeks = sorted(set(list(si_map) + list(so_map)), reverse=True)[:weeks]
+    result = []
+    for i, wk in enumerate(all_weeks):
+        si      = si_map.get(wk, 0.0)
+        so      = so_map.get(wk, 0.0)
+        prev_wk = all_weeks[i + 1] if i + 1 < len(all_weeks) else None
+        si_prev = si_map.get(prev_wk) if prev_wk else None
+        result.append({
+            "w":       wk,
+            "si":      si,
+            "so":      so,
+            "diff":    round(si - so, 2),
+            "si_prev": si_prev,
+            "alarm":   (si_prev is not None and so > si_prev),
+        })
+    return result
+
+
+def fetch_sellinout_pat_local_weekly(creds, weeks=12):
+    """Sell-in vs sell-out Patagonia por local y por semana — pivot para vista Sem × Local."""
+    from google.cloud import bigquery as _bq
+    bq_dest = _bq.Client(project="temple-brewery",     credentials=creds)
+    bq_pat  = _bq.Client(project="patagonia-refugios", credentials=creds)
+
+    q_si = f"""
+    {_DEDUP_SI_CTE}
+    SELECT
+      DATE_TRUNC(b.FechaPedido, WEEK(MONDAY)) AS semana,
+      TRIM(b.NombreDeFantasia)                AS local,
+      ROUND(SUM(COALESCE(b.Litros, 0)), 2)   AS litros
+    FROM base b
+    JOIN cl_latest c ON b.NombreDeFantasia = c.NombreDeFantasia
+    WHERE LOWER(TRIM(c.Clusterizacion)) = 'cadena patagonia'
+      AND REGEXP_CONTAINS(UPPER(TRIM(b.Producto)), r'GIN BOSQUE.*(500|750)')
+      AND b.FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana, local
+    """
+
+    _prods_sql = ', '.join(f"'{p}'" for p in _PAT_SO_PRODUCTS)
+    q_so = f"""
+    SELECT
+      DATE_TRUNC(Fecha, WEEK(MONDAY))     AS semana,
+      TRIM(Establecimiento)               AS local,
+      ROUND(SUM(Cantidad) * 0.05, 2)     AS litros
+    FROM `patagonia-refugios.curated_database.curated_mix`
+    WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+      AND UPPER(TRIM(Producto)) IN ({_prods_sql})
+    GROUP BY semana, local
+    """
+
+    si_map: dict[tuple, float] = {}
+    for r in bq_dest.query(q_si).result(timeout=60):
+        canon = _PAT_SI_ALIAS.get(r.local, r.local)
+        if canon is None:
+            continue
+        key = (canon, str(r.semana))
+        si_map[key] = si_map.get(key, 0.0) + float(r.litros)
+
+    so_map: dict[tuple, float] = {}
+    for r in bq_pat.query(q_so).result(timeout=60):
+        canon = _PAT_SO_ALIAS.get(r.local, r.local.title() if r.local else r.local)
+        key = (canon, str(r.semana))
+        so_map[key] = so_map.get(key, 0.0) + float(r.litros)
+
+    all_weeks  = sorted({k[1] for k in list(si_map) + list(so_map)}, reverse=True)[:weeks]
+    all_locals = sorted({k[0] for k in list(si_map) + list(so_map)})
+
+    result = []
+    for local in all_locals:
+        for wk in all_weeks:
+            si = si_map.get((local, wk), 0.0)
+            so = so_map.get((local, wk), 0.0)
+            if si > 0 or so > 0:
+                result.append({"local": local, "w": wk, "si": si, "so": so})
+    return result
+
+
+_FER_SI_FILTER = """
+  (UPPER(TRIM(b.Producto)) LIKE '%VERMU FERIADO%'
+   OR UPPER(TRIM(b.Producto)) LIKE '%VERM\u00da FERIADO%'
+   OR UPPER(TRIM(b.Producto)) LIKE '%FERIADO ROJO%'
+   OR UPPER(TRIM(b.Producto)) LIKE '%FERIADO ROSADO%')
+"""
+
+# CTE reutilizable para deduplicar filas de Ventas_Maestro_Con_Cluster_Final.
+# La tabla tiene filas duplicadas (una con Clusterizacion, otra sin). DISTINCT
+# sobre los campos de negocio + join a cl_latest elimina el doble conteo.
+_DEDUP_SI_CTE = f"""
+WITH base AS (
+  SELECT DISTINCT FechaPedido, NombreDeFantasia, Producto, Envase, Litros
+  FROM `{TABLE}`
+  WHERE FechaPedido IS NOT NULL
+),
+cl_latest AS (
+  SELECT NombreDeFantasia, Clusterizacion
+  FROM `{TABLE}`
+  WHERE Clusterizacion IS NOT NULL
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY NombreDeFantasia ORDER BY FechaPedido DESC) = 1
+)"""
+
+
+def fetch_sellinout_fer_weekly(creds, weeks=12):
+    """Sell-in/out semanal Feriado · Cadena Grupo Temple."""
+    from google.cloud import bigquery as _bq
+    bq_dest   = _bq.Client(project="temple-brewery",    credentials=creds)
+    bq_temple = _bq.Client(project="temple-bar-439715", credentials=creds)
+
+    q_si = f"""
+    {_DEDUP_SI_CTE}
+    SELECT
+      DATE_TRUNC(b.FechaPedido, WEEK(MONDAY)) AS semana,
+      ROUND(SUM(COALESCE(b.Litros, 0)), 2)   AS litros
+    FROM base b
+    JOIN cl_latest c ON b.NombreDeFantasia = c.NombreDeFantasia
+    WHERE LOWER(TRIM(c.Clusterizacion)) = 'cadena grupo temple'
+      AND {_FER_SI_FILTER}
+      AND b.FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana
+    """
+    q_so = f"""
+    SELECT
+      DATE_TRUNC(Fecha, WEEK(MONDAY)) AS semana,
+      ROUND(SUM(Feriado_Total), 2)    AS litros
+    FROM `temple-bar-439715.curated_database.curated_feriado`
+    WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana
+    """
+    si_map = {str(r.semana): float(r.litros) for r in bq_dest.query(q_si).result(timeout=60)}
+    so_map = {str(r.semana): float(r.litros) for r in bq_temple.query(q_so).result(timeout=60)}
+
+    all_weeks = sorted(set(list(si_map) + list(so_map)), reverse=True)[:weeks]
+    result = []
+    for i, wk in enumerate(all_weeks):
+        si      = si_map.get(wk, 0.0)
+        so      = so_map.get(wk, 0.0)
+        prev_wk = all_weeks[i + 1] if i + 1 < len(all_weeks) else None
+        si_prev = si_map.get(prev_wk) if prev_wk else None
+        result.append({
+            "w":       wk,
+            "si":      si,
+            "so":      so,
+            "diff":    round(si - so, 2),
+            "si_prev": si_prev,
+            "alarm":   (si_prev is not None and so > si_prev),
+        })
+    return result
+
+
+def fetch_sellinout_fer_local_weekly(creds, weeks=12):
+    """Sell-in/out Feriado · Temple por local × semana."""
+    from google.cloud import bigquery as _bq
+    bq_dest   = _bq.Client(project="temple-brewery",    credentials=creds)
+    bq_temple = _bq.Client(project="temple-bar-439715", credentials=creds)
+
+    q_si = f"""
+    {_DEDUP_SI_CTE}
+    SELECT
+      DATE_TRUNC(b.FechaPedido, WEEK(MONDAY)) AS semana,
+      TRIM(b.NombreDeFantasia)                AS local,
+      ROUND(SUM(COALESCE(b.Litros, 0)), 2)   AS litros
+    FROM base b
+    JOIN cl_latest c ON b.NombreDeFantasia = c.NombreDeFantasia
+    WHERE LOWER(TRIM(c.Clusterizacion)) = 'cadena grupo temple'
+      AND {_FER_SI_FILTER}
+      AND b.FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana, local
+    """
+    q_so = f"""
+    SELECT
+      DATE_TRUNC(Fecha, WEEK(MONDAY)) AS semana,
+      TRIM(Establecimiento)           AS local,
+      ROUND(SUM(Feriado_Total), 2)    AS litros
+    FROM `temple-bar-439715.curated_database.curated_feriado`
+    WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana, local
+    """
+    si_map: dict[tuple, float] = {}
+    for r in bq_dest.query(q_si).result(timeout=60):
+        canon = _SI_ALIAS.get(r.local, r.local)
+        if canon is None:
+            continue
+        key = (canon, str(r.semana))
+        si_map[key] = si_map.get(key, 0.0) + float(r.litros)
+
+    so_map: dict[tuple, float] = {}
+    for r in bq_temple.query(q_so).result(timeout=60):
+        canon = _SO_ALIAS.get(r.local, r.local.title() if r.local else r.local)
+        key = (canon, str(r.semana))
+        so_map[key] = so_map.get(key, 0.0) + float(r.litros)
+
+    all_weeks  = sorted({k[1] for k in list(si_map) + list(so_map)}, reverse=True)[:weeks]
+    all_locals = sorted({k[0] for k in list(si_map) + list(so_map)})
+
+    result = []
+    for local in all_locals:
+        for wk in all_weeks:
+            si = si_map.get((local, wk), 0.0)
+            so = so_map.get((local, wk), 0.0)
+            if si > 0 or so > 0:
+                result.append({"local": local, "w": wk, "si": si, "so": so})
+    return result
+
+
+def fetch_sellinout_fer_pat_weekly(creds, weeks=12):
+    """Sell-in/out semanal Feriado · Cadena Patagonia. Retorna lista vacía si no hay datos."""
+    from google.cloud import bigquery as _bq
+    bq_dest = _bq.Client(project="temple-brewery", credentials=creds)
+
+    q_si = f"""
+    {_DEDUP_SI_CTE}
+    SELECT
+      DATE_TRUNC(b.FechaPedido, WEEK(MONDAY)) AS semana,
+      ROUND(SUM(COALESCE(b.Litros, 0)), 2)   AS litros
+    FROM base b
+    JOIN cl_latest c ON b.NombreDeFantasia = c.NombreDeFantasia
+    WHERE LOWER(TRIM(c.Clusterizacion)) = 'cadena patagonia'
+      AND {_FER_SI_FILTER}
+      AND b.FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana
+    """
+    si_map = {str(r.semana): float(r.litros) for r in bq_dest.query(q_si).result(timeout=60)}
+    if not si_map:
+        return []
+
+    all_weeks = sorted(si_map.keys(), reverse=True)[:weeks]
+    result = []
+    for i, wk in enumerate(all_weeks):
+        si      = si_map.get(wk, 0.0)
+        prev_wk = all_weeks[i + 1] if i + 1 < len(all_weeks) else None
+        si_prev = si_map.get(prev_wk) if prev_wk else None
+        result.append({
+            "w":       wk,
+            "si":      si,
+            "so":      0.0,
+            "diff":    round(si, 2),
+            "si_prev": si_prev,
+            "alarm":   False,
+        })
+    return result
+
+
+def fetch_sellinout_fer_pat_local_weekly(creds, weeks=12):
+    """Sell-in/out Feriado · Patagonia por local × semana. Retorna lista vacía si no hay datos."""
+    from google.cloud import bigquery as _bq
+    bq_dest = _bq.Client(project="temple-brewery", credentials=creds)
+
+    q_si = f"""
+    {_DEDUP_SI_CTE}
+    SELECT
+      DATE_TRUNC(b.FechaPedido, WEEK(MONDAY)) AS semana,
+      TRIM(b.NombreDeFantasia)                AS local,
+      ROUND(SUM(COALESCE(b.Litros, 0)), 2)   AS litros
+    FROM base b
+    JOIN cl_latest c ON b.NombreDeFantasia = c.NombreDeFantasia
+    WHERE LOWER(TRIM(c.Clusterizacion)) = 'cadena patagonia'
+      AND {_FER_SI_FILTER}
+      AND b.FechaPedido >= DATE_SUB(CURRENT_DATE(), INTERVAL {weeks + 2} WEEK)
+    GROUP BY semana, local
+    """
+    result = []
+    for r in bq_dest.query(q_si).result(timeout=60):
+        canon = _PAT_SI_ALIAS.get(r.local, r.local)
+        if canon is None:
+            continue
+        result.append({"local": canon, "w": str(r.semana), "si": float(r.litros), "so": 0.0})
+    return result
 
 
 if __name__ == "__main__":
