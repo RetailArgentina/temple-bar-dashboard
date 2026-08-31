@@ -1,11 +1,15 @@
-name: Update Destilería Dashboard
+# DESHABILITADO — 2026-08-31. Este workflow corre generar_destileria_dashboard.py
+# SIN --gcs-bucket y sube a GCS con un "gsutil cp" directo, lo que bypasea por
+# completo el guardrail de integridad (validate_contabilium_integrity, HWM,
+# etc.) agregado ese mismo día tras un incidente de facturación incorrecta.
+# Ver lesson_destileria-cot-guardrail.md. El trigger automático se sacó a
+# propósito — solo queda disponible para disparo manual (workflow_dispatch)
+# si alguna vez se re-habilita, y en ese caso hay que agregarle --gcs-bucket
+# y sacar el gsutil cp manual antes de volver a activar el push trigger.
+name: Update Destilería Dashboard (DESHABILITADO — bypasea el guardrail)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'templates/destileria.html'
-      - 'generar_destileria_dashboard.py'
+  workflow_dispatch: {}
 
 jobs:
   update-dashboard:
