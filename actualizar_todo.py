@@ -67,7 +67,7 @@ SCRIPTS = [
         "label":    "Contabilium → BQ",
         "cmd":      [
             sys.executable, "-X", "utf8",
-            os.path.join(os.path.dirname(os.path.dirname(SCRIPT_DIR)), "contabilium_sync_bq.py"),
+            os.path.join(SCRIPT_DIR, "contabilium_sync_bq.py"),
             "--modo", "incremental",
             # Sin --desde/--hasta, el script defaultea a 2020-01-01 → recorre
             # 7 años de comprobantes en la API de Contabilium todos los días.
@@ -87,14 +87,6 @@ SCRIPTS = [
         ],
     },
 ]
-
-# Pausa puntual pedida por Darwin: no republicar el tablero de Destilería en la
-# corrida de las 12:00 del 2026-08-25 (está en reunión y no quiere que cambie
-# la visual). Autolimitado a esta fecha/franja horaria — no requiere revertir
-# manualmente, deja de aplicar solo después de hoy.
-_now = datetime.now()
-if _now.date() == datetime(2026, 8, 25).date() and 11 <= _now.hour <= 13:
-    SCRIPTS = [s for s in SCRIPTS if s["label"] != "Destilería"]
 
 
 def ts():
