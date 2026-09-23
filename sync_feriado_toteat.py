@@ -21,6 +21,7 @@ Uso:
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from datetime import date, datetime, timedelta
@@ -38,6 +39,10 @@ LOCAL_NOMBRE = os.environ.get("TOTEAT_LOCAL", "COGHLAN")  # nombre canónico del
 MARCA        = "FERIADO"
 MAX_DIAS_POR_REQ = 14              # Toteat permite máx 15 días; usamos 14 por seguridad
 REQ_PAUSE_SEG    = 22              # 3 req/min → 20 seg entre llamadas + margen
+# Ventana de re-sync incremental. 28 días (2 requests) en vez de 14: si la tarea
+# programada falla o se saltea varios días (timeouts, PC dormida), la ventana de
+# 14 días se deslizaba sin haber corregido las órdenes que se asientan tarde.
+RESYNC_DIAS      = 28
 
 # ── Configuración BigQuery ────────────────────────────────────────────────────
 SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
@@ -133,11 +138,13 @@ def fetch_ventas(ini: date, end: date, intento: int = 1) -> list:
             return []
         return data.get("data", [])
     except requests.RequestException as e:
+        # str(e) incluye la URL completa (con xapitoken) — enmascarar antes de loguear
+        err = re.sub(r"(xapitoken=)[^&\s)\"']+", r"\1***", str(e))
         if intento < 3:
-            log(f"  Error en request ({e}), reintento {intento+1}...")
+            log(f"  Error en request ({err}), reintento {intento+1}...")
             time.sleep(10)
             return fetch_ventas(ini, end, intento + 1)
-        log(f"  Error definitivo fetching {ini}–{end}: {e}")
+        log(f"  Error definitivo fetching {ini}–{end}: {err}")
         return []
 
 
@@ -289,6 +296,93 @@ def insertar_filas(client: bigquery.Client, filas: list, dry_run: bool) -> int:
 
 # ── Lógica principal ──────────────────────────────────────────────────────────
 
+# ── Verificación de gap histórico ──────────────────────────────────────────────
+# El re-sync incremental solo cubre los últimos MAX_DIAS_POR_REQ días. Si una
+# orden de Toteat tarda más que eso en asentarse (conciliación demorada,
+# delivery), el día sale de la ventana y esa orden queda perdida en BQ para
+# siempre (ver incidente Feriado agosto 2026: 61 órdenes / $5.5M perdidos).
+# Esta verificación chequea la ventana que ACABA de salir del re-sync contra
+# Toteat en vivo y, si hay gap, escribe un alert en GCS para mostrarlo como
+# banner en el tablero — mismo patrón que destileria_alert.json en app.py.
+CACHE_BUCKET             = "temple-bar-dashboard-cache"
+ALERT_BLOB               = "feriado_sync_alert.json"
+GAP_CHECK_DIAS_ATRAS_INI = RESYNC_DIAS + 30   # inicio de la ventana a chequear
+GAP_CHECK_DIAS_ATRAS_FIN = RESYNC_DIAS + 1    # recién salió de la ventana de re-sync
+GAP_UMBRAL_PCT           = 3.0  # % de diferencia en órdenes que dispara la alerta
+
+
+def verificar_gap_historico(client: bigquery.Client, dry_run: bool):
+    """Compara BQ vs Toteat en vivo para el rango que ya salió de la ventana de
+    re-sync. Si el gap de órdenes supera GAP_UMBRAL_PCT, escribe un alert JSON
+    en GCS. Si no hay gap, borra el alert si existía (se autorresuelve)."""
+    hoy   = date.today()
+    desde = hoy - timedelta(days=GAP_CHECK_DIAS_ATRAS_INI)
+    hasta = hoy - timedelta(days=GAP_CHECK_DIAS_ATRAS_FIN)
+    if desde > hasta:
+        return
+
+    log(f"Verificando gap histórico {desde} → {hasta} (fuera de la ventana de re-sync)...")
+
+    q = f"""
+        SELECT COUNT(DISTINCT orden_id) AS ordenes
+        FROM `{BQ_TABLE_ID}`
+        WHERE Fecha BETWEEN '{desde.isoformat()}' AND '{hasta.isoformat()}'
+    """
+    try:
+        ordenes_bq = list(client.query(q).result())[0].ordenes or 0
+    except Exception as e:
+        log(f"  No se pudo leer BQ para el chequeo de gap: {e}")
+        return
+
+    ordenes_toteat_ids = set()
+    chunk_ini = desde
+    llamada = 0
+    while chunk_ini <= hasta:
+        chunk_fin = min(chunk_ini + timedelta(days=MAX_DIAS_POR_REQ - 1), hasta)
+        if llamada > 0:
+            time.sleep(REQ_PAUSE_SEG)
+        for o in fetch_ventas(chunk_ini, chunk_fin):
+            ordenes_toteat_ids.add(str(o.get("orderId", "")))
+        llamada += 1
+        chunk_ini = chunk_fin + timedelta(days=1)
+    ordenes_toteat = len(ordenes_toteat_ids)
+
+    if ordenes_toteat == 0:
+        log("  Toteat no devolvió órdenes para el rango — se omite el chequeo.")
+        return
+
+    gap_pct = round((ordenes_toteat - ordenes_bq) / ordenes_toteat * 100, 1)
+    log(f"  BQ: {ordenes_bq} órdenes | Toteat: {ordenes_toteat} órdenes | gap: {gap_pct}%")
+
+    if dry_run:
+        log("  [DRY-RUN] no se escribe/borra el alert en GCS")
+        return
+
+    from google.cloud import storage
+    blob = storage.Client().bucket(CACHE_BUCKET).blob(ALERT_BLOB)
+
+    if gap_pct >= GAP_UMBRAL_PCT:
+        alert = {
+            "reason": (
+                f"Feriado: {ordenes_bq} órdenes en BQ vs {ordenes_toteat} en Toteat "
+                f"para {desde.isoformat()}–{hasta.isoformat()} (gap {gap_pct}%). "
+                f"Backfill: python -X utf8 sync_feriado_toteat.py --desde "
+                f"{desde.strftime('%Y%m%d')} --hasta {hasta.strftime('%Y%m%d')}"
+            ),
+            "checked_at":     datetime.now().isoformat(),
+            "ordenes_bq":     ordenes_bq,
+            "ordenes_toteat": ordenes_toteat,
+            "gap_pct":        gap_pct,
+            "desde":          desde.isoformat(),
+            "hasta":          hasta.isoformat(),
+        }
+        blob.upload_from_string(json.dumps(alert, ensure_ascii=False), content_type="application/json")
+        log(f"  ALERTA: gap de {gap_pct}% — escrito {ALERT_BLOB} en GCS")
+    elif blob.exists():
+        blob.delete()
+        log(f"  Gap dentro de tolerancia — {ALERT_BLOB} borrado (se resolvió)")
+
+
 def sync_rango(client: bigquery.Client, desde: date, hasta: date, dry_run: bool):
     """Sincroniza el rango desde–hasta en chunks de MAX_DIAS_POR_REQ días.
     Acumula todas las filas en memoria y deduplica por row_key antes de insertar,
@@ -341,6 +435,10 @@ def main():
     parser.add_argument("--hasta",    help="Fecha fin YYYYMMDD (default: ayer)")
     parser.add_argument("--recrear",  action="store_true", help="Borra y recrea la tabla antes de cargar (útil para backfill completo)")
     parser.add_argument("--dry-run",  action="store_true", help="No escribe en BQ")
+    parser.add_argument("--verificar-gap", action="store_true",
+                        help="Tras el sync incremental, corre también la verificación de gap (lenta: ~1-2 min por rate limit)")
+    parser.add_argument("--solo-verificar", action="store_true",
+                        help="Solo corre la verificación de gap histórico, sin sincronizar (lo usa el pipeline como paso separado)")
     args = parser.parse_args()
 
     if not TOTEAT_TOKEN:
@@ -350,6 +448,10 @@ def main():
     ayer = date.today() - timedelta(days=1)
 
     client = get_bq_client()
+
+    if args.solo_verificar:
+        verificar_gap_historico(client, args.dry_run)
+        return
 
     # --recrear: vacía la tabla para evitar conflictos con el streaming buffer
     if args.recrear and not args.dry_run:
@@ -375,8 +477,8 @@ def main():
             # (delivery, pagos con conciliación demorada) tardan más de 3 días
             # en asentarse, y una vez que un día sale de la ventana de re-sync
             # nunca se vuelve a corregir solo. Ver lesson_toteat-api-rango-minimo.
-            desde = ultima - timedelta(days=MAX_DIAS_POR_REQ - 1)
-            log(f"Modo incremental: último en BQ = {ultima}, re-sync desde {desde} (ventana {MAX_DIAS_POR_REQ} días)")
+            desde = ultima - timedelta(days=RESYNC_DIAS - 1)
+            log(f"Modo incremental: último en BQ = {ultima}, re-sync desde {desde} (ventana {RESYNC_DIAS} días)")
             # Verificar gaps: comparar fechas únicas vs rango esperado
             try:
                 q_gap = f"""
@@ -407,6 +509,15 @@ def main():
 
     total = sync_rango(client, desde, hasta, args.dry_run)
     log(f"✓ Sync completo — {total} filas {'(DRY-RUN)' if args.dry_run else 'en BQ'}")
+
+    # La verificación de gap ya no corre por defecto: sus pausas de rate limit
+    # llevaban el sync a ~1m50s y el pipeline lo mataba por timeout (120s) antes
+    # de terminar. Ahora es un paso aparte del pipeline (--solo-verificar).
+    if args.verificar_gap and not args.desde:
+        try:
+            verificar_gap_historico(client, args.dry_run)
+        except Exception as e:
+            log(f"  (No se pudo correr la verificación de gap histórico: {e})")
 
 
 if __name__ == "__main__":

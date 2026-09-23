@@ -371,7 +371,35 @@ def dashboard():
             logger.error("Error reading dashboard from GCS: %s", exc)
             if _dash_cache["html"] is None:
                 return "Dashboard temporalmente no disponible. Intentá de nuevo en unos minutos.", 503
-    return _dash_cache["html"], 200, {
+
+    # Bandera de gap de sync Feriado vs Toteat (escrita por
+    # sync_feriado_toteat.py::verificar_gap_historico cuando detecta que
+    # órdenes se asentaron después de salir de la ventana de re-sync de 14
+    # días — ver incidente agosto 2026). Best-effort: si GCS falla, no rompe la página.
+    dash_alert_banner = ''
+    try:
+        gcs = storage.Client()
+        alert_blob = gcs.bucket(config.CACHE_BUCKET).blob("feriado_sync_alert.json")
+        if alert_blob.exists():
+            alert_data = json.loads(alert_blob.download_as_text(encoding="utf-8"))
+            alert_reason = str(alert_data.get("reason", ""))[:500].replace('<', '&lt;')
+            alert_when = str(alert_data.get("checked_at", ""))
+            dash_alert_banner = (
+                '<div style="background:#3d1f1f;border:1px solid #c8102e;border-radius:8px;'
+                'padding:12px 18px;margin:0 auto 14px;max-width:1400px;color:#fca5a5;'
+                'font-size:13px;font-weight:600;font-family:system-ui,sans-serif">'
+                f'&#9888; Chequeo automático ({alert_when}) detectó un hueco de sync en Feriado '
+                f'vs Toteat. {alert_reason}'
+                '</div>'
+            )
+    except Exception as _dash_alert_exc:
+        logger.warning("No se pudo leer feriado_sync_alert.json: %s", _dash_alert_exc)
+
+    dash_html = _dash_cache["html"]
+    if dash_alert_banner:
+        dash_html = dash_html.replace("<body>", f"<body>{dash_alert_banner}", 1)
+
+    return dash_html, 200, {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache",
