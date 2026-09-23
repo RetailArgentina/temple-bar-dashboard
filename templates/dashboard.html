@@ -346,6 +346,8 @@ canvas{max-width:100%;display:block}
   <div style="margin-left:auto;font-size:11px;color:#8b949e" id="filterLabel">Mostrando: <strong style="color:#e6edf3">Todas las marcas &middot; Todo el período</strong></div>
 </div>
 
+<div id="fallbackBanner" style="display:none;align-items:center;gap:8px;margin:0 0 14px;padding:9px 14px;border-radius:8px;background:#3d2c00;border:1px solid rgba(251,191,36,.3);color:#fbbf24;font-size:12px;font-weight:600"></div>
+
 <div class="main-nav">
   <button class="nav-btn active" id="navVentas"  onclick="switchView('economico')">&#128200; Ventas</button>
   <button class="nav-btn"        id="navProducto" onclick="switchView('producto')">&#128230; Producto</button>
@@ -653,6 +655,11 @@ function switchView(v){
 }
 
 const MENSUAL = __MENSUAL_JSON__;
+// Último mes con datos reales en MENSUAL (puede ir por detrás del mes calendario
+// real si todavía no sincronizó ninguna venta del mes en curso). Usar esto —
+// no new Date() — como tope al elegir el mes "actual" contra LOCALES_OBJ,
+// que trae objetivos precargados para meses futuros sin ventas reales aún.
+const LATEST_MES_DATA = [...new Set(MENSUAL.map(r=>r.mes))].sort().pop() || "";
 
 const TURNOS_DATA = __TURNOS_JSON__;
 
@@ -775,6 +782,20 @@ function updateBannerKPI(){
     const pd=PD[STATE.periodo];
     meses=pd.meses; prevMeses=pd.prevMeses; yoyMeses=pd.yoyMeses;
     periodLabel=pd.label; prevLabel=pd.prevLabel; yoyLabel=pd.yoyLabel;
+  }
+
+  const fbEl=document.getElementById("fallbackBanner");
+  if(fbEl){
+    const todayMes=new Date().getFullYear()+"-"+String(new Date().getMonth()+1).padStart(2,"0");
+    const isFallback=STATE.periodo==="mes_actual" && meses && meses.length && meses[meses.length-1]!==todayMes;
+    if(isFallback){
+      const [fy,fmo]=meses[meses.length-1].split("-");
+      const [ty,tmo]=[todayMes.split("-")[0],todayMes.split("-")[1]];
+      fbEl.innerHTML="&#9888;&#65039; "+MN[+tmo]+" "+ty+" todav&iacute;a no tiene ventas sincronizadas &mdash; mostrando el &uacute;ltimo mes cerrado ("+MN[+fmo]+" "+fy+").";
+      fbEl.style.display="flex";
+    } else {
+      fbEl.style.display="none";
+    }
   }
 
   const cr=filterM(meses), pr=filterM(prevMeses), yr=filterM(yoyMeses);
@@ -1302,6 +1323,11 @@ function buildPotencialLocales(){
   const fmtPesos=v=>"$"+Math.round(v).toLocaleString("es-AR");
   // Auto-sync brand filter with global STATE
   if(STATE.marca!=="todas") _potMarca=STATE.marca;
+  if(_potMarca!=="Patagonia" && _potMarca!=="Temple"){
+    // LOCALES_OBJ solo tiene objetivos por local para Patagonia/Temple — Feriado no cae acá
+    el.innerHTML='<div style="color:#6e7681;padding:16px;font-size:11px;text-align:center">'+_potMarca+' no tiene objetivos por local cargados</div>';
+    return;
+  }
   const bCode=_potMarca==="Patagonia"?"P":"T";
   // Ticket promedio desde los 3 últimos meses completos en MENSUAL
   const todayMes=new Date().getFullYear()+"-"+String(new Date().getMonth()+1).padStart(2,"0");
@@ -1319,7 +1345,7 @@ function buildPotencialLocales(){
     el.innerHTML='<div style="color:#6e7681;padding:16px;font-size:11px;text-align:center">Sin objetivos cargados para este período</div>';
     return;
   }
-  const upToNow=allObjMonths.filter(m=>m<=todayMes);
+  const upToNow=allObjMonths.filter(m=>m<=LATEST_MES_DATA);
   const useMonths=upToNow.length?upToNow:allObjMonths;
   // Mapear STATE.periodo a claves de mes
   let selMeses;
@@ -1684,7 +1710,8 @@ function buildObjetivos() {
   }
 
   const latestMes = "__LATEST_MES__".startsWith("__") ? "" : "__LATEST_MES__";
-  const isPartialLatest = latestMes ? relevantMonths.includes(latestMes) : false;
+  const todayMesObj = new Date().getFullYear()+"-"+String(new Date().getMonth()+1).padStart(2,"0");
+  const isPartialLatest = latestMes ? (relevantMonths.includes(latestMes) && latestMes===todayMesObj) : false;
   const isPartialMar = isPartialLatest; // alias para compatibilidad
 
 
@@ -1785,7 +1812,7 @@ function buildLocalesTable() {
   // Meses disponibles en LOCALES_OBJ — limitados a hoy para evitar mostrar meses sin real
   const allObjMonths = [...new Set(LOCALES_OBJ.flatMap(r => Object.keys(r.d)))].sort();
   const todayMesL2=new Date().getFullYear()+"-"+String(new Date().getMonth()+1).padStart(2,"0");
-  const upToNowL=allObjMonths.filter(m=>m<=todayMesL2);
+  const upToNowL=allObjMonths.filter(m=>m<=LATEST_MES_DATA);
   const useMonthsL=upToNowL.length?upToNowL:allObjMonths;
 
   // Mapear STATE.periodo a claves de mes
