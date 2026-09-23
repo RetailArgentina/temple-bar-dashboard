@@ -8,8 +8,10 @@ Uso: python -X utf8 actualizar_todo.py
 """
 
 import os
+import re
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timedelta
 
@@ -27,7 +29,7 @@ SCRIPTS = [
         "label":    "Feriado Toteat → BQ",
         "cmd":      [sys.executable, "-X", "utf8", "sync_feriado_toteat.py"],
         "critical": False,
-        "timeout":  120,   # 2 min máx — si cuelga, falla rápido y el pipeline sigue
+        "timeout":  300,   # 5 min máx — re-sync de 28 días = 2 requests con pausa de 22s
     },
     {
         "label":    "Feriado Catálogo → BQ",
@@ -86,6 +88,14 @@ SCRIPTS = [
             "--output", os.path.join(_OUT_DIR, "destileria_dashboard.html"),
         ],
     },
+    # Verificación de gap Feriado vs Toteat: paso aparte y al final porque es lento
+    # (pausas de rate limit) y solo escribe/borra el banner de alerta en GCS.
+    {
+        "label":    "Feriado gap check",
+        "cmd":      [sys.executable, "-X", "utf8", "sync_feriado_toteat.py", "--solo-verificar"],
+        "critical": False,
+        "timeout":  300,
+    },
 ]
 
 
@@ -93,8 +103,59 @@ def ts():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+_SECRET_RE = re.compile(r"((?:xapitoken|api_?key|token|key)=)[^&\s)\"']+", re.IGNORECASE)
+
+
+def mask_secrets(text):
+    """Enmascara tokens/keys que aparezcan en URLs dentro de mensajes de error
+    (ej. el 429 de Toteat imprime la URL completa con xapitoken)."""
+    return _SECRET_RE.sub(r"\1***", text)
+
+
+# Lock de instancia única: si la PC despierta y el Programador de tareas dispara
+# dos corridas a la vez, ambas pisaban la subida a GCS (404 PATCH el 21/09/2026).
+# Se usa un lock del sistema operativo sobre un archivo en la carpeta temporal
+# (no en Drive): si el proceso muere, el SO lo libera solo y nunca queda trabado.
+_LOCK_PATH = os.path.join(tempfile.gettempdir(), "temple_pipeline.lock")
+
+
+def acquire_pipeline_lock():
+    """Devuelve el file handle con el lock tomado, o None si ya hay otra corrida."""
+    f = open(_LOCK_PATH, "a+")
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None
+    return f
+
+
+def keep_awake(enable=True):
+    """Pide a Windows no entrar en suspensión/espera moderna por inactividad
+    mientras corre el pipeline. La PC entraba en 'Idle Timeout' 10-20 veces por
+    día y las tareas corrían con CPU/red limitadas (timeouts del sync de Feriado).
+    No mantiene la pantalla encendida. El flag es del hilo y se libera solo si el
+    proceso muere. No-op fuera de Windows (Cloud Run)."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ES_CONTINUOUS      = 0x80000000
+        ES_SYSTEM_REQUIRED = 0x00000001
+        flags = ES_CONTINUOUS | (ES_SYSTEM_REQUIRED if enable else 0)
+        ctypes.windll.kernel32.SetThreadExecutionState(flags)
+    except Exception:
+        pass  # nunca debe romper el pipeline
+
+
 def log(msg):
-    line = f"[{ts()}] {msg}"
+    line = f"[{ts()}] {mask_secrets(str(msg))}"
     print(line, flush=True)
     try:
         os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
@@ -161,6 +222,11 @@ def run_script(entry):
 
 
 def main():
+    lock = acquire_pipeline_lock()
+    if lock is None:
+        log("\u26a0 Ya hay otra corrida del pipeline en curso \u2014 esta instancia se cancela para no pisar la subida a GCS.")
+        return
+    keep_awake(True)
     log("\u25b6 Iniciando actualizaci\u00f3n completa")
 
     for entry in SCRIPTS:
@@ -174,6 +240,7 @@ def main():
             else:
                 log(f"  \u26a0 Script no cr\u00edtico fall\u00f3 — continuando pipeline.")
 
+    keep_awake(False)
     log("\u2713 Actualizaci\u00f3n completa OK")
 
 
