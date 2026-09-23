@@ -2,7 +2,9 @@ name: Actualizar pipeline de tableros
 
 on:
   workflow_dispatch: {}
-  # El cron se activa recién en Task 7, una vez validado workflow_dispatch.
+  schedule:
+    - cron: "30 11 * * *"   # 08:30 ART
+    - cron: "0 15 * * *"    # 12:00 ART
 
 concurrency:
   group: actualizar-pipeline
