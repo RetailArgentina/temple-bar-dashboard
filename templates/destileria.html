@@ -2086,7 +2086,7 @@ function renderFeriadoTabla(rows) {
 
     const tdClTot = document.createElement('td');
     tdClTot.style.cssText = 'position:sticky;right:0;text-align:right;padding:7px 12px;font-size:11px;font-weight:800;color:#e8d5a3;background:#1a0408;border-bottom:1px solid #4a0a16;border-left:2px solid #4a0a16;white-space:nowrap;font-variant-numeric:tabular-nums;';
-    tdClTot.textContent = fmtNum(clTotAll,1);
+    tdClTot.textContent = clTotAll > 0 ? fmtNum(clTotAll,1) : '—';
     trCl.appendChild(tdClTot);
 
     trCl.addEventListener('click', () => {
@@ -2159,7 +2159,7 @@ function renderFeriadoTabla(rows) {
 
     const tdSTot = document.createElement('td');
     tdSTot.style.cssText = 'position:sticky;right:0;text-align:right;padding:6px 12px;font-size:11px;font-weight:800;color:#e8d5a3;background:#2d0810;border-bottom:2px solid #4a0a16;border-left:2px solid #4a0a16;white-space:nowrap;font-variant-numeric:tabular-nums;';
-    tdSTot.textContent = fmtNum(clTotAll,1);
+    tdSTot.textContent = clTotAll > 0 ? fmtNum(clTotAll,1) : '—';
     trSub.appendChild(tdSTot);
     tbody.appendChild(trSub);
   });
@@ -2185,7 +2185,7 @@ function renderFeriadoTabla(rows) {
 
   const tdGT = document.createElement('td');
   tdGT.style.cssText = 'position:sticky;right:0;text-align:right;padding:9px 12px;font-size:12px;font-weight:900;color:#e8d5a3;background:#1a0408;border-top:2px solid #c8102e;border-left:2px solid #4a0a16;white-space:nowrap;font-variant-numeric:tabular-nums;';
-  tdGT.textContent = fmtNum(grandTotal,1);
+  tdGT.textContent = grandTotal > 0 ? fmtNum(grandTotal,1) : '—';
   trG.appendChild(tdGT);
   tbody.appendChild(trG);
   tbl.appendChild(tbody);
@@ -2348,7 +2348,7 @@ function renderFeriadoSemanas(rows) {
 
     const tdClTot = document.createElement('td');
     tdClTot.style.cssText = 'position:sticky;right:0;text-align:right;padding:7px 12px;font-size:11px;font-weight:800;color:#e8d5a3;background:#1a0408;border-bottom:1px solid #4a0a16;border-left:2px solid #4a0a16;white-space:nowrap;font-variant-numeric:tabular-nums;';
-    tdClTot.textContent = fmtNum(clTotAll,1);
+    tdClTot.textContent = clTotAll > 0 ? fmtNum(clTotAll,1) : '—';
     trCl.appendChild(tdClTot);
 
     trCl.addEventListener('click', () => {
@@ -2423,7 +2423,7 @@ function renderFeriadoSemanas(rows) {
 
     const tdSTot = document.createElement('td');
     tdSTot.style.cssText = 'position:sticky;right:0;text-align:right;padding:6px 12px;font-size:11px;font-weight:800;color:#e8d5a3;background:#2d0810;border-bottom:2px solid #4a0a16;border-left:2px solid #4a0a16;white-space:nowrap;font-variant-numeric:tabular-nums;';
-    tdSTot.textContent = fmtNum(clTotAll,1);
+    tdSTot.textContent = clTotAll > 0 ? fmtNum(clTotAll,1) : '—';
     trSub.appendChild(tdSTot);
     tbody.appendChild(trSub);
   });
@@ -2446,7 +2446,7 @@ function renderFeriadoSemanas(rows) {
   });
   const tdGT = document.createElement('td');
   tdGT.style.cssText = 'position:sticky;right:0;text-align:right;padding:9px 12px;font-size:12px;font-weight:900;color:#e8d5a3;background:#1a0408;border-top:2px solid #c8102e;border-left:2px solid #4a0a16;white-space:nowrap;font-variant-numeric:tabular-nums;';
-  tdGT.textContent = fmtNum(grandTotal,1);
+  tdGT.textContent = grandTotal > 0 ? fmtNum(grandTotal,1) : '—';
   trG.appendChild(tdGT);
   tbody.appendChild(trG);
   tbl.appendChild(tbody);
@@ -3129,6 +3129,12 @@ function renderObjPanel(brand, brandRows, panelId) {
     actCl[r.cl]   = (actCl[r.cl]   || 0) + r.li;
     totalReal    += r.li;
   });
+  // Una NC puede caer en un mes distinto a la factura que la origina y dejar
+  // el acumulado del período filtrado en negativo (ver cluster Distribuidor,
+  // ago-2026). Nunca se muestran litros reales negativos: se pisan a 0.
+  Object.keys(actProd).forEach(k => { if (actProd[k] < 0) actProd[k] = 0; });
+  Object.keys(actCl).forEach(k => { if (actCl[k] < 0) actCl[k] = 0; });
+  if (totalReal < 0) totalReal = 0;
   // realByMonth usa ROWS global para cubrir todo el año independientemente del filtro activo
   const realByMonth = {};
   var _faKeys = BRAND_FA_KEYS[brand];
@@ -3138,6 +3144,7 @@ function renderObjPanel(brand, brandRows, panelId) {
       realByMonth[mm] = (realByMonth[mm] || 0) + r.li;
     }
   });
+  Object.keys(realByMonth).forEach(m => { if (realByMonth[m] < 0) realByMonth[m] = 0; });
 
   const objTotalArr = bObj.product?._TOTAL || bObj.cluster?._TOTAL;
   const totalObj = objSum(objTotalArr, months);
@@ -5558,7 +5565,7 @@ function renderCervezaTab(rows, rowsYoY, rowsPop) {
 
     const tdClTot = document.createElement('td');
     tdClTot.style.cssText = 'position:sticky;right:0;text-align:right;padding:7px 12px;font-size:11px;font-weight:800;color:#bae6fd;background:#0c1f35;border-bottom:1px solid #1e3a5f;border-left:2px solid #1e3a5f;white-space:nowrap;font-variant-numeric:tabular-nums;';
-    tdClTot.textContent = clTotAll.toLocaleString('es-AR');
+    tdClTot.textContent = clTotAll > 0 ? clTotAll.toLocaleString('es-AR') : '—';
     trCl.appendChild(tdClTot);
 
     trCl.addEventListener('click', () => {
@@ -5627,7 +5634,7 @@ function renderCervezaTab(rows, rowsYoY, rowsPop) {
     });
     const tdSTot = document.createElement('td');
     tdSTot.style.cssText = 'position:sticky;right:0;text-align:right;padding:6px 12px;font-size:11px;font-weight:800;color:#bae6fd;background:#0c1f35;border-bottom:2px solid #1e3a5f;border-left:2px solid #1e3a5f;white-space:nowrap;font-variant-numeric:tabular-nums;';
-    tdSTot.textContent = clTotAll.toLocaleString('es-AR');
+    tdSTot.textContent = clTotAll > 0 ? clTotAll.toLocaleString('es-AR') : '—';
     trSub.appendChild(tdSTot);
     tbody.appendChild(trSub);
   });
@@ -5650,7 +5657,7 @@ function renderCervezaTab(rows, rowsYoY, rowsPop) {
   });
   const tdGT = document.createElement('td');
   tdGT.style.cssText = 'position:sticky;right:0;text-align:right;padding:9px 12px;font-size:12px;font-weight:900;color:#bae6fd;background:#0c1f35;border-top:2px solid #38bdf8;border-left:2px solid #1e3a5f;white-space:nowrap;font-variant-numeric:tabular-nums;';
-  tdGT.textContent = grandTotal.toLocaleString('es-AR');
+  tdGT.textContent = grandTotal > 0 ? grandTotal.toLocaleString('es-AR') : '—';
   trG.appendChild(tdGT);
   tbody.appendChild(trG);
   tbl.appendChild(tbody);
@@ -5823,7 +5830,7 @@ function renderBosqueSemanasTabla(rows) {
 
     const tdClTot = document.createElement('td');
     tdClTot.style.cssText = 'position:sticky;right:0;text-align:right;padding:7px 14px;font-size:11px;font-weight:800;color:#e8d5a3;background:#1a1608;border-bottom:1px solid #21262d;border-left:2px solid #3d2f0a;white-space:nowrap;font-variant-numeric:tabular-nums;';
-    tdClTot.textContent = clTotAll.toLocaleString('es-AR');
+    tdClTot.textContent = clTotAll > 0 ? clTotAll.toLocaleString('es-AR') : '—';
     trCl.appendChild(tdClTot);
 
     trCl.addEventListener('click', () => {
@@ -5890,7 +5897,7 @@ function renderBosqueSemanasTabla(rows) {
   });
   const tdGrandTot = document.createElement('td');
   tdGrandTot.style.cssText = 'position:sticky;right:0;text-align:right;padding:9px 14px;font-size:12px;font-weight:900;color:#e8d5a3;background:#1a1608;border-top:2px solid #3d2f0a;border-left:2px solid #3d2f0a;white-space:nowrap;font-variant-numeric:tabular-nums;';
-  tdGrandTot.textContent = grandTotal.toLocaleString('es-AR');
+  tdGrandTot.textContent = grandTotal > 0 ? grandTotal.toLocaleString('es-AR') : '—';
   trT.appendChild(tdGrandTot);
   tbody.appendChild(trT);
   tbl.appendChild(tbody);
@@ -6029,7 +6036,7 @@ function renderBosqueTabla(rows) {
 
     const tdClTot = document.createElement('td');
     tdClTot.style.cssText = 'position:sticky;right:0;text-align:right;padding:7px 14px;font-size:11px;font-weight:800;color:#e8d5a3;background:#1a1608;border-bottom:1px solid #21262d;border-left:2px solid #3d2f0a;white-space:nowrap;font-variant-numeric:tabular-nums;';
-    tdClTot.textContent = clTotAll.toLocaleString('es-AR');
+    tdClTot.textContent = clTotAll > 0 ? clTotAll.toLocaleString('es-AR') : '—';
     trCl.appendChild(tdClTot);
 
     trCl.addEventListener('click', () => {
@@ -6096,7 +6103,7 @@ function renderBosqueTabla(rows) {
   });
   const tdGrandTot = document.createElement('td');
   tdGrandTot.style.cssText = 'position:sticky;right:0;text-align:right;padding:9px 14px;font-size:12px;font-weight:900;color:#e8d5a3;background:#1a1608;border-top:2px solid #3d2f0a;border-left:2px solid #3d2f0a;white-space:nowrap;font-variant-numeric:tabular-nums;';
-  tdGrandTot.textContent = grandTotal.toLocaleString('es-AR');
+  tdGrandTot.textContent = grandTotal > 0 ? grandTotal.toLocaleString('es-AR') : '—';
   trT.appendChild(tdGrandTot);
   tbody.appendChild(trT);
   tbl.appendChild(tbody);

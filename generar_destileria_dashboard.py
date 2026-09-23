@@ -601,6 +601,17 @@ def fetch_rows(client):
     return list(client.query(query).result(timeout=120))
 
 
+# Mismo cliente físico con nombre distinto según la fuente de datos: Ventas_Maestro
+# (histórico pre-julio, campo NombreDeFantasia) vs Contabilium (desde julio, campo
+# nombre_fantasia). Sin este alias el cliente queda partido en dos "nd" distintos
+# en dropdown/Frecuencia de Compra/Top Clientes/Retención. Canónico = nombre Contabilium
+# (fuente vigente hacia adelante). Confirmado por Darwin 2026-09-04.
+_CLIENT_NAME_ALIAS_MAP: dict[str, str] = {
+    "DUTY FREE (Avolta)": "DUTTY FREE EZEIZA",
+    "SALAS VIP (AMAE)": "CROSSRACER TRANSPORT SERVICES S.A.",
+}
+
+
 # Mapeo de nombre Contabillium → cluster correcto (clientes sin match en cluster_map)
 _CBL_CLUSTER_MAP: dict[str, str] = {
     "TEMPLE HOLLYWOOD NUEVO":       "Cadena Grupo Temple",
@@ -1047,7 +1058,7 @@ def main():
         data.append({
             "f":  r.f,
             "cl": r.cl,
-            "nd": r.nd,
+            "nd": _CLIENT_NAME_ALIAS_MAP.get(r.nd, r.nd),
             "fa": classify_familia(r.pr, r.en),
             "ti": r.ti,
             "ce": int(r.ce),
@@ -1218,6 +1229,21 @@ def main():
             obj = _fs_obj
             _obj_source = "firestore"
             print(f"[{ts()}] Objetivos OK (desde Firestore)")
+            # Refrescar el caché local — si no se actualiza acá, queda congelado en
+            # el último snapshot de Drive/GCS y las próximas corridas comparan contra
+            # un baseline viejo, generando alertas de "cambio grande" para ediciones
+            # ya vigentes hace tiempo (ver incidente 2026-09-04: caché de 18/08 sin
+            # refrescar durante 17 días).
+            try:
+                _to_save = {**obj, "_meta": {
+                    "source": "firestore",
+                    "fetched_at": datetime.now().isoformat(timespec="seconds"),
+                }}
+                with open(OBJ_JSON_FILE, "w", encoding="utf-8") as fh:
+                    json.dump(_to_save, fh, ensure_ascii=False, indent=2)
+                print(f"[{ts()}] JSON local de objetivos actualizado (desde Firestore)")
+            except Exception as _save_err:
+                print(f"WARN: No se pudo refrescar el caché local de objetivos: {_save_err}", file=sys.stderr)
         elif _fs_obj:
             print(f"[{ts()}] WARN: Firestore sigue incompleto tras reintento — se descarta, se prueba el siguiente fallback", file=sys.stderr)
     except Exception as _fs_init_err:
