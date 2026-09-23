@@ -1,0 +1,53 @@
+name: Actualizar pipeline de tableros
+
+on:
+  workflow_dispatch: {}
+  # El cron se activa recién en Task 7, una vez validado workflow_dispatch.
+
+concurrency:
+  group: actualizar-pipeline
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write   # requerido por google-github-actions/auth (WIF)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements_job.txt
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Correr el pipeline
+        env:
+          CONTABILIUM_EMAIL: ${{ secrets.CONTABILIUM_EMAIL }}
+          CONTABILIUM_APIKEY: ${{ secrets.CONTABILIUM_APIKEY }}
+          TOTEAT_XIU: ${{ secrets.TOTEAT_XIU }}
+          TOTEAT_XIR: ${{ secrets.TOTEAT_XIR }}
+          TOTEAT_XIL: ${{ secrets.TOTEAT_XIL }}
+          PLACES_API_KEY: ${{ secrets.PLACES_API_KEY }}
+          PLACES_ID_BARRIO_CHINO: ${{ secrets.PLACES_ID_BARRIO_CHINO }}
+          PLACES_ID_MONROE: ${{ secrets.PLACES_ID_MONROE }}
+          PYTHONIOENCODING: utf-8
+        run: python -X utf8 actualizar_todo.py
+
+      - name: Subir el log si falló
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-update-log
+          path: logs/dashboard_update.log
