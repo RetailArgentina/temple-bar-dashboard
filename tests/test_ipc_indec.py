@@ -148,6 +148,47 @@ def test_obtener_ipc_sin_api_ni_cache_devuelve_none(monkeypatch):
     assert any("sin cache" in l for l in logs)
 
 
+def test_obtener_ipc_falla_al_leer_cache_devuelve_none(monkeypatch):
+    logs = []
+
+    def caida(*a):
+        raise RuntimeError("API IPC sin respuesta")
+
+    def gcs_caido(b):
+        raise OSError("GCS no responde")
+
+    monkeypatch.setattr(ipc_indec, "descargar", caida)
+    monkeypatch.setattr(ipc_indec, "_leer_cache", gcs_caido)
+    assert ipc_indec.obtener_ipc("bucket-x", HOY, log=logs.append) is None
+    assert any("FALLÓ IPC cache" in l and "GCS no responde" in l for l in logs)
+
+
+def test_obtener_ipc_cache_invalida_devuelve_none(monkeypatch):
+    logs = []
+
+    def caida(*a):
+        raise RuntimeError("API IPC sin respuesta")
+
+    monkeypatch.setattr(ipc_indec, "descargar", caida)
+    monkeypatch.setattr(ipc_indec, "_leer_cache", lambda b: {"general": {}, "rubro": {"2026-08": 1.0}})
+    assert ipc_indec.obtener_ipc("bucket-x", HOY, log=logs.append) is None
+    assert any("FALLÓ IPC cache" in l for l in logs)
+
+
+def test_obtener_ipc_cache_desactualizada_se_usa_con_aviso(monkeypatch):
+    logs = []
+
+    def caida(*a):
+        raise RuntimeError("API IPC sin respuesta")
+
+    monkeypatch.setattr(ipc_indec, "descargar", caida)
+    monkeypatch.setattr(ipc_indec, "_leer_cache",
+                        lambda b: _series(general={"2026-04": 100.0, "2026-05": 101.0}))
+    p = ipc_indec.obtener_ipc("bucket-x", HOY, log=logs.append)
+    assert p["fuente"] == "cache"
+    assert any("FALLÓ IPC desactualizado" in l for l in logs)
+
+
 def test_obtener_ipc_falla_al_guardar_cache_no_rompe(monkeypatch):
     monkeypatch.setattr(ipc_indec, "descargar", lambda: _series())
 
