@@ -4,7 +4,6 @@ pipeline.py — BigQuery data pipeline for Temple Bar Dashboard.
 Adapted from actualizar_dashboard.py:
   - fetch_data() signature and SQL are preserved verbatim
   - Key renames applied: 'cerveza' → 'cerv', 'feriado' → 'ferid'
-    (to match the /api/data response contract)
   - CLI-specific code removed (parse_args, generate_html_from_file, main)
   - bq_client is injected (not created inside the function) for testability
   - print() statements replaced with logging

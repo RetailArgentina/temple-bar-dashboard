@@ -1142,16 +1142,8 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
         print(f"  Using local template: {local_template}")
         with open(local_template, 'r', encoding='utf-8') as f:
             html_template = f.read()
-    elif gcs_bucket:
-        print(f"  Local template not found — downloading from gs://{gcs_bucket}/dashboard_template.html ...")
-        from google.cloud import storage
-        storage_client = storage.Client()
-        bucket = storage_client.bucket(gcs_bucket)
-        blob = bucket.blob('dashboard_template.html')
-        html_template = blob.download_as_text(encoding='utf-8')
-        print("  OK Template downloaded from GCS")
     else:
-        print(f"Error: Template file not found at {local_template} and no --gcs-bucket specified.")
+        print(f"Error: Template file not found at {local_template}.")
         return False
 
     html = html_template
