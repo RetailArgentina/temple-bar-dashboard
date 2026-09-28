@@ -106,3 +106,10 @@ def test_fin_resto_anio(tmp_path):
     assert r["imp"]["nom"] == pytest.approx(25)
     assert r["imp"]["real"] == pytest.approx(125 / 120 * 100 - 100)
     assert r["imp"]["clase"] == "Razonable"
+
+
+def test_fin_crecimiento_sin_par_del_anio_anterior_en_algun_mes_es_null(tmp_path):
+    # La marca no tiene venta en 2025-08 (no existía / hueco de sync): no se compara un período parcial
+    r = run_js(f'finCrecimiento([{{mes:"2025-09",fac:100}},{{mes:"2026-08",fac:500}},{{mes:"2026-09",fac:130}}],'
+               f'["2026-08","2026-09"],["2025-08","2025-09"],{IPC},m=>1)', tmp_path)
+    assert r is None

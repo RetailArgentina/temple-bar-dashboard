@@ -526,6 +526,7 @@ function finCrecimiento(rows, meses, yoyMeses, ipc, pace){
   const idx=meses.map((m,i)=>i).filter(i=>{const p=pace(meses[i]);return p===null||p>=FIN_PACE_MIN;});
   if(!idx.length) return null;
   const cm=idx.map(i=>meses[i]), ym=idx.map(i=>yoyMeses[i]);
+  if(!ym.every(m=>rows.some(r=>r.mes===m))) return null; // algún mes sin venta el año anterior: período no comparable
   const c=finSumar(rows,cm,ipc,pace), y=finSumar(rows,ym,ipc,()=>1);
   if(!(y.nom>0)||!(y.real>0)||c.falta||y.falta) return null;
   return {nomCur:c.nom, realCur:c.real, nomYoy:y.nom, realYoy:y.real,
