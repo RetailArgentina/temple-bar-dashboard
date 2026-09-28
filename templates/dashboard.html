@@ -593,7 +593,7 @@ function finPeriodoActual(){
     return {meses, yoyMeses:yoy.every(m=>all.has(m))?yoy:[], label:STATE.fromMes+" → "+STATE.toMes};
   }
   const pd=PD[STATE.periodo]||{};
-  const meses=pd.meses||[], yoy=meses.map(finYoyMes);
+  const meses=pd.meses||[...all].sort(), yoy=meses.map(finYoyMes); // meses:null = toda la historia ("Todo el periodo")
   return {meses, yoyMeses:yoy.every(m=>all.has(m))?yoy:[], label:pd.label||""};
 }
 
