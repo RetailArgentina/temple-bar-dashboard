@@ -108,6 +108,19 @@ def test_fin_resto_anio(tmp_path):
     assert r["imp"]["clase"] == "Razonable"
 
 
+def test_fin_sumar_real_null_si_falta_ipc_de_algun_mes(tmp_path):
+    # 2023-12 no está en la serie: la suma real sería parcial → null, el nominal sí se suma
+    r = run_js(f'finSumar([{{mes:"2023-12",fac:50}},{{mes:"2026-09",fac:130}}],["2023-12","2026-09"],{IPC},()=>1)',
+               tmp_path)
+    assert r["nom"] == pytest.approx(180) and r["real"] is None and r["falta"] is True
+
+
+def test_fin_sumar_real_con_ipc_completo(tmp_path):
+    r = run_js(f'finSumar([{{mes:"2026-08",fac:125}},{{mes:"2026-09",fac:130}}],["2026-08","2026-09"],{IPC},()=>1)',
+               tmp_path)
+    assert r["real"] == pytest.approx(260)  # 125 × 130/125 + 130 (base 2026-09) and r["falta"] is False
+
+
 def test_fin_crecimiento_sin_par_del_anio_anterior_en_algun_mes_es_null(tmp_path):
     # La marca no tiene venta en 2025-08 (no existía / hueco de sync): no se compara un período parcial
     r = run_js(f'finCrecimiento([{{mes:"2025-09",fac:100}},{{mes:"2026-08",fac:500}},{{mes:"2026-09",fac:130}}],'

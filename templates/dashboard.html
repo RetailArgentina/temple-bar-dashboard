@@ -506,7 +506,8 @@ function finInflacion(serie, meses, yoyMeses){
 }
 
 /* Suma nominal y real (en $ del mes base) de rows {mes, fac} en `meses`.
-   El mes en curso se lleva a cierre estimado (fac / avance). */
+   El mes en curso se lleva a cierre estimado (fac / avance).
+   real es null si falta el IPC de algún mes (una suma parcial subestimaría el total). */
 function finSumar(rows, meses, ipc, pace){
   const g=ipc.general, b=g[ipc.base];
   let nom=0, real=0, falta=false;
@@ -516,7 +517,7 @@ function finSumar(rows, meses, ipc, pace){
     nom+=f;
     if(g[r.mes]) real+=f*b/g[r.mes]; else falta=true;
   });
-  return {nom, real, falta};
+  return {nom, real:falta?null:real, falta};
 }
 
 /* Crecimiento nominal y real (%) de `meses` contra `yoyMeses` (mismo largo, alineados).
@@ -628,7 +629,8 @@ function buildFinanzas(){
   const todos=[...per.meses,...per.yoyMeses];
   document.getElementById("finKpis").innerHTML=
     finKpi("Facturación nominal",fmtM(suma.nom),abierto?"Real al día · el crecimiento usa cierre estimado":"Pesos corrientes")
-    +finKpi("Facturación real",fmtM(suma.real)+eSup(per.meses),"En $ de "+baseLbl)
+    +finKpi("Facturación real",suma.real===null?'<span class="muted">sin datos</span>':fmtM(suma.real)+eSup(per.meses),
+            suma.real===null?"Falta el IPC de algún mes del período":"En $ de "+baseLbl)
     +finKpi("Crecimiento real vs año ant.",c?finPctHtml(c.crecReal)+eSup(todos):'<span class="muted">sin datos</span>',
             c?"Nominal "+tPct(c.crecNom):"Sin período comparable del año anterior")
     +finKpi("Inflación del período",ig!==null?tPct(ig)+eSup(todos):"—",
