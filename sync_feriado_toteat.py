@@ -314,12 +314,13 @@ GAP_UMBRAL_PCT           = 3.0  # % de diferencia en órdenes que dispara la ale
 def verificar_gap_historico(client: bigquery.Client, dry_run: bool):
     """Compara BQ vs Toteat en vivo para el rango que ya salió de la ventana de
     re-sync. Si el gap de órdenes supera GAP_UMBRAL_PCT, escribe un alert JSON
-    en GCS. Si no hay gap, borra el alert si existía (se autorresuelve)."""
+    en GCS. Si no hay gap, borra el alert si existía (se autorresuelve).
+    Devuelve False si no se pudo verificar (BQ o Toteat fallaron)."""
     hoy   = date.today()
     desde = hoy - timedelta(days=GAP_CHECK_DIAS_ATRAS_INI)
     hasta = hoy - timedelta(days=GAP_CHECK_DIAS_ATRAS_FIN)
     if desde > hasta:
-        return
+        return True
 
     log(f"Verificando gap histórico {desde} → {hasta} (fuera de la ventana de re-sync)...")
 
@@ -332,7 +333,7 @@ def verificar_gap_historico(client: bigquery.Client, dry_run: bool):
         ordenes_bq = list(client.query(q).result())[0].ordenes or 0
     except Exception as e:
         log(f"  No se pudo leer BQ para el chequeo de gap: {e}")
-        return
+        return False
 
     ordenes_toteat_ids = set()
     chunk_ini = desde
@@ -348,15 +349,17 @@ def verificar_gap_historico(client: bigquery.Client, dry_run: bool):
     ordenes_toteat = len(ordenes_toteat_ids)
 
     if ordenes_toteat == 0:
-        log("  Toteat no devolvió órdenes para el rango — se omite el chequeo.")
-        return
+        # 30 días sin órdenes no es un local vacío: es la API fallando
+        # (ej. 'Not Authorized'). Antes esto salía como OK en silencio.
+        log("  ERROR: Toteat no devolvió órdenes para el rango — no se pudo verificar el gap.")
+        return False
 
     gap_pct = round((ordenes_toteat - ordenes_bq) / ordenes_toteat * 100, 1)
     log(f"  BQ: {ordenes_bq} órdenes | Toteat: {ordenes_toteat} órdenes | gap: {gap_pct}%")
 
     if dry_run:
         log("  [DRY-RUN] no se escribe/borra el alert en GCS")
-        return
+        return True
 
     from google.cloud import storage
     blob = storage.Client().bucket(CACHE_BUCKET).blob(ALERT_BLOB)
@@ -381,6 +384,7 @@ def verificar_gap_historico(client: bigquery.Client, dry_run: bool):
     elif blob.exists():
         blob.delete()
         log(f"  Gap dentro de tolerancia — {ALERT_BLOB} borrado (se resolvió)")
+    return True
 
 
 def sync_rango(client: bigquery.Client, desde: date, hasta: date, dry_run: bool):
@@ -450,7 +454,8 @@ def main():
     client = get_bq_client()
 
     if args.solo_verificar:
-        verificar_gap_historico(client, args.dry_run)
+        if not verificar_gap_historico(client, args.dry_run):
+            sys.exit(1)
         return
 
     # --recrear: vacía la tabla para evitar conflictos con el streaming buffer
