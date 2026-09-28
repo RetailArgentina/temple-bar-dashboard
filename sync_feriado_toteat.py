@@ -31,10 +31,10 @@ from google.cloud import bigquery
 
 # ── Configuración Toteat ──────────────────────────────────────────────────────
 TOTEAT_BASE  = "https://api.toteat.com/mw/or/1.0"
-TOTEAT_XIU   = os.environ.get("TOTEAT_XIU",   "").strip()
-TOTEAT_XIR   = os.environ.get("TOTEAT_XIR",   "").strip()
-TOTEAT_XIL   = os.environ.get("TOTEAT_XIL",   "").strip()
-TOTEAT_TOKEN = os.environ.get("TOTEAT_TOKEN", "").strip()
+TOTEAT_XIU   = os.environ.get("TOTEAT_XIU",   "").strip().lstrip("Feff")
+TOTEAT_XIR   = os.environ.get("TOTEAT_XIR",   "").strip().lstrip("Feff")
+TOTEAT_XIL   = os.environ.get("TOTEAT_XIL",   "").strip().lstrip("Feff")
+TOTEAT_TOKEN = os.environ.get("TOTEAT_TOKEN", "").strip().lstrip("Feff")
 LOCAL_NOMBRE = os.environ.get("TOTEAT_LOCAL", "COGHLAN")  # nombre canónico del local en BQ
 MARCA        = "FERIADO"
 MAX_DIAS_POR_REQ = 14              # Toteat permite máx 15 días; usamos 14 por seguridad
