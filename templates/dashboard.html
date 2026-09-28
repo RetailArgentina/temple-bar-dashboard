@@ -581,6 +581,13 @@ function finRestoAnio(objMarca, rowsMarca, anio, mesesResto, paceActual, ipc){
   const inf=finInflacion(ipc.general,mesesResto,mesesResto.map(finYoyMes));
   return {objAnual, ytd, faltante, ventaAA, imp:finObjImplicito(faltante,ventaAA,inf)};
 }
+
+/* Meses del gráfico: los últimos `n` cerrados, sin el primero de la serie, que es parcial
+   (la consulta arranca 28 meses atrás a mitad de mes, o ahí empiezan los datos de la marca). */
+function finMesesGrafico(rows, hoy, n){
+  const meses=[...new Set(rows.map(r=>r.mes))].sort().slice(1);
+  return meses.filter(m=>finPace(m,hoy)===1).slice(-n);
+}
 /* FINANZAS_CORE:END */
 
 /* ── Pestaña Finanzas: render (usa FINANZAS_CORE + datasets globales) ── */
@@ -719,7 +726,7 @@ function buildFinChart(){
   tChartDefaults();
   const hoy=new Date();
   const rows=MENSUAL.filter(r=>STATE.marca==="todas"||r.m===STATE.marca);
-  const cerrados=[...new Set(rows.map(r=>r.mes))].filter(m=>finPace(m,hoy)===1).sort().slice(-24);
+  const cerrados=finMesesGrafico(rows,hoy,24);
   const b=IPC.general[IPC.base];
   const nom=cerrados.map(m=>rows.filter(r=>r.mes===m).reduce((s,r)=>s+r.fac,0));
   const real=cerrados.map((m,i)=>IPC.general[m]?nom[i]*b/IPC.general[m]:null);

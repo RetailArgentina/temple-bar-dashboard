@@ -122,6 +122,14 @@ def test_fin_resto_anio(tmp_path):
     assert r["imp"]["clase"] == "Razonable"
 
 
+def test_fin_meses_grafico_saca_el_primer_mes_parcial_y_el_mes_en_curso(tmp_path):
+    rows = '[{mes:"2024-10"},{mes:"2024-11"},{mes:"2024-11"},{mes:"2024-12"},{mes:"2025-01"},{mes:"2025-02"}]'
+    r = run_js(f'[finMesesGrafico({rows},new Date(2025,1,10),24),finMesesGrafico({rows},new Date(2025,1,10),2)]',
+               tmp_path)
+    assert r[0] == ["2024-11", "2024-12", "2025-01"]   # oct-24 (arranque de la serie) y feb-25 (en curso) fuera
+    assert r[1] == ["2024-12", "2025-01"]
+
+
 def test_fin_sumar_real_null_si_falta_ipc_de_algun_mes(tmp_path):
     # 2023-12 no está en la serie: la suma real sería parcial → null, el nominal sí se suma
     r = run_js(f'finSumar([{{mes:"2023-12",fac:50}},{{mes:"2026-09",fac:130}}],["2023-12","2026-09"],{IPC},()=>1)',
