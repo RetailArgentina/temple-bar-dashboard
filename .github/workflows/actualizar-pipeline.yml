@@ -41,6 +41,7 @@ jobs:
           TOTEAT_XIU: ${{ secrets.TOTEAT_XIU }}
           TOTEAT_XIR: ${{ secrets.TOTEAT_XIR }}
           TOTEAT_XIL: ${{ secrets.TOTEAT_XIL }}
+          TOTEAT_TOKEN: ${{ secrets.TOTEAT_TOKEN }}
           PLACES_API_KEY: ${{ secrets.PLACES_API_KEY }}
           PLACES_ID_BARRIO_CHINO: ${{ secrets.PLACES_ID_BARRIO_CHINO }}
           PLACES_ID_MONROE: ${{ secrets.PLACES_ID_MONROE }}
