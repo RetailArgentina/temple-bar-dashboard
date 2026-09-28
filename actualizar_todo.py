@@ -229,6 +229,7 @@ def main():
     keep_awake(True)
     log("\u25b6 Iniciando actualizaci\u00f3n completa")
 
+    fallidos = []
     for entry in SCRIPTS:
         ok = run_script(entry)
         if not ok:
@@ -239,8 +240,15 @@ def main():
                 sys.exit(1)
             else:
                 log(f"  \u26a0 Script no cr\u00edtico fall\u00f3 — continuando pipeline.")
+                fallidos.append(entry["label"])
 
     keep_awake(False)
+    if fallidos:
+        # El pipeline corre completo, pero sale con error para que GitHub
+        # Actions marque la corrida en rojo y avise por mail. Antes salía
+        # verde y el sync de Feriado estuvo 5 días caído sin que se viera.
+        log(f"✗ Actualización completa con {len(fallidos)} paso(s) fallido(s): {', '.join(fallidos)}")
+        sys.exit(1)
     log("\u2713 Actualizaci\u00f3n completa OK")
 
 
