@@ -334,3 +334,21 @@ def test_fetch_ipc_data_pasa_el_bucket(monkeypatch):
     import actualizar_retail, ipc_indec
     monkeypatch.setattr(ipc_indec, "obtener_ipc", lambda bucket: {"bucket": bucket})
     assert actualizar_retail.fetch_ipc_data("b1") == {"bucket": "b1"}
+
+
+def test_contexto_con_ipc_api_pisa_el_manual_y_conserva_el_resto():
+    from actualizar_retail import contexto_con_ipc
+    eco = {"ipc_mensual": {"2026-02": 2.4, "2026-03": 9.9, "___comentario___": "x"}, "contexto": {"a": 1}}
+    ipc = {"general": {"2026-02": 100.0, "2026-03": 103.7, "2026-04": 106.811}}
+    out = contexto_con_ipc(eco, ipc)
+    assert out["ipc_mensual"]["2026-02"] == 2.4          # sin mes previo en la API: queda el manual
+    assert out["ipc_mensual"]["2026-03"] == 3.7          # la API pisa el manual
+    assert out["ipc_mensual"]["2026-04"] == 3.0          # mes nuevo desde la API
+    assert out["contexto"] == {"a": 1}
+    assert eco["ipc_mensual"]["2026-03"] == 9.9          # no muta el original
+
+
+def test_contexto_con_ipc_sin_datos_devuelve_el_manual():
+    from actualizar_retail import contexto_con_ipc
+    eco = {"ipc_mensual": {"2026-03": 3.7}}
+    assert contexto_con_ipc(eco, None) == eco

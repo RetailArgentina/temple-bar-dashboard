@@ -87,6 +87,17 @@ def construir_payload(series, hoy=None, fuente="api"):
             "rubro": completas["rubro"], "estimados": estimados, "fuente": fuente}
 
 
+def variaciones_mensuales(payload):
+    """Variación mensual (%) del IPC general, con 1 decimal: {"2026-08": 2.0, ...}.
+    Es el formato de ipc_mensual en economic_context.json (Insights de Ventas).
+    Incluye los meses estimados. {} si no hay payload."""
+    if not payload:
+        return {}
+    serie = payload["general"]
+    meses = sorted(serie)
+    return {b: round((serie[b] / serie[a] - 1) * 100, 1) for a, b in zip(meses, meses[1:])}
+
+
 def descargar(desde="2024-01", intentos=3, espera=3, timeout=20):
     params = {"ids": ",".join(SERIES.values()), "start_date": f"{desde}-01",
               "format": "json", "limit": 1000}

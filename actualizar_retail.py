@@ -564,6 +564,16 @@ def fetch_ipc_data(gcs_bucket=""):
     return ipc_indec.obtener_ipc(gcs_bucket)
 
 
+def contexto_con_ipc(eco_ctx, ipc_data):
+    """Contexto económico de los Insights con el IPC mensual de la API del INDEC
+    encima del cargado a mano en economic_context.json (que queda de respaldo)."""
+    import ipc_indec
+    variaciones = ipc_indec.variaciones_mensuales(ipc_data)
+    if not variaciones:
+        return eco_ctx
+    return {**eco_ctx, "ipc_mensual": {**eco_ctx.get("ipc_mensual", {}), **variaciones}}
+
+
 def inject_ipc(html, ipc_data):
     """Reemplaza __IPC_JSON__ por el payload IPC (o null si no hay datos)."""
     if '__IPC_JSON__' not in html:
@@ -1177,7 +1187,7 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
     if '__INSIGHTS_HTML__' in html:
         print("  Generating contextual insights (BQ data + IPC INDEC)...")
         try:
-            eco_ctx = load_economic_context()
+            eco_ctx = contexto_con_ipc(load_economic_context(), ipc_data)
             insights = generate_insights(data.get('ventas', []), eco_ctx)
             insights_html = render_insights_html(insights)
             insights_date = datetime.now().strftime("%d %b %Y").lstrip("0")  # e.g. "11 Apr 2026"

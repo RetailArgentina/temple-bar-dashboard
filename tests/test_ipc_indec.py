@@ -156,3 +156,12 @@ def test_obtener_ipc_falla_al_guardar_cache_no_rompe(monkeypatch):
 
     monkeypatch.setattr(ipc_indec, "_guardar_cache", falla)
     assert ipc_indec.obtener_ipc("bucket-x", HOY, log=lambda *_: None)["fuente"] == "api"
+
+
+def test_variaciones_mensuales_en_porcentaje_desde_el_indice():
+    p = {"general": {"2026-06": 100.0, "2026-07": 102.0, "2026-08": 104.04, "2026-09": 106.1208}}
+    assert ipc_indec.variaciones_mensuales(p) == {"2026-07": 2.0, "2026-08": 2.0, "2026-09": 2.0}
+
+
+def test_variaciones_mensuales_sin_payload_es_vacio():
+    assert ipc_indec.variaciones_mensuales(None) == {}
