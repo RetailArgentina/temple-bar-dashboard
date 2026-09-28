@@ -8,7 +8,6 @@ Routes:
   /auth/callback     — OAuth callback, validates whitelist
   /logout            — POST only, CSRF-protected, clears session
   /denied            — 403 page for non-whitelisted accounts
-  /api/data          — Serves cached dashboard JSON (@login_required)
   /api/refresh       — Nightly BigQuery refresh (@require_scheduler)
   /dashboard         — Main dashboard HTML (@login_required)
 """
@@ -304,49 +303,6 @@ def denied():
     # Email passed as query param when linked from denied.html try-another-account
     email = request.args.get("email", "")
     return render_template("denied.html", email=email), 403
-
-
-# ---------------------------------------------------------------------------
-# API: data
-# ---------------------------------------------------------------------------
-@app.route("/api/data")
-@login_required
-def api_data():
-    query = """
-        SELECT
-            Fecha AS fecha,
-            Marca,
-            SUM(Facturacion) AS facturacion,
-            COUNT(DISTINCT Orden) AS ordenes
-        FROM `temple-bar-439715.Corporativo.vw_Ventas_Corporativo_Base`
-        WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
-        GROUP BY 1, 2
-        ORDER BY 1, 2
-    """
-
-    try:
-        rows = bq_client.query(query).result()
-
-        data = []
-        for row in rows:
-            data.append({
-                "fecha": row.fecha.isoformat() if row.fecha else None,
-                "marca": row.Marca,
-                "facturacion": float(row.facturacion or 0),
-                "ordenes": int(row.ordenes or 0),
-            })
-
-        return jsonify({
-            "ok": True,
-            "rows": data
-        }), 200
-
-    except Exception as e:
-        logger.exception("Error consultando BigQuery en /api/data")
-        return jsonify({
-            "ok": False,
-            "error": "Error interno consultando datos"
-        }), 500
 
 
 # ---------------------------------------------------------------------------

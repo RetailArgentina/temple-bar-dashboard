@@ -94,10 +94,10 @@ def test_root_redirects_to_dashboard(client):
 # login_required decorator — API routes return 401 JSON
 # ---------------------------------------------------------------------------
 
-def test_api_data_returns_401_json_when_unauthenticated(client):
-    """GET /api/data without session -> 401 JSON, not HTML redirect."""
+def test_api_route_returns_401_json_when_unauthenticated(client):
+    """/api/* without session -> 401 JSON, not HTML redirect."""
     c, _ = client
-    resp = c.get("/api/data")
+    resp = c.post("/api/resenas/gestion/some-doc", json={"estado": "ok"})
     assert resp.status_code == 401
     data = resp.get_json()
     assert data is not None, "Response must be JSON, not HTML"
