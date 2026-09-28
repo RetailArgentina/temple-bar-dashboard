@@ -4,6 +4,9 @@ tests/test_cache.py — Tests for GCS cache read/write operations.
 All GCS calls are mocked — no real GCS calls are made.
 """
 import json
+from datetime import date
+from types import SimpleNamespace
+
 import pytest
 from unittest.mock import MagicMock, patch, PropertyMock
 
@@ -156,7 +159,7 @@ def test_write_cache_does_not_silently_swallow_errors(mock_gcs):
 
 @pytest.fixture
 def api_client(tmp_path):
-    """Flask test client with a session and mocked cache."""
+    """Flask test client with a session (BigQuery se mockea en cada test)."""
     import sys
     for mod in list(sys.modules.keys()):
         if mod in ("config", "app", "cache"):
@@ -186,31 +189,63 @@ def api_client(tmp_path):
                 yield c
 
 
-def test_api_data_returns_200_with_cached_data(api_client):
-    """Happy path: cache hit → /api/data returns 200 with expected keys."""
-    with patch("cache.read_cache", return_value=SAMPLE_DATA):
+def _mock_bq(rows=None, error=None):
+    """Mock de app.bq_client: /api/data consulta BigQuery directo (no la caché GCS)."""
+    client = MagicMock()
+    if error:
+        client.query.return_value.result.side_effect = error
+    else:
+        client.query.return_value.result.return_value = rows or []
+    return patch("app.bq_client", client)
+
+
+BQ_ROWS = [
+    SimpleNamespace(fecha=date(2026, 1, 1), Marca="Temple", facturacion=500000.5, ordenes=10),
+    SimpleNamespace(fecha=date(2026, 1, 1), Marca="Feriado", facturacion=None, ordenes=None),
+]
+
+
+def test_api_data_returns_200_with_bq_rows(api_client):
+    """Happy path: BQ devuelve filas → 200 con {ok, rows} normalizado."""
+    with _mock_bq(BQ_ROWS):
         resp = api_client.get("/api/data")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert "ventas" in data
-    assert "cerv" in data
-    assert "ferid" in data
-    assert "last_updated" in data
+    assert data["ok"] is True
+    assert data["rows"] == [
+        {"fecha": "2026-01-01", "marca": "Temple", "facturacion": 500000.5, "ordenes": 10},
+        {"fecha": "2026-01-01", "marca": "Feriado", "facturacion": 0.0, "ordenes": 0},
+    ]
 
 
-def test_api_data_returns_503_when_cache_empty(api_client):
-    """Edge: cache returns None → /api/data returns 503."""
-    with patch("cache.read_cache", return_value=None):
+def test_api_data_returns_500_when_bq_fails(api_client):
+    """Edge: error de BigQuery → 500 con error genérico (sin detalle interno)."""
+    with _mock_bq(error=RuntimeError("secret internal detail")):
         resp = api_client.get("/api/data")
-    assert resp.status_code == 503
+    assert resp.status_code == 500
     data = resp.get_json()
+    assert data["ok"] is False
     assert "error" in data
+    assert "secret internal detail" not in resp.get_data(as_text=True)
 
 
 def test_api_data_does_not_contain_canal_or_turno_keys(api_client):
     """API response must NOT include 'canal' or 'turno' — derived client-side."""
-    with patch("cache.read_cache", return_value=SAMPLE_DATA):
+    with _mock_bq(BQ_ROWS):
         resp = api_client.get("/api/data")
     data = resp.get_json()
     assert "canal" not in data
     assert "turno" not in data
+    for row in data["rows"]:
+        assert "canal" not in row
+        assert "turno" not in row
+
+
+def test_api_data_returns_401_when_unauthenticated(api_client):
+    """Sin sesión → 401 JSON (no redirect) y no consulta BigQuery."""
+    with api_client.session_transaction() as sess:
+        sess.clear()
+    with _mock_bq(BQ_ROWS) as bq:
+        resp = api_client.get("/api/data")
+    assert resp.status_code == 401
+    bq.query.assert_not_called()
