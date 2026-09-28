@@ -1,0 +1,108 @@
+"""tests/test_finanzas_js.py — cálculos de la pestaña Finanzas.
+
+Extrae el bloque FINANZAS_CORE de templates/dashboard.html y lo corre con Node.
+Se saltea si Node no está instalado.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+
+import pytest
+
+pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="requiere Node")
+
+TEMPLATE = os.path.join(os.path.dirname(__file__), "..", "templates", "dashboard.html")
+
+
+def run_js(expr, tmp_path):
+    """Evalúa `expr` (JS) después del bloque FINANZAS_CORE y devuelve el resultado como Python."""
+    with open(TEMPLATE, encoding="utf-8") as f:
+        html = f.read()
+    m = re.search(r"/\* FINANZAS_CORE:START.*?\*/(.*?)/\* FINANZAS_CORE:END \*/", html, re.S)
+    assert m, "no se encontró el bloque FINANZAS_CORE en la plantilla"
+    script = tmp_path / "fin.js"
+    script.write_text(m.group(1) + "\nconsole.log(JSON.stringify(" + expr + "));", encoding="utf-8")
+    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True)
+    return json.loads(out.stdout)
+
+
+IPC = ('{base:"2026-09",estimados:[],'
+       'general:{"2025-08":100,"2025-09":100,"2025-10":100,"2026-08":125,"2026-09":130,"2026-10":130},'
+       'rubro:{"2025-09":100,"2026-09":140}}')
+
+
+def test_fin_pace(tmp_path):
+    r = run_js('[finPace("2026-08",new Date(2026,8,15)),finPace("2026-09",new Date(2026,8,15)),'
+               'finPace("2026-10",new Date(2026,8,15))]', tmp_path)
+    assert r == [1, 0.5, None]
+
+
+def test_fin_inflacion_usa_indice_promedio_del_periodo(tmp_path):
+    r = run_js(f'finInflacion(({IPC}).general,["2026-08","2026-09"],["2025-08","2025-09"])', tmp_path)
+    assert r == pytest.approx(27.5)
+
+
+def test_fin_inflacion_sin_meses_devuelve_null(tmp_path):
+    assert run_js(f'finInflacion(({IPC}).general,["2026-09"],[])', tmp_path) is None
+
+
+def test_fin_crecimiento_prorratea_el_mes_en_curso_y_deflacta(tmp_path):
+    r = run_js(f'finCrecimiento([{{mes:"2025-09",fac:100}},{{mes:"2026-09",fac:65}}],'
+               f'["2026-09"],["2025-09"],{IPC},m=>finPace(m,new Date(2026,8,15)))', tmp_path)
+    assert r["nomCur"] == pytest.approx(130)      # 65 al día 15 de 30 → cierre estimado 130
+    assert r["crecNom"] == pytest.approx(30)
+    assert r["crecReal"] == pytest.approx(0)       # 30% nominal con 30% de inflación
+
+
+def test_fin_crecimiento_sin_anio_anterior_es_null(tmp_path):
+    r = run_js(f'finCrecimiento([{{mes:"2026-09",fac:65}}],["2026-09"],["2025-09"],{IPC},m=>1)', tmp_path)
+    assert r is None
+
+
+def test_fin_crecimiento_excluye_mes_con_menos_de_10pct_de_avance(tmp_path):
+    # 2 de octubre: el mes en curso tiene 2/31 de avance → se saca de la comparación
+    solo = run_js(f'finCrecimiento([{{mes:"2025-10",fac:100}},{{mes:"2026-10",fac:5}}],'
+                  f'["2026-10"],["2025-10"],{IPC},m=>finPace(m,new Date(2026,9,2)))', tmp_path)
+    assert solo is None
+    dos = run_js(f'finCrecimiento([{{mes:"2025-09",fac:100}},{{mes:"2026-09",fac:130}},'
+                 f'{{mes:"2025-10",fac:100}},{{mes:"2026-10",fac:5}}],'
+                 f'["2026-09","2026-10"],["2025-09","2025-10"],{IPC},m=>finPace(m,new Date(2026,9,2)))', tmp_path)
+    assert dos["nomCur"] == pytest.approx(130) and dos["crecReal"] == pytest.approx(0)
+
+
+def test_fin_same_store_solo_locales_en_ambos_periodos(tmp_path):
+    rows = ('[{mes:"2025-09",m:"Temple",l:"A",fac:100},{mes:"2026-09",m:"Temple",l:"a ",fac:156},'
+            '{mes:"2026-09",m:"Temple",l:"B",fac:50},{mes:"2026-09",m:"Feriado",l:"A",fac:999}]')
+    r = run_js(f'finSameStore({rows},"Temple",["2026-09"],["2025-09"],{IPC},m=>1)', tmp_path)
+    assert r["nomCur"] == pytest.approx(156)       # B no estaba el año anterior; Feriado es otra marca
+    assert r["crecReal"] == pytest.approx(20)      # 156/130 − 1
+
+
+def test_fin_clase_umbrales(tmp_path):
+    assert run_js('[finClase(10.5),finClase(10),finClase(0),finClase(-0.1),finClase(null)]', tmp_path) == \
+        ["Exigente", "Razonable", "Razonable", "Laxo", None]
+
+
+def test_fin_obj_implicito(tmp_path):
+    r = run_js('finObjImplicito(150,100,25)', tmp_path)
+    assert r["nom"] == pytest.approx(50) and r["real"] == pytest.approx(20) and r["clase"] == "Exigente"
+
+
+def test_fin_obj_implicito_sin_venta_anio_anterior_es_null(tmp_path):
+    assert run_js('[finObjImplicito(150,0,25),finObjImplicito(0,100,25),finObjImplicito(150,100,null)]',
+                  tmp_path) == [None, None, None]
+
+
+def test_fin_resto_anio(tmp_path):
+    ipc = '{base:"2026-08",general:{"2025-09":100,"2025-10":100,"2026-09":120,"2026-10":120}}'
+    obj = '{"2026-01":{obj_fac:100},"2026-09":{obj_fac:100},"2026-10":{obj_fac:100},"2025-12":{obj_fac:999}}'
+    rows = ('[{mes:"2026-01",fac:100},{mes:"2026-09",fac:50},'
+            '{mes:"2025-09",fac:80},{mes:"2025-10",fac:80}]')
+    r = run_js(f'finRestoAnio({obj},{rows},"2026",["2026-09","2026-10"],0.5,{ipc})', tmp_path)
+    assert r["objAnual"] == 300 and r["ytd"] == 150 and r["faltante"] == 150
+    assert r["ventaAA"] == pytest.approx(120)      # 80 × (1 − 0,5) + 80
+    assert r["imp"]["nom"] == pytest.approx(25)
+    assert r["imp"]["real"] == pytest.approx(125 / 120 * 100 - 100)
+    assert r["imp"]["clase"] == "Razonable"
