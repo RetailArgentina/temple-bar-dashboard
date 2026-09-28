@@ -87,7 +87,7 @@ def get_rating(place_id):
     """
     import httpx
     # strip + BOM: los secrets cargados por pipe de PowerShell traen U+FEFF
-    api_key = (os.environ.get("PLACES_API_KEY") or "").strip().lstrip("﻿")
+    api_key = (os.environ.get("PLACES_API_KEY") or "").strip().lstrip("\ufeff")
     resp = httpx.get(PLACES_URL, params={
         "place_id": place_id,
         "fields": "rating,user_ratings_total,reviews",
