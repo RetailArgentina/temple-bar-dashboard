@@ -1272,6 +1272,9 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
         html = html.replace('__PRODUCTO_JSON__', json.dumps(pd_json, separators=(',', ':'), default=str))
         print(f"  ✓ PRODUCTO_JSON inyectado ({len(pd_json.get('ranking', []))} productos, {len(pd_json.get('evolucion', []))} días)")
 
+    from temple_theme import apply_theme
+    html = apply_theme(html)
+
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
 

@@ -279,6 +279,8 @@ def generate_preview(datos, output):
         html = f.read()
     resenas_json = json.dumps(datos, ensure_ascii=False, default=str)
     html = html.replace("__RESENAS_JSON__", resenas_json)
+    from temple_theme import apply_theme
+    html = apply_theme(html)
     with open(output, "w", encoding="utf-8") as f:
         f.write(html)
     log(f"  ✓ Guardado: {output}")

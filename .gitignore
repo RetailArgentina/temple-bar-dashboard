@@ -34,6 +34,7 @@ index.html
 processed_data.json
 *.docx
 *.png
+!static/img/logo-temple.png
 
 # Generated dashboards
 destileria_dashboard.html

@@ -614,11 +614,20 @@ def render_insights_html(insights):
     Convierte lista de insight dicts en HTML listo para inyectar
     dentro de <div class="ig" id="insightsClave">.
     """
+    # Sistema TEMPLE: tarjetas blancas sin fondo de color ni emoji; la severidad va
+    # en una etiqueta de estado (rosa = alerta, verde azulado = positivo, gris = neutro).
+    chips = {
+        "red":    ("Alerta",   "t-chip t-chip-neg"),
+        "orange": ("Atención", "t-chip t-chip-neg"),
+        "yellow": ("Atención", "t-chip"),
+        "green":  ("Positivo", "t-chip t-chip-pos"),
+    }
     parts = []
     for ins in insights:
+        chip_txt, chip_cls = chips.get(ins.get("color"), ("Dato", "t-chip"))
         parts.append(
-            f'<div class="ic" style="background:{ins["bg"]};border:1px solid {ins["border"]}">'
-            f'<div class="it" style="color:{ins["title_color"]}">{ins["icon"]} {ins["title"]}</div>'
+            f'<div class="ic">'
+            f'<div class="it"><span class="{chip_cls}">{chip_txt}</span><span>{ins["title"]}</span></div>'
             f'<div class="ib">{ins["body"]}</div>'
             f'</div>'
         )

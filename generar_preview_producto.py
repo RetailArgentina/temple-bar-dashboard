@@ -533,6 +533,8 @@ def generate_preview(datasets, output):
     with open(TEMPLATE, 'r', encoding='utf-8') as f:
         html = f.read()
     html = html.replace('__DATASETS_JSON__', datasets_json)
+    from temple_theme import apply_theme
+    html = apply_theme(html)
     with open(output, 'w', encoding='utf-8') as f:
         f.write(html)
     print(f"  ✓ Guardado: {output}")
