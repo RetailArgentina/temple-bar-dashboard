@@ -292,3 +292,70 @@ def test_admin_toggle_active(client):
     body = resp.get_json()
     assert body["ok"] is True
     assert body["active"] is False
+
+
+# ── Link público temporal ─────────────────────────────────────────────────
+
+_PUB_TOKEN = "tok-de-prueba-123"
+
+
+def _pub_env(expires):
+    return patch.dict("os.environ", {"DEST_PUBLIC_TOKEN": _PUB_TOKEN,
+                                     "DEST_PUBLIC_EXPIRES": expires})
+
+
+def test_public_link_valid_opens_viewer_session(client):
+    c, _ = client
+    with _pub_env("2099-01-01T00:00:00-03:00"):
+        resp = c.get(f"/destileria/p/{_PUB_TOKEN}")
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/destileria")
+    with c.session_transaction() as sess:
+        u = sess["dest_user"]
+        assert u["public"] is True
+        assert u["role"] == "viewer"
+        assert u["can_edit_objectives"] is False
+
+
+def test_public_link_wrong_token_goes_to_login(client):
+    c, _ = client
+    with _pub_env("2099-01-01T00:00:00-03:00"):
+        resp = c.get("/destileria/p/otro-token")
+    assert "/destileria/login" in resp.headers["Location"]
+    with c.session_transaction() as sess:
+        assert "dest_user" not in sess
+
+
+def test_public_link_expired_goes_to_login(client):
+    c, _ = client
+    with _pub_env("2020-01-01T00:00:00-03:00"):
+        resp = c.get(f"/destileria/p/{_PUB_TOKEN}")
+    assert "/destileria/login" in resp.headers["Location"]
+
+
+def test_public_link_disabled_without_env(client):
+    c, _ = client
+    with patch.dict("os.environ", {"DEST_PUBLIC_TOKEN": "", "DEST_PUBLIC_EXPIRES": ""}):
+        resp = c.get("/destileria/p/cualquiera")
+    assert "/destileria/login" in resp.headers["Location"]
+
+
+def test_public_session_revoked_when_token_rotated(client):
+    c, _ = client
+    with _pub_env("2099-01-01T00:00:00-03:00"):
+        c.get(f"/destileria/p/{_PUB_TOKEN}")
+    with patch.dict("os.environ", {"DEST_PUBLIC_TOKEN": "token-nuevo",
+                                   "DEST_PUBLIC_EXPIRES": "2099-01-01T00:00:00-03:00"}):
+        resp = c.get("/destileria")
+    assert "/destileria/login" in resp.headers["Location"]
+    with c.session_transaction() as sess:
+        assert "dest_user" not in sess
+
+
+def test_public_session_revoked_after_expiry(client):
+    c, _ = client
+    with _pub_env("2099-01-01T00:00:00-03:00"):
+        c.get(f"/destileria/p/{_PUB_TOKEN}")
+    with _pub_env("2020-01-01T00:00:00-03:00"):
+        resp = c.get("/destileria")
+    assert "/destileria/login" in resp.headers["Location"]

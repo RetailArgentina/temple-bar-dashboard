@@ -12,6 +12,8 @@ Routes:
   /api/refresh       — Nightly BigQuery refresh (@require_scheduler)
   /dashboard         — Main dashboard HTML (@login_required)
 """
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -100,12 +102,47 @@ def login_required(f):
     return decorated
 
 
+def _public_link_fingerprint(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
+
+
+def _public_link_status() -> tuple[str | None, bool]:
+    """Link público temporal de destilería (solo lectura, sin login).
+
+    Se configura con dos env vars de Cloud Run:
+      DEST_PUBLIC_TOKEN   — secreto largo que va en la URL /destileria/p/<token>
+      DEST_PUBLIC_EXPIRES — vencimiento ISO con zona, ej. 2026-10-05T23:59:59-03:00
+    Devuelve (fingerprint del token vigente, está_vigente). Sin token, sin
+    fecha o con fecha inválida el link queda desactivado.
+    """
+    token = os.environ.get("DEST_PUBLIC_TOKEN", "").strip()
+    expires_raw = os.environ.get("DEST_PUBLIC_EXPIRES", "").strip()
+    if not token or not expires_raw:
+        return None, False
+    try:
+        expires = datetime.fromisoformat(expires_raw)
+    except ValueError:
+        logger.error("DEST_PUBLIC_EXPIRES inválido: %r", expires_raw)
+        return None, False
+    if expires.tzinfo is None:
+        return None, False
+    return _public_link_fingerprint(token), datetime.now(timezone.utc) < expires
+
+
 def destileria_login_required(f):
     """Protege rutas que requieren sesión de destilería (email/password)."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if "dest_user" not in session:
             return redirect(url_for("destileria_login"))
+        dest_user = session["dest_user"]
+        if dest_user.get("public"):
+            # Sesión abierta por el link público: se corta apenas vence o se
+            # rota/borra el token, aunque la cookie siga viva.
+            fp, active = _public_link_status()
+            if not active or dest_user.get("token_fp") != fp:
+                session.pop("dest_user", None)
+                return redirect(url_for("destileria_login"))
         return f(*args, **kwargs)
     return decorated
 
@@ -435,6 +472,23 @@ def destileria_login():
 
     reason = request.args.get("reason")
     return render_template("destileria_login.html", error=error, reason=reason)
+
+
+@app.route("/destileria/p/<token>")
+def destileria_public(token):
+    fp, active = _public_link_status()
+    if not active or not hmac.compare_digest(_public_link_fingerprint(token), fp):
+        return redirect(url_for("destileria_login"))
+    session["dest_user"] = {
+        "email": "link-publico",
+        "name": "Invitado",
+        "role": "viewer",
+        "brands": ["*"],
+        "can_edit_objectives": False,
+        "public": True,
+        "token_fp": fp,
+    }
+    return redirect(url_for("destileria"))
 
 
 @app.route("/destileria/logout", methods=["POST"])
