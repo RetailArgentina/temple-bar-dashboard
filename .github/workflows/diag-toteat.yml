@@ -1,0 +1,17 @@
+name: diag-toteat (temporal)
+on: workflow_dispatch
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          TOTEAT_XIU: ${{ secrets.TOTEAT_XIU }}
+          TOTEAT_XIR: ${{ secrets.TOTEAT_XIR }}
+          TOTEAT_XIL: ${{ secrets.TOTEAT_XIL }}
+          TOTEAT_TOKEN: ${{ secrets.TOTEAT_TOKEN }}
+        run: |
+          python3 -c "
+          import os,hashlib
+          for v in ['TOTEAT_XIU','TOTEAT_XIR','TOTEAT_XIL','TOTEAT_TOKEN']:
+              s=os.environ.get(v,''); print('FP',v,len(s),hashlib.sha256(s.strip().encode()).hexdigest()[:8], repr(s[-1:]) if v!='TOTEAT_TOKEN' else '')
+          "
