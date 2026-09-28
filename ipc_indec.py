@@ -21,6 +21,7 @@ SERIES = {  # el orden importa: es el orden de las columnas en la respuesta
 }
 CACHE_BLOB = "ipc_cache.json"
 MAX_ATRASO_MESES = 3
+MAX_BAJA_MENSUAL = 0.05  # una baja mayor del índice en un mes es un dato roto, no deflación
 
 
 def _mes_siguiente(mes):
@@ -44,8 +45,9 @@ def parse_respuesta(payload):
 
 
 def validar(series, hoy=None):
-    """ValueError si una serie está vacía o su índice baja de un mes a otro.
-    Devuelve avisos (texto con FALLÓ) si el último dato tiene más de 3 meses."""
+    """ValueError si una serie está vacía o su índice baja más de 5% de un mes a otro.
+    Devuelve avisos: con FALLÓ si el último dato tiene más de 3 meses, con ⚠ si el
+    índice baja menos de 5% en un mes (deflación posible, sobre todo en el rubro)."""
     hoy = hoy or date.today()
     mes_hoy = f"{hoy.year:04d}-{hoy.month:02d}"
     avisos = []
@@ -54,8 +56,11 @@ def validar(series, hoy=None):
             raise ValueError(f"serie {nombre} vacía")
         meses = sorted(serie)
         for a, b in zip(meses, meses[1:]):
-            if serie[b] < serie[a]:
-                raise ValueError(f"serie {nombre} baja de {a} a {b}")
+            baja = 1 - serie[b] / serie[a]
+            if baja > MAX_BAJA_MENSUAL:
+                raise ValueError(f"serie {nombre} baja de {a} a {b} ({baja:.1%})")
+            if baja > 0:
+                avisos.append(f"⚠ IPC {nombre} baja {baja * 100:.1f}% en {b} (aceptado)")
         atraso = _distancia_meses(meses[-1], mes_hoy)
         if atraso > MAX_ATRASO_MESES:
             avisos.append(f"FALLÓ IPC desactualizado: {nombre} último dato {meses[-1]} ({atraso} meses)")

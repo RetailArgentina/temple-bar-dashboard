@@ -27,10 +27,27 @@ def test_validar_rechaza_serie_vacia():
         ipc_indec.validar({"general": {}, "rubro": {"2026-08": 1.0}}, HOY)
 
 
-def test_validar_rechaza_indice_que_baja():
-    s = _series(general={"2026-07": 102.0, "2026-08": 101.0})
+def test_validar_rechaza_indice_que_baja_mas_de_5pct():
+    s = _series(general={"2026-07": 102.0, "2026-08": 96.0})   # −5,9%: dato roto, no deflación
     with pytest.raises(ValueError, match="baja"):
         ipc_indec.validar(s, HOY)
+
+
+def test_validar_acepta_baja_chica_del_rubro_con_aviso():
+    # Hoteles y restaurantes puede bajar un mes (deflación sectorial): no se tira toda la respuesta
+    s = _series(rubro={"2026-06": 200.0, "2026-07": 198.0, "2026-08": 204.02})
+    avisos = ipc_indec.validar(s, HOY)
+    assert len(avisos) == 1
+    assert avisos[0].startswith("⚠ IPC rubro baja 1.0% en 2026-07") and "FALLÓ" not in avisos[0]
+
+
+def test_obtener_ipc_con_baja_chica_usa_api_y_guarda_cache(monkeypatch):
+    guardado = {}
+    s = _series(rubro={"2026-06": 200.0, "2026-07": 198.0, "2026-08": 204.02})
+    monkeypatch.setattr(ipc_indec, "descargar", lambda: s)
+    monkeypatch.setattr(ipc_indec, "_guardar_cache", lambda b, x: guardado.update(s=x))
+    p = ipc_indec.obtener_ipc("bucket-x", HOY, log=lambda *_: None)
+    assert p["fuente"] == "api" and guardado["s"] == s
 
 
 def test_validar_avisa_si_el_ultimo_dato_tiene_mas_de_3_meses():
@@ -126,7 +143,7 @@ def test_obtener_ipc_api_caida_usa_cache(monkeypatch):
 
 def test_obtener_ipc_datos_invalidos_de_api_usan_cache_y_no_se_guardan(monkeypatch):
     monkeypatch.setattr(ipc_indec, "descargar",
-                        lambda: _series(general={"2026-07": 102.0, "2026-08": 101.0}))
+                        lambda: _series(general={"2026-07": 102.0, "2026-08": 90.0}))
 
     def no_guardar(*a):
         raise AssertionError("no debe guardar datos inválidos")
