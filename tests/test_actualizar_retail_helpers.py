@@ -302,3 +302,35 @@ def test_compute_preset_meses_todo_spans_all():
     ]
     result = compute_preset_meses(mensual_rows)
     assert result["todo"] == ["2026-01", "2026-06"]
+
+
+# ---------------------------------------------------------------------------
+# inject_ipc / fetch_ipc_data — pestaña Finanzas
+# ---------------------------------------------------------------------------
+
+def test_inject_ipc_reemplaza_marcador_con_json():
+    from actualizar_retail import inject_ipc
+    html = inject_ipc("const IPC = __IPC_JSON__;", {"base": "2026-08", "general": {"2026-08": 1.5}})
+    assert html == 'const IPC = {"base":"2026-08","general":{"2026-08":1.5}};'
+
+
+def test_inject_ipc_sin_datos_inyecta_null():
+    from actualizar_retail import inject_ipc
+    assert inject_ipc("const IPC = __IPC_JSON__;", None) == "const IPC = null;"
+
+
+def test_inject_ipc_sin_marcador_no_cambia_html():
+    from actualizar_retail import inject_ipc
+    assert inject_ipc("<p>sin marcador</p>", {"base": "2026-08"}) == "<p>sin marcador</p>"
+
+
+def test_plantilla_dashboard_tiene_marcador_ipc():
+    import os
+    with open(os.path.join("templates", "dashboard.html"), encoding="utf-8") as f:
+        assert "const IPC = __IPC_JSON__;" in f.read()
+
+
+def test_fetch_ipc_data_pasa_el_bucket(monkeypatch):
+    import actualizar_retail, ipc_indec
+    monkeypatch.setattr(ipc_indec, "obtener_ipc", lambda bucket: {"bucket": bucket})
+    assert actualizar_retail.fetch_ipc_data("b1") == {"bucket": "b1"}

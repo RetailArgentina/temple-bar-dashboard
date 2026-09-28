@@ -556,6 +556,23 @@ def fetch_local_mensual_data(client):
     print(f" {len(rows)} rows OK")
     return [{"mes": r.mes, "m": r.m, "l": r.l, "fac": r.fac or 0, "ord": r.ord or 0} for r in rows]
 
+def fetch_ipc_data(gcs_bucket=""):
+    # IPC INDEC para la pestaña Finanzas. Nunca lanza: si la API falla usa la
+    # copia de GCS, y si tampoco hay copia devuelve None (la pestaña muestra
+    # "sin datos" y el resto del tablero no se entera).
+    import ipc_indec
+    return ipc_indec.obtener_ipc(gcs_bucket)
+
+
+def inject_ipc(html, ipc_data):
+    """Reemplaza __IPC_JSON__ por el payload IPC (o null si no hay datos)."""
+    if '__IPC_JSON__' not in html:
+        return html
+    html = html.replace('__IPC_JSON__', json.dumps(ipc_data, separators=(',', ':')))
+    print(f"  ✓ IPC inyectado ({'base ' + ipc_data['base'] if ipc_data else 'sin datos'})")
+    return html
+
+
 def fetch_turnos_data(client):
     # Mismo problema/fix que fetch_mensual_data: Orden se reinicia por Local,
     # asi que se agrupa por mes+Local primero y se suma despues (m,t no
@@ -1112,7 +1129,8 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
                              loc_count_by_mes=None,
                              dias_data=None,
                              producto_data=None,
-                             local_mensual_rows=None):
+                             local_mensual_rows=None,
+                             ipc_data=None):
     """Generate the dashboard HTML by reading the template.
 
     Template resolution order:
@@ -1240,6 +1258,9 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
         total_entries = sum(len(v) for v in obj.values()) if obj else 0
         print(f"  ✓ OBJETIVOS inyectados ({len(obj)} marcas, {total_entries} entradas)")
 
+    # ── Inyección de IPC (pestaña Finanzas) ──────────────────────────────
+    html = inject_ipc(html, ipc_data)
+
     # ── Inyección de Royalties ────────────────────────────────────────────
     if '__ROYALTY_JSON__' in html:
         rd = royalty_data or {"monthly": {}, "avgPct": {}}
@@ -1337,6 +1358,7 @@ def main():
             "royalty":    lambda: fetch_royalty_data(),
             "locales_obj": lambda: fetch_locales_obj(client),
             "local_mensual": lambda: fetch_local_mensual_data(client),
+            "ipc":        lambda: fetch_ipc_data(args.gcs_bucket),
         }
 
         results = {}
@@ -1356,6 +1378,7 @@ def main():
         locales_obj_data = results["locales_obj"] or []
         royalty_data     = results["royalty"]
         local_mensual_rows = results["local_mensual"] or []
+        ipc_data         = results["ipc"]
 
         # Calcular estructuras derivadas
         if not mensual_rows:
@@ -1381,6 +1404,7 @@ def main():
             dias_data=dias_data,
             producto_data=None,
             local_mensual_rows=local_mensual_rows,
+            ipc_data=ipc_data,
         )
 
         # Upload to GCS if requested (Cloud Run mode)

@@ -426,6 +426,9 @@ const OBJETIVOS = __OBJETIVOS_JSON__;
 
 /* ── Datos por local/mes (BigQuery), usados para comparaciones "same-store" ── */
 const LOCAL_MENSUAL = __LOCAL_MENSUAL_JSON__;
+// IPC INDEC (general + hoteles y restaurantes), completado hasta diciembre con meses estimados.
+// null si la API falló y no había copia en GCS → la pestaña Finanzas muestra "sin datos".
+const IPC = __IPC_JSON__;
 
 /* ── Royalties (Google Sheet · Resumen) ── */
 const ROYALTY_DATA = __ROYALTY_JSON__;
