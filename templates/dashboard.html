@@ -344,12 +344,14 @@ function loadChartJS(cb){
 
 <div id="view-finanzas">
 
+<div id="finSinDatos" class="t-alert" style="display:none">Datos de inflación no disponibles: la API del INDEC no respondió y no hay copia guardada. El resto del tablero no se ve afectado.</div>
+
+<div id="finContenido">
 <section class="sec">
   <div class="sec-hd">
     <div class="sec-title">Crecimiento real</div>
     <div class="sec-note" id="finBaseNote"></div>
   </div>
-  <div id="finSinDatos" class="t-alert" style="display:none">Datos de inflación no disponibles: la API del INDEC no respondió y no hay copia guardada. El resto del tablero no se ve afectado.</div>
   <div class="kpi-grid" id="finKpis"></div>
 </section>
 
@@ -381,6 +383,7 @@ function loadChartJS(cb){
 </section>
 
 <p class="note" id="finEstimadoNota"></p>
+</div><!-- /finContenido -->
 
 </div><!-- /view-finanzas -->
 
@@ -613,14 +616,10 @@ function finPeriodoActual(){
 }
 
 function buildFinanzas(){
-  const sinDatos=document.getElementById("finSinDatos");
-  if(!IPC){
-    sinDatos.style.display="flex";
-    ["finKpis","finMarcaTable","finObjTable","finResto"].forEach(id=>document.getElementById(id).innerHTML="");
-    ["finBaseNote","finMarcaSub","finObjNota","finEstimadoNota"].forEach(id=>document.getElementById(id).textContent="");
-    return;
-  }
-  sinDatos.style.display="none";
+  // Sin IPC: solo el aviso (las secciones vacías con títulos confunden)
+  document.getElementById("finSinDatos").style.display=IPC?"none":"flex";
+  document.getElementById("finContenido").style.display=IPC?"":"none";
+  if(!IPC) return;
   const hoy=new Date(), pace=m=>finPace(m,hoy);
   const per=finPeriodoActual();
   const marcas=STATE.marca==="todas"?["Temple","Patagonia","Feriado"]:[STATE.marca];
@@ -1958,8 +1957,9 @@ function buildObjetivosPorMarca(){
 
 
 function updateAll(){
-  try { updateBannerKPI(); buildTend(); buildRoyalties(); buildPlanAccion(); buildPotencialLocales(); buildDias(); buildTop10(); buildObjetivos(); buildObjetivosResumen(); buildObjetivosPorMarca(); buildLocalesTable();
- if(document.getElementById('view-finanzas').style.display==='block') buildFinanzas(); } catch(e){ console.error('[updateAll]',e); }
+  try { updateBannerKPI(); buildTend(); buildRoyalties(); buildPlanAccion(); buildPotencialLocales(); buildDias(); buildTop10(); buildObjetivos(); buildObjetivosResumen(); buildObjetivosPorMarca(); buildLocalesTable(); } catch(e){ console.error('[updateAll]',e); }
+  // try propio: un error en Ventas no deja a Finanzas sin actualizar (ni al revés)
+  try { if(document.getElementById('view-finanzas').style.display==='block') buildFinanzas(); } catch(e){ console.error('[updateAll finanzas]',e); }
 }
 
 function setMarca(m,btn){

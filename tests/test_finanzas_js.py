@@ -28,6 +28,41 @@ def run_js(expr, tmp_path):
     return json.loads(out.stdout)
 
 
+def run_dom_js(funciones, setup, expr, tmp_path):
+    """Como run_js, pero agrega funciones de render de la plantilla (por nombre) y un
+    `document` falso: getElementById devuelve siempre el mismo objeto por id."""
+    with open(TEMPLATE, encoding="utf-8") as f:
+        html = f.read()
+    fuentes = []
+    for nombre in funciones:
+        m = re.search(r"^function " + nombre + r"\(.*?^\}\n", html, re.S | re.M)
+        assert m, f"no se encontró {nombre} en la plantilla"
+        fuentes.append(m.group(0))
+    dom = ("const _els={};const document={getElementById:id=>_els[id]||(_els[id]="
+           "{id,style:{},innerHTML:'',textContent:'',classList:{toggle(){}}})};\n")
+    script = tmp_path / "dom.js"
+    script.write_text(dom + "\n".join(fuentes) + "\n" + setup
+                      + "\nconsole.log(JSON.stringify(" + expr + "));", encoding="utf-8")
+    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True)
+    return json.loads(out.stdout)
+
+
+def test_build_finanzas_sin_ipc_oculta_las_secciones_y_muestra_solo_el_aviso(tmp_path):
+    r = run_dom_js(["buildFinanzas"], "const IPC=null; buildFinanzas();",
+                   '[_els.finSinDatos.style.display,_els.finContenido.style.display]', tmp_path)
+    assert r == ["flex", "none"]
+
+
+def test_update_all_construye_finanzas_aunque_falle_otra_seccion(tmp_path):
+    otras = ["updateBannerKPI", "buildTend", "buildRoyalties", "buildPlanAccion", "buildPotencialLocales",
+             "buildDias", "buildTop10", "buildObjetivos", "buildObjetivosResumen", "buildObjetivosPorMarca",
+             "buildLocalesTable"]
+    setup = ("".join(f"function {n}(){{}}" for n in otras)
+             + "buildTend=()=>{throw new Error('boom')};let fin=0;function buildFinanzas(){fin++;}"
+             + "console.error=()=>{};document.getElementById('view-finanzas').style.display='block';updateAll();")
+    assert run_dom_js(["updateAll"], setup, "fin", tmp_path) == 1
+
+
 IPC = ('{base:"2026-09",estimados:[],'
        'general:{"2025-08":100,"2025-09":100,"2025-10":100,"2026-08":125,"2026-09":130,"2026-10":130},'
        'rubro:{"2025-09":100,"2026-09":140}}')
