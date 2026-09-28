@@ -70,6 +70,20 @@ def test_fin_crecimiento_excluye_mes_con_menos_de_10pct_de_avance(tmp_path):
                  f'{{mes:"2025-10",fac:100}},{{mes:"2026-10",fac:5}}],'
                  f'["2026-09","2026-10"],["2025-09","2025-10"],{IPC},m=>finPace(m,new Date(2026,9,2)))', tmp_path)
     assert dos["nomCur"] == pytest.approx(130) and dos["crecReal"] == pytest.approx(0)
+    # devuelve los meses efectivamente comparados, para calcular la inflación sobre los mismos
+    assert dos["meses"] == ["2026-09"] and dos["yoyMeses"] == ["2025-09"]
+
+
+def test_fin_inflacion_de_los_meses_comparados_reconcilia_nominal_y_real(tmp_path):
+    # sep-26 cerrado vs sep-25 y oct-26 al 2 de octubre (se excluye): la inflación sale solo de septiembre
+    ipc = ('{base:"2026-10",general:{"2025-09":100,"2025-10":100,"2026-09":130,"2026-10":160}}')
+    r = run_js(f'(()=>{{const c=finCrecimiento([{{mes:"2025-09",fac:100}},{{mes:"2026-09",fac:143}},'
+               f'{{mes:"2025-10",fac:100}},{{mes:"2026-10",fac:5}}],["2026-09","2026-10"],["2025-09","2025-10"],'
+               f'{ipc},m=>finPace(m,new Date(2026,9,2)));'
+               f'return [c.crecNom,c.crecReal,finInflacion(({ipc}).general,c.meses,c.yoyMeses)];}})()', tmp_path)
+    nom, real, inf = r
+    assert inf == pytest.approx(30)
+    assert (1 + nom / 100) / (1 + inf / 100) - 1 == pytest.approx(real / 100)
 
 
 def test_fin_same_store_solo_locales_en_ambos_periodos(tmp_path):

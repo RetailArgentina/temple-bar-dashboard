@@ -521,16 +521,22 @@ function finSumar(rows, meses, ipc, pace){
 }
 
 /* Crecimiento nominal y real (%) de `meses` contra `yoyMeses` (mismo largo, alineados).
-   Saca de ambos lados los meses en curso con avance < FIN_PACE_MIN. null si no hay base. */
-function finCrecimiento(rows, meses, yoyMeses, ipc, pace){
+   Saca de ambos lados los meses en curso con avance < FIN_PACE_MIN y devuelve los que quedaron
+   (meses, yoyMeses): la inflación a mostrar se calcula sobre esos. null si no hay base. */
+function finMesesComparables(meses, yoyMeses, pace){
   if(!meses||!yoyMeses||!meses.length||meses.length!==yoyMeses.length) return null;
   const idx=meses.map((m,i)=>i).filter(i=>{const p=pace(meses[i]);return p===null||p>=FIN_PACE_MIN;});
-  if(!idx.length) return null;
-  const cm=idx.map(i=>meses[i]), ym=idx.map(i=>yoyMeses[i]);
+  return idx.length ? {meses:idx.map(i=>meses[i]), yoyMeses:idx.map(i=>yoyMeses[i])} : null;
+}
+
+function finCrecimiento(rows, meses, yoyMeses, ipc, pace){
+  const mc=finMesesComparables(meses,yoyMeses,pace);
+  if(!mc) return null;
+  const cm=mc.meses, ym=mc.yoyMeses;
   if(!ym.every(m=>rows.some(r=>r.mes===m))) return null; // algún mes sin venta el año anterior: período no comparable
   const c=finSumar(rows,cm,ipc,pace), y=finSumar(rows,ym,ipc,()=>1);
   if(!(y.nom>0)||!(y.real>0)||c.falta||y.falta) return null;
-  return {nomCur:c.nom, realCur:c.real, nomYoy:y.nom, realYoy:y.real,
+  return {meses:cm, yoyMeses:ym, nomCur:c.nom, realCur:c.real, nomYoy:y.nom, realYoy:y.real,
           crecNom:(c.nom/y.nom-1)*100, crecReal:(c.real/y.real-1)*100};
 }
 
@@ -623,10 +629,12 @@ function buildFinanzas(){
   const rows=rowsOf(STATE.marca);
   const suma=finSumar(rows,per.meses,IPC,()=>1);
   const c=finCrecimiento(rows,per.meses,per.yoyMeses,IPC,pace);
-  const ig=finInflacion(IPC.general,per.meses,per.yoyMeses);
-  const ir=finInflacion(IPC.rubro,per.meses,per.yoyMeses);
+  // Inflación sobre los mismos meses que compara el crecimiento (sin el mes en curso con <10% de avance)
+  const mc=finMesesComparables(per.meses,per.yoyMeses,pace);
+  const ig=mc?finInflacion(IPC.general,mc.meses,mc.yoyMeses):null;
+  const ir=mc?finInflacion(IPC.rubro,mc.meses,mc.yoyMeses):null;
   const abierto=per.meses.some(m=>{const p=pace(m);return p!==null&&p<1;});
-  const todos=[...per.meses,...per.yoyMeses];
+  const todos=mc?[...mc.meses,...mc.yoyMeses]:[...per.meses,...per.yoyMeses];
   document.getElementById("finKpis").innerHTML=
     finKpi("Facturación nominal",fmtM(suma.nom),abierto?"Real al día · el crecimiento usa cierre estimado":"Pesos corrientes")
     +finKpi("Facturación real",suma.real===null?'<span class="muted">sin datos</span>':fmtM(suma.real)+eSup(per.meses),
