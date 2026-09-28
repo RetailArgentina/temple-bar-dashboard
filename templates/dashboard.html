@@ -31,7 +31,7 @@ function loadChartJS(cb){
 #filterLabel{margin-left:auto;font-size:12px;color:var(--t-muted);align-self:center}
 #filterLabel strong{color:var(--t-ink)}
 
-#view-producto,#view-resenas{display:none}
+#view-producto,#view-resenas,#view-finanzas{display:none}
 #view-producto iframe,#view-resenas iframe{width:100%;height:calc(100dvh - 160px);min-height:720px;border:1px solid var(--t-rule);border-radius:var(--t-radius);background:var(--t-white)}
 
 /* KPIs: desglose por marca bajo la barra */
@@ -123,6 +123,7 @@ function loadChartJS(cb){
       <button class="nav-btn active" id="navVentas"   onclick="switchView('economico')">Ventas</button>
       <button class="nav-btn"        id="navProducto" onclick="switchView('producto')">Producto</button>
       <button class="nav-btn"        id="navResenas"  onclick="switchView('resenas')">Reseñas</button>
+      <button class="nav-btn"        id="navFinanzas" onclick="switchView('finanzas')">Finanzas</button>
     </nav>
   </div>
 </header>
@@ -341,6 +342,48 @@ function loadChartJS(cb){
 
 </div><!-- /view-economico -->
 
+<div id="view-finanzas">
+
+<section class="sec">
+  <div class="sec-hd">
+    <div class="sec-title">Crecimiento real</div>
+    <div class="sec-note" id="finBaseNote"></div>
+  </div>
+  <div id="finSinDatos" class="t-alert" style="display:none">Datos de inflación no disponibles: la API del INDEC no respondió y no hay copia guardada. El resto del tablero no se ve afectado.</div>
+  <div class="kpi-grid" id="finKpis"></div>
+</section>
+
+<section class="sec card">
+  <h2>Facturación nominal vs real</h2>
+  <div class="csub" id="finChartSub">Últimos 24 meses cerrados</div>
+  <div style="position:relative;height:280px;margin-top:12px"><canvas id="cFinReal"></canvas></div>
+</section>
+
+<section class="sec card" style="padding-bottom:0">
+  <h2>Crecimiento real por marca</h2>
+  <div class="csub" id="finMarcaSub"></div>
+  <div class="table-scroll bleed" style="margin-top:16px"><table id="finMarcaTable" style="min-width:640px"></table></div>
+</section>
+
+<section class="sec card" style="padding-bottom:0">
+  <h2>Objetivos en términos reales</h2>
+  <div class="csub">Cuánto crecimiento real le pide cada objetivo mensual a la venta del mismo mes del año anterior</div>
+  <div class="table-scroll bleed" style="margin-top:16px"><table id="finObjTable" style="min-width:760px"></table></div>
+  <p class="note" id="finObjNota" style="padding:12px 0 16px;margin:0"></p>
+</section>
+
+<section class="sec">
+  <div class="sec-hd">
+    <div class="sec-title">Resto del año</div>
+    <div class="sec-note">Crecimiento real necesario para cumplir el objetivo anual</div>
+  </div>
+  <div class="kpi-grid" id="finResto"></div>
+</section>
+
+<p class="note" id="finEstimadoNota"></p>
+
+</div><!-- /view-finanzas -->
+
 <div class="footer">Fuente: BigQuery &middot; Corporativo.vw_Ventas_Corporativo_Base &middot; Snapshot __SNAPSHOT_DATE__ &middot; Montos en ARS</div>
 </div>
 
@@ -354,9 +397,11 @@ function switchView(v){
   document.getElementById('view-economico').style.display = v==='economico' ? 'block' : 'none';
   document.getElementById('view-producto').style.display  = v==='producto'  ? 'block' : 'none';
   document.getElementById('view-resenas').style.display   = v==='resenas'   ? 'block' : 'none';
+  document.getElementById('view-finanzas').style.display  = v==='finanzas'  ? 'block' : 'none';
   document.getElementById('navVentas').classList.toggle('active',  v==='economico');
   document.getElementById('navProducto').classList.toggle('active', v==='producto');
   document.getElementById('navResenas').classList.toggle('active', v==='resenas');
+  document.getElementById('navFinanzas').classList.toggle('active', v==='finanzas');
   if(v==='producto'){
     var fr = document.getElementById('productoFrame');
     var bm={'todas':'TODAS','Patagonia':'PATAGONIA','Temple':'TEMPLE','Feriado':'FERIADO'};
@@ -393,6 +438,8 @@ function switchView(v){
       frR.contentWindow.postMessage({type:'setMarca',marca:marcaTargetR},'*');
     }
   }
+  // Se pinta recién al mostrarse: Chart.js en un contenedor display:none queda de tamaño 0
+  if(v==='finanzas') buildFinanzas();
 }
 
 const MENSUAL = __MENSUAL_JSON__;
@@ -527,6 +574,156 @@ function finRestoAnio(objMarca, rowsMarca, anio, mesesResto, paceActual, ipc){
   return {objAnual, ytd, faltante, ventaAA, imp:finObjImplicito(faltante,ventaAA,inf)};
 }
 /* FINANZAS_CORE:END */
+
+/* ── Pestaña Finanzas: render (usa FINANZAS_CORE + datasets globales) ── */
+function finMesLbl(mes){ const [y,m]=mes.split("-"); return MN[+m]+"-"+y.slice(2); }
+function finPctHtml(v){
+  return v===null||v===undefined ? '<span class="muted">—</span>' : `<span class="${v>=0?"pos":"neg"}">${tPct(v)}</span>`;
+}
+function finKpi(lbl, val, sub){
+  return `<div class="kpi-card"><div class="kpi-top"><div class="kpi-lbl">${lbl}</div></div>`
+    +`<div class="kpi-val">${val}</div><div class="kpi-sub">${sub||""}</div></div>`;
+}
+/* Meses del período filtrado y sus pares del año anterior. Si algún par no existe
+   en MENSUAL, yoyMeses queda vacío (no se compara un período incompleto). */
+function finPeriodoActual(){
+  const all=new Set(MENSUAL.map(r=>r.mes));
+  if(STATE.periodo==="custom"){
+    const meses=getCustomMeses(), yoy=meses.map(finYoyMes);
+    return {meses, yoyMeses:yoy.every(m=>all.has(m))?yoy:[], label:STATE.fromMes+" → "+STATE.toMes};
+  }
+  const pd=PD[STATE.periodo]||{};
+  const meses=pd.meses||[], yoy=meses.map(finYoyMes);
+  return {meses, yoyMeses:yoy.every(m=>all.has(m))?yoy:[], label:pd.label||""};
+}
+
+function buildFinanzas(){
+  const sinDatos=document.getElementById("finSinDatos");
+  if(!IPC){
+    sinDatos.style.display="flex";
+    ["finKpis","finMarcaTable","finObjTable","finResto"].forEach(id=>document.getElementById(id).innerHTML="");
+    ["finBaseNote","finMarcaSub","finObjNota","finEstimadoNota"].forEach(id=>document.getElementById(id).textContent="");
+    return;
+  }
+  sinDatos.style.display="none";
+  const hoy=new Date(), pace=m=>finPace(m,hoy);
+  const per=finPeriodoActual();
+  const marcas=STATE.marca==="todas"?["Temple","Patagonia","Feriado"]:[STATE.marca];
+  const rowsOf=m=>MENSUAL.filter(r=>m==="todas"||r.m===m);
+  const est=new Set(IPC.estimados||[]);
+  const eSup=ms=>ms.some(m=>est.has(m))?' <sup class="muted">e</sup>':"";
+  const baseLbl=finMesLbl(IPC.base);
+
+  document.getElementById("finBaseNote").textContent="En $ de "+baseLbl+" · "+per.label
+    +(STATE.marca!=="todas"?" · "+STATE.marca:"");
+
+  // KPIs: los montos son los mismos que Ventas (real al día); el crecimiento usa cierre estimado
+  const rows=rowsOf(STATE.marca);
+  const suma=finSumar(rows,per.meses,IPC,()=>1);
+  const c=finCrecimiento(rows,per.meses,per.yoyMeses,IPC,pace);
+  const ig=finInflacion(IPC.general,per.meses,per.yoyMeses);
+  const ir=finInflacion(IPC.rubro,per.meses,per.yoyMeses);
+  const abierto=per.meses.some(m=>{const p=pace(m);return p!==null&&p<1;});
+  const todos=[...per.meses,...per.yoyMeses];
+  document.getElementById("finKpis").innerHTML=
+    finKpi("Facturación nominal",fmtM(suma.nom),abierto?"Real al día · el crecimiento usa cierre estimado":"Pesos corrientes")
+    +finKpi("Facturación real",fmtM(suma.real)+eSup(per.meses),"En $ de "+baseLbl)
+    +finKpi("Crecimiento real vs año ant.",c?finPctHtml(c.crecReal)+eSup(todos):'<span class="muted">sin datos</span>',
+            c?"Nominal "+tPct(c.crecNom):"Sin período comparable del año anterior")
+    +finKpi("Inflación del período",ig!==null?tPct(ig)+eSup(todos):"—",
+            ir!==null?"Rubro (hoteles y restaurantes) "+tPct(ir):"");
+
+  // Tabla por marca
+  document.getElementById("finMarcaSub").textContent=per.label
+    +" vs mismo período del año anterior · same-store = solo locales con venta en ambos períodos";
+  const filas=STATE.marca==="todas"?["Temple","Patagonia","Feriado","todas"]:[STATE.marca];
+  let h='<thead><tr><th>Marca</th><th class="r">Crec. nominal</th><th class="r">Inflación</th>'
+    +'<th class="r">Crec. real</th><th class="r">Real same-store</th></tr></thead><tbody>';
+  filas.forEach(m=>{
+    const cc=finCrecimiento(rowsOf(m),per.meses,per.yoyMeses,IPC,pace);
+    const ss=finSameStore(LOCAL_MENSUAL,m,per.meses,per.yoyMeses,IPC,pace);
+    const name=m==="todas"?"<b>Total</b>":`<span class="t-brand-cell">${tDot(m)}${m}</span>`;
+    h+=`<tr><td>${name}</td><td class="r">${cc?tPct(cc.crecNom):"—"}</td>`
+      +`<td class="r">${ig!==null?tPct(ig):"—"}</td>`
+      +`<td class="r strong">${finPctHtml(cc?cc.crecReal:null)}</td>`
+      +`<td class="r">${finPctHtml(ss?ss.crecReal:null)}</td></tr>`;
+  });
+  document.getElementById("finMarcaTable").innerHTML=h+"</tbody>";
+
+  // Objetivos en términos reales (año en curso)
+  const anio=String(hoy.getFullYear());
+  let ho='<thead><tr><th>Marca</th><th>Mes</th><th class="r">Objetivo</th><th class="r">Venta año ant.</th>'
+    +'<th class="r">Crec. nominal pedido</th><th class="r">Inflación a/a</th><th class="r">Crec. real pedido</th><th></th></tr></thead><tbody>';
+  let nObj=0;
+  marcas.forEach(m=>{
+    const om=OBJETIVOS[m]||{};
+    Object.keys(om).filter(k=>k.startsWith(anio)).sort().forEach(mes=>{
+      const aa=MENSUAL.find(r=>r.m===m&&r.mes===finYoyMes(mes));
+      const inf=finInflacion(IPC.general,[mes],[finYoyMes(mes)]);
+      const imp=finObjImplicito(om[mes].obj_fac,aa?aa.fac:0,inf);
+      const chipCls=!imp?"":imp.clase==="Exigente"?"t-chip-neg":imp.clase==="Razonable"?"t-chip-pos":"";
+      ho+=`<tr><td><span class="t-brand-cell">${tDot(m)}${m}</span></td><td>${finMesLbl(mes)}</td>`
+        +`<td class="r">${fmtM(om[mes].obj_fac||0)}</td><td class="r">${aa?fmtM(aa.fac):"—"}</td>`
+        +`<td class="r">${imp?tPct(imp.nom):"—"}</td>`
+        +`<td class="r">${inf!==null?tPct(inf)+eSup([mes]):"—"}</td>`
+        +`<td class="r strong">${finPctHtml(imp?imp.real:null)}</td>`
+        +`<td>${imp?`<span class="t-chip ${chipCls}">${imp.clase}</span>`:""}</td></tr>`;
+      nObj++;
+    });
+  });
+  if(!nObj) ho+='<tr><td colspan="8" class="empty">Sin objetivos cargados para '+anio+'.</td></tr>';
+  document.getElementById("finObjTable").innerHTML=ho+"</tbody>";
+  document.getElementById("finObjNota").textContent=
+    "Exigente: pide más de +"+FIN_UMBRAL_EXIGENTE+"% real · Razonable: entre "+FIN_UMBRAL_LAXO+"% y +"+FIN_UMBRAL_EXIGENTE
+    +"% · Laxo: se cumple vendiendo menos que el año anterior en términos reales."
+    +(marcas.includes("Patagonia")?" El objetivo de Patagonia incluye WTC, que no registra ventas en "+anio+".":"");
+
+  // Resto del año
+  const mesHoy=anio+"-"+String(hoy.getMonth()+1).padStart(2,"0");
+  const mesesResto=[];
+  for(let mm=hoy.getMonth()+1;mm<=12;mm++) mesesResto.push(anio+"-"+String(mm).padStart(2,"0"));
+  document.getElementById("finResto").innerHTML=marcas.map(m=>{
+    const r=finRestoAnio(OBJETIVOS[m]||{},MENSUAL.filter(x=>x.m===m),anio,mesesResto,pace(mesHoy)||0,IPC);
+    const lbl=tDot(m)+m;
+    if(!(r.objAnual>0)) return finKpi(lbl,"—","Sin objetivo "+anio+" cargado");
+    if(r.faltante<=0) return finKpi(lbl,"Cumplido","Objetivo "+anio+" de "+fmtM(r.objAnual)+" ya alcanzado");
+    return finKpi(lbl,(r.imp?finPctHtml(r.imp.real):"—")+eSup(mesesResto),
+      "Real necesario "+MN[hoy.getMonth()+1]+"–Dic · faltan "+fmtM(r.faltante)+" de "+fmtM(r.objAnual)
+      +(r.imp?" · "+r.imp.clase:""));
+  }).join("");
+
+  // Nota de estimados y fuente
+  const usados=[...new Set([...todos,...mesesResto])].filter(m=>est.has(m)).sort();
+  document.getElementById("finEstimadoNota").textContent=
+    (usados.length?"e = incluye IPC estimado para "+usados.map(finMesLbl).join(", ")
+      +" (repite la última variación mensual publicada; se corrige solo cuando publica el INDEC). ":"")
+    +"Fuente: IPC INDEC vía datos.gob.ar · base "+baseLbl
+    +(IPC.fuente==="cache"?" · copia guardada: la API no respondió en la última actualización.":".");
+
+  buildFinChart();
+}
+
+function buildFinChart(){
+  if(typeof Chart==="undefined"||!IPC) return;
+  tChartDefaults();
+  const hoy=new Date();
+  const rows=MENSUAL.filter(r=>STATE.marca==="todas"||r.m===STATE.marca);
+  const cerrados=[...new Set(rows.map(r=>r.mes))].filter(m=>finPace(m,hoy)===1).sort().slice(-24);
+  const b=IPC.general[IPC.base];
+  const nom=cerrados.map(m=>rows.filter(r=>r.mes===m).reduce((s,r)=>s+r.fac,0));
+  const real=cerrados.map((m,i)=>IPC.general[m]?nom[i]*b/IPC.general[m]:null);
+  const color=STATE.marca==="Feriado"?TC.ink:(BCOLOR[STATE.marca]||TC.slate); // amarillo Feriado no contrasta sobre blanco
+  document.getElementById("finChartSub").textContent="Últimos "+cerrados.length+" meses cerrados · "
+    +(STATE.marca==="todas"?"todas las marcas":STATE.marca)+" · real en $ de "+finMesLbl(IPC.base);
+  const data={labels:cerrados.map(finMesLbl),datasets:[
+    {label:"Nominal",data:nom,borderColor:TC.ash,backgroundColor:TC.ash,borderDash:[4,4],pointRadius:0,borderWidth:2,tension:.25},
+    {label:"Real",data:real,borderColor:color,backgroundColor:color,pointRadius:0,borderWidth:2.5,tension:.25}]};
+  if(CHARTS.finReal){ CHARTS.finReal.data=data; CHARTS.finReal.update(); return; }
+  CHARTS.finReal=new Chart(document.getElementById("cFinReal").getContext("2d"),{type:"line",data,
+    options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:"index",intersect:false},
+      scales:{y:{ticks:{callback:v=>"$ "+Math.round(v).toLocaleString("es-AR")+" M"}}},
+      plugins:{tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+fmtM(ctx.parsed.y)}}}}});
+}
 
 /* ── Royalties (Google Sheet · Resumen) ── */
 const ROYALTY_DATA = __ROYALTY_JSON__;
@@ -1743,7 +1940,8 @@ function buildObjetivosPorMarca(){
 
 
 function updateAll(){
-  try { updateBannerKPI(); buildTend(); buildRoyalties(); buildPlanAccion(); buildPotencialLocales(); buildDias(); buildTop10(); buildObjetivos(); buildObjetivosResumen(); buildObjetivosPorMarca(); buildLocalesTable(); } catch(e){ console.error('[updateAll]',e); }
+  try { updateBannerKPI(); buildTend(); buildRoyalties(); buildPlanAccion(); buildPotencialLocales(); buildDias(); buildTop10(); buildObjetivos(); buildObjetivosResumen(); buildObjetivosPorMarca(); buildLocalesTable();
+ if(document.getElementById('view-finanzas').style.display==='block') buildFinanzas(); } catch(e){ console.error('[updateAll]',e); }
 }
 
 function setMarca(m,btn){
