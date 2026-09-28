@@ -86,7 +86,8 @@ def get_rating(place_id):
     Cada reseña incluye "date_str" (dd/mm/YYYY) derivado del timestamp "time".
     """
     import httpx
-    api_key = os.environ.get("PLACES_API_KEY")
+    # strip + BOM: los secrets cargados por pipe de PowerShell traen U+FEFF
+    api_key = (os.environ.get("PLACES_API_KEY") or "").strip().lstrip("﻿")
     resp = httpx.get(PLACES_URL, params={
         "place_id": place_id,
         "fields": "rating,user_ratings_total,reviews",
@@ -97,6 +98,7 @@ def get_rating(place_id):
     resp.raise_for_status()
     data = resp.json()
     if data.get("status") != "OK":
+        log(f"    Places API: status={data.get('status')} {data.get('error_message', '')}")
         return None
     result = data.get("result", {})
     reviews = result.get("reviews", [])
