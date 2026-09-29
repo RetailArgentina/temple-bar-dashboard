@@ -733,7 +733,7 @@ function buildFinanzas(){
   const usados=[...new Set([...todos,...mesesResto])].filter(m=>est.has(m)).sort();
   document.getElementById("finEstimadoNota").textContent=
     (usados.length?"e = incluye IPC estimado para "+usados.map(finMesLbl).join(", ")
-      +" (repite la última variación mensual publicada; se corrige solo cuando publica el INDEC). ":"")
+      +" (repite la última variación mensual publicada, sin arrastrar bajas puntuales; se corrige solo cuando publica el INDEC). ":"")
     +"Fuente: IPC INDEC vía datos.gob.ar · base "+baseLbl
     +(IPC.fuente==="cache"?" · copia guardada: la API no respondió en la última actualización.":".");
 

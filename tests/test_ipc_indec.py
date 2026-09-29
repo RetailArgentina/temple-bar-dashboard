@@ -223,3 +223,16 @@ def test_variaciones_mensuales_en_porcentaje_desde_el_indice():
 
 def test_variaciones_mensuales_sin_payload_es_vacio():
     assert ipc_indec.variaciones_mensuales(None) == {}
+
+
+def test_completar_estimados_no_repite_una_baja_usa_la_ultima_variacion_no_negativa():
+    # El rubro baja 1% en 2026-08 (aceptado por validar): la baja es puntual, no se proyecta hasta diciembre
+    rubro = {"2026-05": 100.0, "2026-06": 103.0, "2026-07": 105.06, "2026-08": 104.0094}
+    completas, _ = ipc_indec.completar_estimados({"rubro": rubro}, "2026-10")
+    assert completas["rubro"]["2026-09"] == pytest.approx(104.0094 * 1.02, rel=1e-6)   # 105.06/103
+    assert completas["rubro"]["2026-10"] == pytest.approx(104.0094 * 1.02 ** 2, rel=1e-6)
+
+
+def test_completar_estimados_serie_solo_con_bajas_queda_plana():
+    completas, _ = ipc_indec.completar_estimados({"rubro": {"2026-07": 100.0, "2026-08": 99.0}}, "2026-09")
+    assert completas["rubro"]["2026-09"] == pytest.approx(99.0)

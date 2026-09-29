@@ -2,7 +2,7 @@
 
 Trae de la API de series de datos.gob.ar el IPC general nacional y el de
 Hoteles y restaurantes, completa los meses todavía no publicados repitiendo la
-última variación mensual, y guarda las series publicadas en GCS como respaldo
+última variación mensual no negativa, y guarda las series publicadas en GCS como respaldo
 por si la API falla en una corrida futura.
 
 obtener_ipc() nunca lanza: ante cualquier falla devuelve la copia de GCS o None
@@ -67,14 +67,24 @@ def validar(series, hoy=None):
     return avisos
 
 
+def _variacion_estimada(serie):
+    """Última variación mensual no negativa de la serie (1.0 si no hay). Una baja del índice
+    (validar acepta hasta 5%) se toma como puntual: repetirla proyectaría deflación hasta diciembre."""
+    meses = sorted(serie)
+    for a, b in zip(reversed(meses[:-1]), reversed(meses[1:])):
+        if serie[b] >= serie[a]:
+            return serie[b] / serie[a]
+    return 1.0
+
+
 def completar_estimados(series, hasta):
-    """Extiende cada serie hasta `hasta` repitiendo su última variación mensual.
+    """Extiende cada serie hasta `hasta` repitiendo su última variación mensual no negativa.
     Devuelve (series_completas, meses_estimados ordenados)."""
     completas, estimados = {}, set()
     for nombre, serie in series.items():
         s = dict(serie)
         meses = sorted(s)
-        variacion = s[meses[-1]] / s[meses[-2]] if len(meses) >= 2 else 1.0
+        variacion = _variacion_estimada(serie)
         mes = meses[-1]
         while mes < hasta:
             siguiente = _mes_siguiente(mes)
