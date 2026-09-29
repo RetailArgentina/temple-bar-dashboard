@@ -585,10 +585,16 @@ function finRestoAnio(objMarca, rowsMarca, anio, mesesResto, paceActual, ipc){
   return {objAnual, ytd, faltante, ventaAA, imp:finObjImplicito(faltante,ventaAA,inf)};
 }
 
-/* Meses del gráfico: los últimos `n` cerrados, sin el primero de la serie, que es parcial
-   (la consulta arranca 28 meses atrás a mitad de mes, o ahí empiezan los datos de la marca). */
+/* rows sin las filas del primer mes de la serie, que es parcial (la consulta arranca 28 meses
+   atrás a mitad de mes, o ahí empiezan los datos de la marca): no sirve de base de comparación. */
+function finSinPrimerMes(rows){
+  const primero=rows.reduce((a,r)=>a===null||r.mes<a?r.mes:a,null);
+  return rows.filter(r=>r.mes!==primero);
+}
+
+/* Meses del gráfico: los últimos `n` cerrados, sin el primero de la serie (parcial). */
 function finMesesGrafico(rows, hoy, n){
-  const meses=[...new Set(rows.map(r=>r.mes))].sort().slice(1);
+  const meses=[...new Set(finSinPrimerMes(rows).map(r=>r.mes))].sort();
   return meses.filter(m=>finPace(m,hoy)===1).slice(-n);
 }
 /* FINANZAS_CORE:END */
@@ -603,9 +609,10 @@ function finKpi(lbl, val, sub){
     +`<div class="kpi-val">${val}</div><div class="kpi-sub">${sub||""}</div></div>`;
 }
 /* Meses del período filtrado y sus pares del año anterior. Si algún par no existe
-   en MENSUAL, yoyMeses queda vacío (no se compara un período incompleto). */
+   en MENSUAL o es el primer mes de la serie (parcial), yoyMeses queda vacío
+   (no se compara un período incompleto). */
 function finPeriodoActual(){
-  const all=new Set(MENSUAL.map(r=>r.mes));
+  const all=new Set(finSinPrimerMes(MENSUAL).map(r=>r.mes));
   if(STATE.periodo==="custom"){
     const meses=getCustomMeses(), yoy=meses.map(finYoyMes);
     return {meses, yoyMeses:yoy.every(m=>all.has(m))?yoy:[], label:STATE.fromMes+" → "+STATE.toMes};
@@ -623,7 +630,7 @@ function buildFinanzas(){
   const hoy=new Date(), pace=m=>finPace(m,hoy);
   const per=finPeriodoActual();
   const marcas=STATE.marca==="todas"?["Temple","Patagonia","Feriado"]:[STATE.marca];
-  const rowsOf=m=>MENSUAL.filter(r=>m==="todas"||r.m===m);
+  const rowsOf=m=>finSinPrimerMes(MENSUAL.filter(r=>m==="todas"||r.m===m)); // sin el mes parcial de arranque de la marca
   const est=new Set(IPC.estimados||[]);
   const eSup=ms=>ms.some(m=>est.has(m))?' <sup class="muted">e</sup>':"";
   const baseLbl=finMesLbl(IPC.base);
@@ -632,9 +639,8 @@ function buildFinanzas(){
     +(STATE.marca!=="todas"?" · "+STATE.marca:"");
 
   // KPIs: los montos son los mismos que Ventas (real al día); el crecimiento usa cierre estimado
-  const rows=rowsOf(STATE.marca);
-  const suma=finSumar(rows,per.meses,IPC,()=>1);
-  const c=finCrecimiento(rows,per.meses,per.yoyMeses,IPC,pace);
+  const suma=finSumar(MENSUAL.filter(r=>STATE.marca==="todas"||r.m===STATE.marca),per.meses,IPC,()=>1);
+  const c=finCrecimiento(rowsOf(STATE.marca),per.meses,per.yoyMeses,IPC,pace);
   // Inflación sobre los mismos meses que compara el crecimiento (sin el mes en curso con <10% de avance)
   const mc=finMesesComparables(per.meses,per.yoyMeses,pace);
   const ig=mc?finInflacion(IPC.general,mc.meses,mc.yoyMeses):null;
@@ -658,7 +664,7 @@ function buildFinanzas(){
     +'<th class="r">Crec. real</th><th class="r">Real same-store</th></tr></thead><tbody>';
   filas.forEach(m=>{
     const cc=finCrecimiento(rowsOf(m),per.meses,per.yoyMeses,IPC,pace);
-    const ss=finSameStore(LOCAL_MENSUAL,m,per.meses,per.yoyMeses,IPC,pace);
+    const ss=finSameStore(finSinPrimerMes(LOCAL_MENSUAL.filter(r=>m==="todas"||r.m===m)),m,per.meses,per.yoyMeses,IPC,pace);
     const name=m==="todas"?"<b>Total</b>":`<span class="t-brand-cell">${tDot(m)}${m}</span>`;
     h+=`<tr><td>${name}</td><td class="r">${cc?tPct(cc.crecNom):"—"}</td>`
       +`<td class="r">${ig!==null?tPct(ig):"—"}</td>`

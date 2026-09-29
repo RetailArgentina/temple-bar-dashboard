@@ -183,3 +183,37 @@ def test_fin_crecimiento_sin_par_del_anio_anterior_en_algun_mes_es_null(tmp_path
     r = run_js(f'finCrecimiento([{{mes:"2025-09",fac:100}},{{mes:"2026-08",fac:500}},{{mes:"2026-09",fac:130}}],'
                f'["2026-08","2026-09"],["2025-08","2025-09"],{IPC},m=>1)', tmp_path)
     assert r is None
+
+
+def test_fin_sin_primer_mes_saca_todas_las_filas_del_mes_de_arranque(tmp_path):
+    rows = ('[{mes:"2024-11",l:"A"},{mes:"2024-10",l:"A"},{mes:"2024-10",l:"B"},{mes:"2024-12",l:"A"}]')
+    r = run_js(f'finSinPrimerMes({rows}).map(r=>r.mes)', tmp_path)
+    assert r == ["2024-11", "2024-12"]
+
+
+def test_fin_sin_primer_mes_por_marca_hace_null_el_crecimiento_contra_el_mes_parcial(tmp_path):
+    # Feriado arranca en 2025-09 (parcial): 2026-09 no se compara contra ese mes
+    rows = '[{mes:"2025-09",fac:10},{mes:"2025-10",fac:100},{mes:"2026-09",fac:130},{mes:"2026-10",fac:130}]'
+    r = run_js(f'[finCrecimiento(finSinPrimerMes({rows}),["2026-09"],["2025-09"],{IPC},m=>1),'
+               f'finCrecimiento(finSinPrimerMes({rows}),["2026-10"],["2025-10"],{IPC},m=>1)!==null]', tmp_path)
+    assert r == [None, True]
+
+
+def _periodo_custom(desde, hasta, tmp_path):
+    meses = ["2024-10", "2024-11", "2025-09", "2025-10", "2025-11", "2026-09", "2026-10", "2026-11"]
+    mensual = ",".join(f'{{mes:"{m}",m:"Temple",fac:1}}' for m in meses)
+    setup = (f'const MENSUAL=[{mensual}];const STATE={{periodo:"custom",fromMes:"{desde}",toMes:"{hasta}"}};'
+             'const PD={};')
+    return run_dom_js(["finSinPrimerMes", "getCustomMeses", "finYoyMes", "finPeriodoActual"], setup,
+                      "finPeriodoActual()", tmp_path)
+
+
+def test_fin_periodo_custom_con_oct25_no_compara_contra_oct24_parcial(tmp_path):
+    r = _periodo_custom("2025-10", "2025-11", tmp_path)
+    assert r["meses"] == ["2025-10", "2025-11"]
+    assert r["yoyMeses"] == []   # oct-24 es el arranque de la serie (mes parcial)
+
+
+def test_fin_periodo_custom_sin_el_mes_de_arranque_compara_normal(tmp_path):
+    r = _periodo_custom("2025-11", "2025-11", tmp_path)
+    assert r["yoyMeses"] == ["2024-11"]
