@@ -484,7 +484,7 @@ const IPC = __IPC_JSON__;
 const FIN_UMBRAL_EXIGENTE = 10; // % real pedido por encima del cual un objetivo es "Exigente"
 const FIN_UMBRAL_LAXO = 0;      // por debajo: "Laxo" (se cumple vendiendo menos en términos reales)
 const FIN_PACE_MIN = 0.1;       // meses en curso con menos avance no se proyectan (ruido)
-const FIN_SERIE_DESDE = "2025-02"; // oct-24 → ene-25 los locales se fueron cargando de a poco: no sirven de base
+const FIN_SERIE_DESDE = "2025-02"; // oct-24 → ene-25 carga incompleta en la fuente (locales de a poco; ene-25 ~30% menos órdenes por local): no sirven de base
 
 function finYoyMes(mes){ const [y,m]=mes.split("-"); return (+y-1)+"-"+m; }
 
