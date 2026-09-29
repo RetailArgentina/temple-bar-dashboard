@@ -574,6 +574,31 @@ def contexto_con_ipc(eco_ctx, ipc_data):
     return {**eco_ctx, "ipc_mensual": {**eco_ctx.get("ipc_mensual", {}), **variaciones}}
 
 
+def fetch_ultima_venta_local(client):
+    # Último día con venta por marca+local (ventana de 60 días) para el panel
+    # "Locales a mirar": detecta locales que dejaron de reportar ventas.
+    print("  Querying ULTIMA_VENTA (último día con venta por local)...", end='', flush=True)
+    q = f"""
+        SELECT Marca AS m, Local AS l, MAX(Fecha) AS u
+        FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_VENTAS}`
+        WHERE Fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL 60 DAY)
+          AND Marca IS NOT NULL AND Local IS NOT NULL
+        GROUP BY m, l
+    """
+    rows = list(client.query(q).result())
+    print(f" {len(rows)} rows OK")
+    return [{"m": r.m, "l": r.l, "u": r.u.isoformat()} for r in rows]
+
+
+def inject_ultima_venta(html, rows):
+    """Reemplaza __ULTIMA_VENTA_JSON__ (null si la consulta falló: la regla no se evalúa)."""
+    if '__ULTIMA_VENTA_JSON__' not in html:
+        return html
+    html = html.replace('__ULTIMA_VENTA_JSON__', json.dumps(rows, separators=(',', ':')))
+    print(f"  ✓ ULTIMA_VENTA inyectado ({len(rows) if rows is not None else 'sin datos'})")
+    return html
+
+
 def inject_ipc(html, ipc_data):
     """Reemplaza __IPC_JSON__ por el payload IPC (o null si no hay datos)."""
     if '__IPC_JSON__' not in html:
@@ -1140,7 +1165,8 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
                              dias_data=None,
                              producto_data=None,
                              local_mensual_rows=None,
-                             ipc_data=None):
+                             ipc_data=None,
+                             ultima_venta_rows=None):
     """Generate the dashboard HTML by reading the template.
 
     Template resolution order:
@@ -1270,6 +1296,7 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
 
     # ── Inyección de IPC (pestaña Finanzas) ──────────────────────────────
     html = inject_ipc(html, ipc_data)
+    html = inject_ultima_venta(html, ultima_venta_rows)
 
     # ── Inyección de Royalties ────────────────────────────────────────────
     if '__ROYALTY_JSON__' in html:
@@ -1369,6 +1396,7 @@ def main():
             "locales_obj": lambda: fetch_locales_obj(client),
             "local_mensual": lambda: fetch_local_mensual_data(client),
             "ipc":        lambda: fetch_ipc_data(args.gcs_bucket),
+            "ultima_venta": lambda: fetch_ultima_venta_local(client),
         }
 
         results = {}
@@ -1415,6 +1443,7 @@ def main():
             producto_data=None,
             local_mensual_rows=local_mensual_rows,
             ipc_data=ipc_data,
+            ultima_venta_rows=results["ultima_venta"],
         )
 
         # Upload to GCS if requested (Cloud Run mode)
