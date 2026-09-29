@@ -368,6 +368,13 @@ function loadChartJS(cb){
 </section>
 
 <section class="sec card" style="padding-bottom:0">
+  <h2>Precio vs tráfico</h2>
+  <div class="csub" id="finPTSub"></div>
+  <div class="table-scroll bleed" style="margin-top:16px"><table id="finPTTable" style="min-width:820px"></table></div>
+  <p class="note" style="padding:12px 0 16px;margin:0">Same-store. Órdenes = tráfico; ticket = facturación / órdenes. Ticket real: variación del ticket descontada la inflación del rubro hoteles y restaurantes. Órdenes × ticket = crecimiento nominal same-store.</p>
+</section>
+
+<section class="sec card" style="padding-bottom:0">
   <h2>Objetivos en términos reales</h2>
   <div class="csub">Cuánto crecimiento real le pide cada objetivo mensual a la venta del mismo mes del año anterior</div>
   <div class="table-scroll bleed" style="margin-top:16px"><table id="finObjTable" style="min-width:760px"></table></div>
@@ -544,15 +551,50 @@ function finCrecimiento(rows, meses, yoyMeses, ipc, pace){
           crecNom:(c.nom/y.nom-1)*100, crecReal:(c.real/y.real-1)*100};
 }
 
-/* Igual que finCrecimiento, solo con los locales que vendieron en ambos períodos. */
-function finSameStore(localRows, marca, meses, yoyMeses, ipc, pace){
-  if(!meses||!yoyMeses) return null;
+/* Filas de LOCAL_MENSUAL de `marca` solo de los locales que vendieron en ambos períodos. */
+function finLocalesComunes(localRows, marca, meses, yoyMeses){
+  if(!meses||!yoyMeses) return [];
   const rows=localRows.filter(r=>marca==="todas"||r.m===marca);
   const key=r=>r.m+"|"+String(r.l).trim().toUpperCase();
   const cur=new Set(rows.filter(r=>meses.includes(r.mes)).map(key));
   const yoy=new Set(rows.filter(r=>yoyMeses.includes(r.mes)).map(key));
-  const comunes=rows.filter(r=>cur.has(key(r))&&yoy.has(key(r)));
+  return rows.filter(r=>cur.has(key(r))&&yoy.has(key(r)));
+}
+
+/* Igual que finCrecimiento, solo con los locales que vendieron en ambos períodos. */
+function finSameStore(localRows, marca, meses, yoyMeses, ipc, pace){
+  const comunes=finLocalesComunes(localRows,marca,meses,yoyMeses);
   return comunes.length ? finCrecimiento(comunes,meses,yoyMeses,ipc,pace) : null;
+}
+
+/* Lectura en palabras de precio vs tráfico según los signos (null si falta alguno). */
+function finLecturaPT(crecOrd, crecTickReal){
+  if(crecOrd===null||crecOrd===undefined||crecTickReal===null||crecTickReal===undefined) return null;
+  if(crecOrd>=0) return crecTickReal>=0 ? "Más clientes y precio real ↑" : "Gana clientes, precio atrasado vs inflación";
+  return crecTickReal>=0 ? "Precio le gana a la inflación, pierde clientes" : "Pierde clientes y precio real";
+}
+
+/* Crecimiento same-store abierto en tráfico (órdenes) y precio (ticket = fac/ord agregado,
+   deflactado con el IPC del rubro hoteles y restaurantes). El mes en curso se lleva a cierre
+   estimado (fac y ord / avance: el ticket no cambia). Mismos meses que finCrecimiento. */
+function finPrecioTrafico(localRows, marca, meses, yoyMeses, ipc, pace){
+  const comunes=finLocalesComunes(localRows,marca,meses,yoyMeses);
+  const mc=finMesesComparables(meses,yoyMeses,pace);
+  if(!comunes.length||!mc) return null;
+  if(!mc.yoyMeses.every(m=>comunes.some(r=>r.mes===m))) return null;
+  const sumar=(ms,pc)=>comunes.reduce((s,r)=>{
+    if(!ms.includes(r.mes)) return s;
+    const p=pc(r.mes), k=p&&p<1 ? 1/p : 1;
+    return {fac:s.fac+r.fac*k, ord:s.ord+(r.ord||0)*k};
+  },{fac:0,ord:0});
+  const c=sumar(mc.meses,pace), y=sumar(mc.yoyMeses,()=>1);
+  if(!(c.ord>0)||!(y.ord>0)) return null;
+  const tickCur=c.fac/c.ord, tickYoy=y.fac/y.ord;
+  const crecOrd=(c.ord/y.ord-1)*100, crecTickNom=(tickCur/tickYoy-1)*100;
+  const inflRubro=ipc.rubro?finInflacion(ipc.rubro,mc.meses,mc.yoyMeses):null;
+  const crecTickReal=inflRubro===null ? null : ((1+crecTickNom/100)/(1+inflRubro/100)-1)*100;
+  return {meses:mc.meses, yoyMeses:mc.yoyMeses, ordCur:c.ord, ordYoy:y.ord, tickCur, tickYoy,
+          crecOrd, crecTickNom, inflRubro, crecTickReal, lectura:finLecturaPT(crecOrd,crecTickReal)};
 }
 
 function finClase(realPct){
@@ -687,6 +729,8 @@ function buildFinanzas(){
   });
   document.getElementById("finMarcaTable").innerHTML=h+"</tbody>";
 
+  buildFinPrecioTrafico(filas,per,pace,eSup);
+
   // Objetivos en términos reales (año en curso)
   const anio=String(hoy.getFullYear());
   let ho='<thead><tr><th>Marca</th><th>Mes</th><th class="r">Objetivo</th><th class="r">Venta año ant.</th>'
@@ -738,6 +782,27 @@ function buildFinanzas(){
     +(IPC.fuente==="cache"?" · copia guardada: la API no respondió en la última actualización.":".");
 
   buildFinChart();
+}
+
+/* Tabla "Precio vs tráfico": por marca (y Total), same-store, órdenes vs ticket real. */
+function buildFinPrecioTrafico(filas, per, pace, eSup){
+  document.getElementById("finPTSub").textContent=per.label
+    +" vs mismo período del año anterior · ¿crece por más clientes o por precio?";
+  let h='<thead><tr><th>Marca</th><th class="r">Órdenes</th><th class="r">Ticket actual</th>'
+    +'<th class="r">Ticket nominal</th><th class="r">Inflación rubro</th><th class="r">Ticket real</th><th>Lectura</th></tr></thead><tbody>';
+  filas.forEach(m=>{
+    const pt=finPrecioTrafico(finSerieComparable(LOCAL_MENSUAL.filter(r=>m==="todas"||r.m===m)),m,per.meses,per.yoyMeses,IPC,pace);
+    const name=m==="todas"?"<b>Total</b>":`<span class="t-brand-cell">${tDot(m)}${m}</span>`;
+    if(!pt){ h+=`<tr><td>${name}</td><td colspan="6" class="muted">Sin período comparable del año anterior</td></tr>`; return; }
+    const e=eSup([...pt.meses,...pt.yoyMeses]);
+    const cls=pt.crecOrd>=0&&pt.crecTickReal>=0?"t-chip-pos":pt.crecOrd<0&&pt.crecTickReal<0?"t-chip-neg":"";
+    h+=`<tr><td>${name}</td><td class="r strong">${finPctHtml(pt.crecOrd)}</td>`
+      +`<td class="r">${fmtT(pt.tickCur*1e6)}</td><td class="r">${tPct(pt.crecTickNom)}</td>`
+      +`<td class="r">${pt.inflRubro!==null?tPct(pt.inflRubro)+e:"—"}</td>`
+      +`<td class="r strong">${finPctHtml(pt.crecTickReal)}${pt.crecTickReal!==null?e:""}</td>`
+      +`<td>${pt.lectura?`<span class="t-chip ${cls}">${pt.lectura}</span>`:""}</td></tr>`;
+  });
+  document.getElementById("finPTTable").innerHTML=h+"</tbody>";
 }
 
 function buildFinChart(){

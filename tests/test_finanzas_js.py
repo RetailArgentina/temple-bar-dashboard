@@ -249,3 +249,75 @@ def test_fin_venta_aa_usa_la_serie_comparable(tmp_path):
     rows = '[{mes:"2024-11",fac:1},{mes:"2025-01",fac:70},{mes:"2025-02",fac:100},{mes:"2025-03",fac:110}]'
     r = run_js(f'[finVentaAA({rows},"2026-01"),finVentaAA({rows},"2026-02"),finVentaAA({rows},"2026-04")]', tmp_path)
     assert r == [None, {"mes": "2025-02", "fac": 100}, None]
+
+
+# ── Precio vs tráfico (same-store): órdenes vs ticket real ──
+
+def test_fin_precio_trafico_abre_same_store_en_ordenes_y_ticket_real(tmp_path):
+    rows = ('[{mes:"2025-09",m:"Temple",l:"A",fac:100,ord:10},{mes:"2026-09",m:"Temple",l:"a ",fac:90,ord:6},'
+            '{mes:"2026-09",m:"Temple",l:"B",fac:500,ord:50},{mes:"2026-09",m:"Feriado",l:"A",fac:999,ord:99}]')
+    r = run_js(f'finPrecioTrafico({rows},"Temple",["2026-09"],["2025-09"],{IPC},m=>finPace(m,new Date(2026,8,15)))',
+               tmp_path)
+    assert r["ordCur"] == pytest.approx(12)        # 6 al día 15 de 30 → cierre estimado 12 (B y Feriado afuera)
+    assert r["crecOrd"] == pytest.approx(20)
+    assert r["tickCur"] == pytest.approx(15) and r["tickYoy"] == pytest.approx(10)  # fac/ord agregado
+    assert r["crecTickNom"] == pytest.approx(50)
+    assert r["inflRubro"] == pytest.approx(40)
+    assert r["crecTickReal"] == pytest.approx(150 / 140 * 100 - 100)
+    assert r["lectura"] == "Más clientes y precio real ↑"
+    # órdenes × ticket reconcilia con el crecimiento nominal same-store
+    assert (1 + r["crecOrd"] / 100) * (1 + r["crecTickNom"] / 100) == pytest.approx(1.8)
+
+
+def test_fin_precio_trafico_sin_ipc_rubro_deja_ticket_real_y_lectura_en_null(tmp_path):
+    ipc = '{base:"2026-09",general:{"2025-09":100,"2026-09":130},rubro:{"2026-09":140}}'
+    r = run_js(f'finPrecioTrafico([{{mes:"2025-09",m:"Temple",l:"A",fac:100,ord:10}},'
+               f'{{mes:"2026-09",m:"Temple",l:"A",fac:130,ord:10}}],"todas",["2026-09"],["2025-09"],{ipc},m=>1)',
+               tmp_path)
+    assert r["crecOrd"] == pytest.approx(0) and r["crecTickNom"] == pytest.approx(30)
+    assert r["crecTickReal"] is None and r["lectura"] is None
+
+
+def test_fin_precio_trafico_sin_locales_comunes_o_sin_ordenes_es_null(tmp_path):
+    sin_comunes = run_js(f'finPrecioTrafico([{{mes:"2026-09",m:"Temple",l:"A",fac:130,ord:10}}],'
+                         f'"Temple",["2026-09"],["2025-09"],{IPC},m=>1)', tmp_path)
+    sin_ord = run_js(f'finPrecioTrafico([{{mes:"2025-09",m:"Temple",l:"A",fac:100,ord:0}},'
+                     f'{{mes:"2026-09",m:"Temple",l:"A",fac:130,ord:10}}],"Temple",["2026-09"],["2025-09"],{IPC},m=>1)',
+                     tmp_path)
+    assert sin_comunes is None and sin_ord is None
+
+
+def test_fin_precio_trafico_excluye_mes_con_menos_de_10pct_de_avance(tmp_path):
+    rows = ('[{mes:"2025-09",m:"T",l:"A",fac:100,ord:10},{mes:"2026-09",m:"T",l:"A",fac:130,ord:10},'
+            '{mes:"2025-10",m:"T",l:"A",fac:100,ord:10},{mes:"2026-10",m:"T",l:"A",fac:5,ord:1}]')
+    r = run_js(f'finPrecioTrafico({rows},"T",["2026-09","2026-10"],["2025-09","2025-10"],{IPC},'
+               f'm=>finPace(m,new Date(2026,9,2)))', tmp_path)
+    assert r["meses"] == ["2026-09"] and r["crecOrd"] == pytest.approx(0)
+    assert r["inflRubro"] == pytest.approx(40)
+
+
+def test_fin_lectura_precio_trafico_segun_signos(tmp_path):
+    assert run_js('[finLecturaPT(5,3),finLecturaPT(-5,3),finLecturaPT(5,-3),finLecturaPT(-5,-3),'
+                  'finLecturaPT(0,0),finLecturaPT(5,null)]', tmp_path) == [
+        "Más clientes y precio real ↑",
+        "Precio le gana a la inflación, pierde clientes",
+        "Gana clientes, precio atrasado vs inflación",
+        "Pierde clientes y precio real",
+        "Más clientes y precio real ↑",
+        None]
+
+
+def test_build_fin_precio_trafico_pinta_una_fila_por_marca_con_lectura(tmp_path):
+    core = re.search(r"/\* FINANZAS_CORE:START.*?\*/(.*?)/\* FINANZAS_CORE:END \*/",
+                     open(TEMPLATE, encoding="utf-8").read(), re.S).group(1)
+    setup = (core + 'const tPct=v=>(v>=0?"+":"")+v.toFixed(1)+"%";const tDot=m=>"";'
+             'const fmtT=v=>"$ "+Math.round(v);const MN=["","ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];'
+             f'const IPC={IPC};'
+             'const LOCAL_MENSUAL=[{mes:"2025-08",m:"Temple",l:"A",fac:1,ord:100},{mes:"2025-09",m:"Temple",l:"A",fac:1,ord:100},{mes:"2026-09",m:"Temple",l:"A",fac:1.2,ord:80},'
+             '{mes:"2025-09",m:"Feriado",l:"F",fac:1,ord:100}];'
+             'buildFinPrecioTrafico(["Temple","Feriado"],{meses:["2026-09"],yoyMeses:["2025-09"],label:"Sep"},m=>1,ms=>"");')
+    html = run_dom_js(["finPctHtml", "buildFinPrecioTrafico"], setup, "_els.finPTTable.innerHTML", tmp_path)
+    assert "Precio le gana a la inflación, pierde clientes" in html      # ord −20%; ticket +50% vs rubro 40%
+    assert "$ 15000" in html                                               # ticket actual: 1,2 M / 80
+    assert html.count("<tr>") == 3                                         # header + Temple + Feriado (sin datos)
+    assert "sin período comparable" in html.lower()
