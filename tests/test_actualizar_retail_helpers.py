@@ -352,3 +352,34 @@ def test_contexto_con_ipc_sin_datos_devuelve_el_manual():
     from actualizar_retail import contexto_con_ipc
     eco = {"ipc_mensual": {"2026-03": 3.7}}
     assert contexto_con_ipc(eco, None) == eco
+
+
+# ---------------------------------------------------------------------------
+# ULTIMA_VENTA — panel "Locales a mirar" (regla sin datos N días)
+# ---------------------------------------------------------------------------
+
+def test_fetch_ultima_venta_local_devuelve_marca_local_y_fecha_iso():
+    import datetime as dt
+    from types import SimpleNamespace
+    from actualizar_retail import fetch_ultima_venta_local
+    filas = [SimpleNamespace(m="Temple", l="GUEMES", u=dt.date(2026, 9, 27))]
+    client = SimpleNamespace(query=lambda q: SimpleNamespace(result=lambda: filas))
+    assert fetch_ultima_venta_local(client) == [{"m": "Temple", "l": "GUEMES", "u": "2026-09-27"}]
+
+
+def test_inject_ultima_venta_reemplaza_marcador():
+    from actualizar_retail import inject_ultima_venta
+    html = inject_ultima_venta("const ULTIMA_VENTA = __ULTIMA_VENTA_JSON__;",
+                               [{"m": "Temple", "l": "A", "u": "2026-09-27"}])
+    assert html == 'const ULTIMA_VENTA = [{"m":"Temple","l":"A","u":"2026-09-27"}];'
+
+
+def test_inject_ultima_venta_sin_datos_inyecta_null():
+    from actualizar_retail import inject_ultima_venta
+    assert inject_ultima_venta("const ULTIMA_VENTA = __ULTIMA_VENTA_JSON__;", None) == "const ULTIMA_VENTA = null;"
+
+
+def test_plantilla_dashboard_tiene_marcador_ultima_venta():
+    import os
+    with open(os.path.join("templates", "dashboard.html"), encoding="utf-8") as f:
+        assert "const ULTIMA_VENTA = __ULTIMA_VENTA_JSON__;" in f.read()

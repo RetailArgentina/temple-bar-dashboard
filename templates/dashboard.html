@@ -228,6 +228,13 @@ function loadChartJS(cb){
   </div>
 </section>
 
+<section class="sec card" style="padding-bottom:0">
+  <h2>Locales a mirar</h2>
+  <div class="csub" id="excSub"></div>
+  <div class="table-scroll bleed" style="margin-top:16px"><table id="excTable" style="min-width:720px"></table></div>
+  <p class="note" style="padding:12px 0 16px;margin:0">Caída vs su marca: crecimiento real (IPC general) del local vs mismo mes del año anterior, comparado con el de su marca same-store; Alta = más de 25 pp abajo los últimos 3 meses cerrados, Media = solo el último. Objetivo sin venta: objetivo cargado y venta 0 en meses cerrados del año. Sin datos: sin ventas hace más de 3 días (Alta desde 7).</p>
+</section>
+
 <section class="sec">
   <div class="sec-hd">
     <div class="sec-title" id="objMarcaTitle">Objetivos por marca</div>
@@ -486,6 +493,8 @@ const LOCAL_MENSUAL = __LOCAL_MENSUAL_JSON__;
 // IPC INDEC (general + hoteles y restaurantes), completado hasta diciembre con meses estimados.
 // null si la API falló y no había copia en GCS → la pestaña Finanzas muestra "sin datos".
 const IPC = __IPC_JSON__;
+// Último día con venta por marca+local (60 días) para "Locales a mirar"; null si la consulta falló.
+const ULTIMA_VENTA = __ULTIMA_VENTA_JSON__;
 /* FINANZAS_CORE:START — cálculos de la pestaña Finanzas. Funciones puras: no leen el DOM
    ni variables globales (reciben todo por parámetro). Las testea tests/test_finanzas_js.py. */
 const FIN_UMBRAL_EXIGENTE = 10; // % real pedido por encima del cual un objetivo es "Exigente"
@@ -654,6 +663,128 @@ function finMesesGrafico(rows, hoy, n){
   return meses.filter(m=>finPace(m,hoy)===1).slice(-n);
 }
 /* FINANZAS_CORE:END */
+
+/* EXCEPCIONES_CORE:START — reglas del panel "Locales a mirar" (Ventas). Funciones puras
+   (usan finYoyMes de FINANZAS_CORE). Las testea tests/test_excepciones_js.py.
+   Umbrales calibrados el 29/09/2026 con jun–ago 2026 reales. */
+const EXC_GAP_PP = -25;       // pp de crecimiento real por debajo de su marca (la red entera cae ~15-30% real: umbral fijo marcaría a casi todos)
+const EXC_BASE_MIN = 0.5;     // $M del mismo mes del año anterior: por debajo la base es ruido
+const EXC_DIAS_SIN_DATOS = 3; // días sin ventas (el pipeline trae hasta ayer)
+const EXC_DIAS_ALTA = 7;
+const EXC_MARCA = {P:"Patagonia", T:"Temple", F:"Feriado"};
+const EXC_MN = ["","ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+function excMesLbl(mes){ const [y,m]=mes.split("-"); return EXC_MN[+m]+"-"+y.slice(2); }
+function excPct(v){ return (v>=0?"+":"−")+Math.abs(Math.round(v))+"%"; }
+
+/* Últimos `n` meses cerrados (anteriores al mes de `hoy`) con datos. */
+function excMesesCerrados(localRows, hoy, n){
+  const hm=hoy.getFullYear()+"-"+String(hoy.getMonth()+1).padStart(2,"0");
+  return [...new Set(localRows.map(r=>r.mes))].filter(m=>m<hm).sort().slice(-n);
+}
+
+/* Crecimiento real de cada local vs mismo mes del año anterior, menos el de su marca
+   (same-store). Alta: ≤ EXC_GAP_PP en todos los `meses`; Media: solo en el último. */
+function excCaidaVsMarca(localRows, ipcGeneral, meses){
+  const key=r=>r.m+"|"+String(r.l).trim().toUpperCase();
+  const fac={}, nombre={};
+  localRows.forEach(r=>{ const k=key(r); (fac[k]=fac[k]||{})[r.mes]=(fac[k][r.mes]||0)+r.fac; nombre[k]=nombre[k]||{m:r.m,l:String(r.l).trim()}; });
+  const gaps={}, reales={}, marcaReal={};
+  meses.forEach(mes=>{
+    const yoy=finYoyMes(mes);
+    if(!ipcGeneral[mes]||!ipcGeneral[yoy]) return;
+    const inf=ipcGeneral[mes]/ipcGeneral[yoy];
+    const ok=Object.keys(fac).filter(k=>fac[k][yoy]>=EXC_BASE_MIN&&fac[k][mes]>0);
+    const mk={};
+    ok.forEach(k=>{ const a=mk[nombre[k].m]=mk[nombre[k].m]||[0,0]; a[0]+=fac[k][mes]; a[1]+=fac[k][yoy]; });
+    ok.forEach(k=>{
+      const m=nombre[k].m, rl=(fac[k][mes]/fac[k][yoy]/inf-1)*100, rm=(mk[m][0]/mk[m][1]/inf-1)*100;
+      (gaps[k]=gaps[k]||{})[mes]=rl-rm; (reales[k]=reales[k]||{})[mes]=rl; (marcaReal[m]=marcaReal[m]||{})[mes]=rm;
+    });
+  });
+  const ult=meses[meses.length-1], out=[];
+  Object.keys(gaps).forEach(k=>{
+    const g=gaps[k], {m,l}=nombre[k];
+    if(!(g[ult]<=EXC_GAP_PP)) return;
+    const sostenida=meses.every(x=>g[x]!==undefined&&g[x]<=EXC_GAP_PP);
+    out.push({m, l, cat:"Caída vs su marca", sev:sostenida?"Alta":"Media",
+      msg:`${excPct(reales[k][ult])} real vs ${excMesLbl(finYoyMes(ult))} (su marca ${excPct(marcaReal[m][ult])})`,
+      det:"Vs su marca: "+meses.map(x=>excMesLbl(x)+" "+(g[x]===undefined?"sin base":excPct(g[x]).replace("%"," pp"))).join(" · ")
+        +(sostenida?"":" · no sostenido: confirmar el mes que viene")});
+  });
+  return out;
+}
+
+/* Locales con objetivo de facturación cargado y venta 0 en meses cerrados de `anio`.
+   Alta si sigue pasando en el último mes cerrado. LOCALES_OBJ: d[mes] = [real, obj, ...]. */
+function excObjSinVenta(localesObj, anio, ultCerrado){
+  const out=[];
+  localesObj.forEach(o=>{
+    const ms=Object.keys(o.d||{}).filter(mes=>mes.startsWith(anio)&&mes<=ultCerrado
+      &&o.d[mes][1]>0&&!(o.d[mes][0]>0)).sort();
+    if(!ms.length) return;
+    out.push({m:EXC_MARCA[o.b]||o.b, l:String(o.l).trim(), cat:"Objetivo sin venta", sev:ms.includes(ultCerrado)?"Alta":"Media",
+      msg:`Objetivo cargado sin venta en ${ms.length} ${ms.length===1?"mes":"meses"} de ${anio}`,
+      det:ms.map(excMesLbl).join(", ")+" · resta al cumplimiento de la marca"});
+  });
+  return out;
+}
+
+/* Locales sin ventas hace más de `dias` días (ULTIMA_VENTA: último día con venta en 60 días).
+   Si todos los locales de una marca están así, una sola fila por la marca (falla de sync). */
+function excSinDatos(ultimaVenta, hoy, dias){
+  if(!ultimaVenta) return [];
+  const h=new Date(hoy.getFullYear(),hoy.getMonth(),hoy.getDate());
+  const diasDesde=u=>{ const [y,m,d]=u.split("-"); return Math.round((h-new Date(+y,+m-1,+d))/864e5); };
+  const fmt=u=>u.slice(8,10)+"/"+u.slice(5,7);
+  const porMarca={};
+  ultimaVenta.forEach(r=>(porMarca[r.m]=porMarca[r.m]||[]).push(r));
+  const out=[];
+  Object.keys(porMarca).forEach(m=>{
+    const ls=porMarca[m], viejos=ls.filter(r=>diasDesde(r.u)>dias);
+    if(viejos.length&&viejos.length===ls.length){
+      const u=ls.map(r=>r.u).sort().pop();
+      out.push({m, l:null, cat:"Sin datos", sev:"Alta", msg:`Ningún local de ${m} tiene ventas desde el ${fmt(u)}`,
+        det:"Probable falla de sincronización de la marca, no cierre de locales"});
+      return;
+    }
+    viejos.forEach(r=>{
+      const n=diasDesde(r.u);
+      out.push({m, l:String(r.l).trim(), cat:"Sin datos", sev:n>=EXC_DIAS_ALTA?"Alta":"Media",
+        msg:`Sin ventas desde el ${fmt(r.u)} (${n} días)`, det:"Cierre, pausa o falla de carga del local"});
+    });
+  });
+  return out;
+}
+
+/* Filtra por marca y ordena Alta → Media (estable). */
+function excOrdenar(lista, marca){
+  const o={Alta:0, Media:1};
+  return lista.filter(x=>marca==="todas"||x.m===marca).sort((a,b)=>(o[a.sev]??9)-(o[b.sev]??9));
+}
+/* EXCEPCIONES_CORE:END */
+
+/* Panel "Locales a mirar" (Ventas): no depende del período elegido, solo de la marca. */
+function buildExcepciones(hoy){
+  hoy=hoy||new Date();
+  const meses=excMesesCerrados(LOCAL_MENSUAL,hoy,3);
+  const pm=new Date(hoy.getFullYear(),hoy.getMonth()-1,1), ult=pm.getFullYear()+"-"+String(pm.getMonth()+1).padStart(2,"0");
+  let lista=[];
+  if(meses.length&&IPC) lista=lista.concat(excCaidaVsMarca(LOCAL_MENSUAL,IPC.general,meses));
+  lista=lista.concat(excObjSinVenta(LOCALES_OBJ,ult.slice(0,4),ult));
+  lista=excOrdenar(lista.concat(excSinDatos(ULTIMA_VENTA,hoy,EXC_DIAS_SIN_DATOS)),STATE.marca);
+  document.getElementById("excSub").textContent=
+    (meses.length?"Últimos meses cerrados ("+meses.map(excMesLbl).join(", ")+") y ventas de los últimos días":"")
+    +" · no depende del período elegido"
+    +(ULTIMA_VENTA?"":" · sin datos de última venta: no se evalúa \"Sin datos\"");
+  let h='<thead><tr><th></th><th>Local</th><th>Motivo</th><th>Qué pasa</th><th>Detalle</th></tr></thead><tbody>';
+  lista.forEach(x=>{
+    h+=`<tr><td><span class="t-chip ${x.sev==="Alta"?"t-chip-neg":""}">${x.sev}</span></td>`
+      +`<td><span class="t-brand-cell">${tDot(x.m)}${x.l||"<b>"+x.m+" (toda la marca)</b>"}</span></td>`
+      +`<td>${x.cat}</td><td class="strong">${x.msg}</td><td class="muted">${x.det}</td></tr>`;
+  });
+  if(!lista.length) h+='<tr><td colspan="5" class="empty">Sin locales fuera de lo normal.</td></tr>';
+  document.getElementById("excTable").innerHTML=h+"</tbody>";
+}
 
 /* ── Pestaña Finanzas: render (usa FINANZAS_CORE + datasets globales) ── */
 function finMesLbl(mes){ const [y,m]=mes.split("-"); return MN[+m]+"-"+y.slice(2); }
@@ -2043,6 +2174,7 @@ function buildObjetivosPorMarca(){
 
 function updateAll(){
   try { updateBannerKPI(); buildTend(); buildRoyalties(); buildPlanAccion(); buildPotencialLocales(); buildDias(); buildTop10(); buildObjetivos(); buildObjetivosResumen(); buildObjetivosPorMarca(); buildLocalesTable(); } catch(e){ console.error('[updateAll]',e); }
+  try { buildExcepciones(); } catch(e){ console.error('[updateAll excepciones]',e); }
   // try propio: un error en Ventas no deja a Finanzas sin actualizar (ni al revés)
   try { if(document.getElementById('view-finanzas').style.display==='block') buildFinanzas(); } catch(e){ console.error('[updateAll finanzas]',e); }
 }
