@@ -242,3 +242,10 @@ def test_fin_serie_comparable_corta_antes_de_fin_serie_desde_y_el_arranque_de_la
     nueva = '[{mes:"2025-06",l:"A"},{mes:"2025-06",l:"B"},{mes:"2025-07",l:"A"}]'   # marca que arranca después
     r = run_js(f'[finSerieComparable({temple}).map(r=>r.mes),finSerieComparable({nueva}).map(r=>r.mes)]', tmp_path)
     assert r == [["2025-02", "2025-03"], ["2025-07"]]
+
+
+def test_fin_venta_aa_usa_la_serie_comparable(tmp_path):
+    # Objetivo de ene-26 no se mide contra ene-25 (carga incompleta, antes de FIN_SERIE_DESDE)
+    rows = '[{mes:"2024-11",fac:1},{mes:"2025-01",fac:70},{mes:"2025-02",fac:100},{mes:"2025-03",fac:110}]'
+    r = run_js(f'[finVentaAA({rows},"2026-01"),finVentaAA({rows},"2026-02"),finVentaAA({rows},"2026-04")]', tmp_path)
+    assert r == [None, {"mes": "2025-02", "fac": 100}, None]

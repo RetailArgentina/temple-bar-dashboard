@@ -599,6 +599,13 @@ function finSerieComparable(rows){
   return finSinPrimerMes(rows).filter(r=>r.mes>=FIN_SERIE_DESDE);
 }
 
+/* Venta del mismo mes del año anterior a `mes` (fila de rowsMarca), solo si ese mes está en la
+   serie comparable; null si no hay base confiable. */
+function finVentaAA(rowsMarca, mes){
+  const yoy=finYoyMes(mes);
+  return finSerieComparable(rowsMarca).find(r=>r.mes===yoy)||null;
+}
+
 /* Meses del gráfico: los últimos `n` cerrados de la serie comparable. */
 function finMesesGrafico(rows, hoy, n){
   const meses=[...new Set(finSerieComparable(rows).map(r=>r.mes))].sort();
@@ -686,9 +693,9 @@ function buildFinanzas(){
     +'<th class="r">Crec. nominal pedido</th><th class="r">Inflación a/a</th><th class="r">Crec. real pedido</th><th></th></tr></thead><tbody>';
   let nObj=0;
   marcas.forEach(m=>{
-    const om=OBJETIVOS[m]||{};
+    const om=OBJETIVOS[m]||{}, rowsMarca=MENSUAL.filter(r=>r.m===m);
     Object.keys(om).filter(k=>k.startsWith(anio)).sort().forEach(mes=>{
-      const aa=MENSUAL.find(r=>r.m===m&&r.mes===finYoyMes(mes));
+      const aa=finVentaAA(rowsMarca,mes);
       const inf=finInflacion(IPC.general,[mes],[finYoyMes(mes)]);
       const imp=finObjImplicito(om[mes].obj_fac,aa?aa.fac:0,inf);
       const chipCls=!imp?"":imp.clase==="Exigente"?"t-chip-neg":imp.clase==="Razonable"?"t-chip-pos":"";
