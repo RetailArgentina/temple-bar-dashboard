@@ -484,6 +484,7 @@ const IPC = __IPC_JSON__;
 const FIN_UMBRAL_EXIGENTE = 10; // % real pedido por encima del cual un objetivo es "Exigente"
 const FIN_UMBRAL_LAXO = 0;      // por debajo: "Laxo" (se cumple vendiendo menos en términos reales)
 const FIN_PACE_MIN = 0.1;       // meses en curso con menos avance no se proyectan (ruido)
+const FIN_SERIE_DESDE = "2025-02"; // oct-24 → ene-25 los locales se fueron cargando de a poco: no sirven de base
 
 function finYoyMes(mes){ const [y,m]=mes.split("-"); return (+y-1)+"-"+m; }
 
@@ -592,9 +593,15 @@ function finSinPrimerMes(rows){
   return rows.filter(r=>r.mes!==primero);
 }
 
-/* Meses del gráfico: los últimos `n` cerrados, sin el primero de la serie (parcial). */
+/* rows que sirven de base de comparación: sin el arranque parcial de la marca ni los meses
+   anteriores a FIN_SERIE_DESDE (red a medio cargar en la fuente). */
+function finSerieComparable(rows){
+  return finSinPrimerMes(rows).filter(r=>r.mes>=FIN_SERIE_DESDE);
+}
+
+/* Meses del gráfico: los últimos `n` cerrados de la serie comparable. */
 function finMesesGrafico(rows, hoy, n){
-  const meses=[...new Set(finSinPrimerMes(rows).map(r=>r.mes))].sort();
+  const meses=[...new Set(finSerieComparable(rows).map(r=>r.mes))].sort();
   return meses.filter(m=>finPace(m,hoy)===1).slice(-n);
 }
 /* FINANZAS_CORE:END */
@@ -609,10 +616,10 @@ function finKpi(lbl, val, sub){
     +`<div class="kpi-val">${val}</div><div class="kpi-sub">${sub||""}</div></div>`;
 }
 /* Meses del período filtrado y sus pares del año anterior. Si algún par no existe
-   en MENSUAL o es el primer mes de la serie (parcial), yoyMeses queda vacío
+   en la serie comparable (arranque parcial o antes de FIN_SERIE_DESDE), yoyMeses queda vacío
    (no se compara un período incompleto). */
 function finPeriodoActual(){
-  const all=new Set(finSinPrimerMes(MENSUAL).map(r=>r.mes));
+  const all=new Set(finSerieComparable(MENSUAL).map(r=>r.mes));
   if(STATE.periodo==="custom"){
     const meses=getCustomMeses(), yoy=meses.map(finYoyMes);
     return {meses, yoyMeses:yoy.every(m=>all.has(m))?yoy:[], label:STATE.fromMes+" → "+STATE.toMes};
@@ -630,7 +637,7 @@ function buildFinanzas(){
   const hoy=new Date(), pace=m=>finPace(m,hoy);
   const per=finPeriodoActual();
   const marcas=STATE.marca==="todas"?["Temple","Patagonia","Feriado"]:[STATE.marca];
-  const rowsOf=m=>finSinPrimerMes(MENSUAL.filter(r=>m==="todas"||r.m===m)); // sin el mes parcial de arranque de la marca
+  const rowsOf=m=>finSerieComparable(MENSUAL.filter(r=>m==="todas"||r.m===m));
   const est=new Set(IPC.estimados||[]);
   const eSup=ms=>ms.some(m=>est.has(m))?' <sup class="muted">e</sup>':"";
   const baseLbl=finMesLbl(IPC.base);
@@ -664,7 +671,7 @@ function buildFinanzas(){
     +'<th class="r">Crec. real</th><th class="r">Real same-store</th></tr></thead><tbody>';
   filas.forEach(m=>{
     const cc=finCrecimiento(rowsOf(m),per.meses,per.yoyMeses,IPC,pace);
-    const ss=finSameStore(finSinPrimerMes(LOCAL_MENSUAL.filter(r=>m==="todas"||r.m===m)),m,per.meses,per.yoyMeses,IPC,pace);
+    const ss=finSameStore(finSerieComparable(LOCAL_MENSUAL.filter(r=>m==="todas"||r.m===m)),m,per.meses,per.yoyMeses,IPC,pace);
     const name=m==="todas"?"<b>Total</b>":`<span class="t-brand-cell">${tDot(m)}${m}</span>`;
     h+=`<tr><td>${name}</td><td class="r">${cc?tPct(cc.crecNom):"—"}</td>`
       +`<td class="r">${ig!==null?tPct(ig):"—"}</td>`

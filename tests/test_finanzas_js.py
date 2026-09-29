@@ -158,11 +158,18 @@ def test_fin_resto_anio(tmp_path):
 
 
 def test_fin_meses_grafico_saca_el_primer_mes_parcial_y_el_mes_en_curso(tmp_path):
-    rows = '[{mes:"2024-10"},{mes:"2024-11"},{mes:"2024-11"},{mes:"2024-12"},{mes:"2025-01"},{mes:"2025-02"}]'
-    r = run_js(f'[finMesesGrafico({rows},new Date(2025,1,10),24),finMesesGrafico({rows},new Date(2025,1,10),2)]',
+    rows = '[{mes:"2025-10"},{mes:"2025-11"},{mes:"2025-11"},{mes:"2025-12"},{mes:"2026-01"},{mes:"2026-02"}]'
+    r = run_js(f'[finMesesGrafico({rows},new Date(2026,1,10),24),finMesesGrafico({rows},new Date(2026,1,10),2)]',
                tmp_path)
-    assert r[0] == ["2024-11", "2024-12", "2025-01"]   # oct-24 (arranque de la serie) y feb-25 (en curso) fuera
-    assert r[1] == ["2024-12", "2025-01"]
+    assert r[0] == ["2025-11", "2025-12", "2026-01"]   # oct-25 (arranque de la serie) y feb-26 (en curso) fuera
+    assert r[1] == ["2025-12", "2026-01"]
+
+
+def test_fin_meses_grafico_arranca_en_fin_serie_desde(tmp_path):
+    # oct-24 → ene-25 los locales se fueron cargando de a poco: el gráfico empieza en feb-25
+    rows = '[{mes:"2024-10"},{mes:"2024-11"},{mes:"2024-12"},{mes:"2025-01"},{mes:"2025-02"},{mes:"2025-03"},{mes:"2025-04"}]'
+    r = run_js(f'finMesesGrafico({rows},new Date(2025,3,10),24)', tmp_path)
+    assert r == ["2025-02", "2025-03"]
 
 
 def test_fin_sumar_real_null_si_falta_ipc_de_algun_mes(tmp_path):
@@ -200,11 +207,12 @@ def test_fin_sin_primer_mes_por_marca_hace_null_el_crecimiento_contra_el_mes_par
 
 
 def _periodo_custom(desde, hasta, tmp_path):
-    meses = ["2024-10", "2024-11", "2025-09", "2025-10", "2025-11", "2026-09", "2026-10", "2026-11"]
+    meses = ["2024-10", "2024-11", "2024-12", "2025-01", "2025-02", "2025-09", "2025-10", "2025-11",
+             "2025-12", "2026-01", "2026-02", "2026-09", "2026-10", "2026-11"]
     mensual = ",".join(f'{{mes:"{m}",m:"Temple",fac:1}}' for m in meses)
-    setup = (f'const MENSUAL=[{mensual}];const STATE={{periodo:"custom",fromMes:"{desde}",toMes:"{hasta}"}};'
+    setup = (f'const FIN_SERIE_DESDE="2025-02";const MENSUAL=[{mensual}];const STATE={{periodo:"custom",fromMes:"{desde}",toMes:"{hasta}"}};'
              'const PD={};')
-    return run_dom_js(["finSinPrimerMes", "getCustomMeses", "finYoyMes", "finPeriodoActual"], setup,
+    return run_dom_js(["finSinPrimerMes", "finSerieComparable", "getCustomMeses", "finYoyMes", "finPeriodoActual"], setup,
                       "finPeriodoActual()", tmp_path)
 
 
@@ -214,6 +222,23 @@ def test_fin_periodo_custom_con_oct25_no_compara_contra_oct24_parcial(tmp_path):
     assert r["yoyMeses"] == []   # oct-24 es el arranque de la serie (mes parcial)
 
 
-def test_fin_periodo_custom_sin_el_mes_de_arranque_compara_normal(tmp_path):
-    r = _periodo_custom("2025-11", "2025-11", tmp_path)
-    assert r["yoyMeses"] == ["2024-11"]
+def test_fin_periodo_custom_contra_meses_de_carga_incompleta_no_compara(tmp_path):
+    # nov-24 a ene-25 tienen la red a medio cargar (antes de FIN_SERIE_DESDE)
+    assert _periodo_custom("2025-11", "2025-11", tmp_path)["yoyMeses"] == []
+    assert _periodo_custom("2026-01", "2026-02", tmp_path)["yoyMeses"] == []
+
+
+def test_fin_periodo_custom_desde_fin_serie_desde_compara_normal(tmp_path):
+    r = _periodo_custom("2026-02", "2026-02", tmp_path)
+    assert r["yoyMeses"] == ["2025-02"]
+
+
+def test_fin_serie_desde_es_feb25(tmp_path):
+    assert run_js("FIN_SERIE_DESDE", tmp_path) == "2025-02"
+
+
+def test_fin_serie_comparable_corta_antes_de_fin_serie_desde_y_el_arranque_de_la_marca(tmp_path):
+    temple = '[{mes:"2024-10"},{mes:"2024-11"},{mes:"2025-01"},{mes:"2025-02"},{mes:"2025-03"}]'
+    nueva = '[{mes:"2025-06",l:"A"},{mes:"2025-06",l:"B"},{mes:"2025-07",l:"A"}]'   # marca que arranca después
+    r = run_js(f'[finSerieComparable({temple}).map(r=>r.mes),finSerieComparable({nueva}).map(r=>r.mes)]', tmp_path)
+    assert r == [["2025-02", "2025-03"], ["2025-07"]]
