@@ -227,3 +227,22 @@ def test_plantilla_badge_tiene_ids_para_el_render():
         html = f.read()
     assert 'id="dataBadge"' in html and 'id="dataBadgeTxt"' in html
     assert "buildCalidadDatos()" in html
+
+
+def test_calidad_todas_atrasadas_misma_fecha_resume_en_una_frase(tmp_path):
+    # caso típico de pipeline caído: no repetir la fecha por marca
+    uv = _uv(Temple=["2026-09-28"], Patagonia=["2026-09-28"], Feriado=["2026-09-28"])
+    r = run_js(f"calidadDatos({uv},new Date(2026,8,30))", tmp_path)
+    assert r["estado"] == "warn" and r["texto"] == "Atrasado: todas las marcas hasta 28/09"
+
+
+def test_calidad_todas_atrasadas_distinta_fecha_lista_por_marca(tmp_path):
+    uv = _uv(Temple=["2026-09-28"], Feriado=["2026-09-26"])
+    assert run_js(f"calidadDatos({uv},new Date(2026,8,30))", tmp_path)["texto"] == \
+        "Atrasado: Feriado hasta 26/09 · Temple hasta 28/09"
+
+
+def test_plantilla_oculta_separador_del_header_en_celular():
+    with open(TEMPLATE, encoding="utf-8") as f:
+        html = f.read()
+    assert re.search(r"@media \(max-width:480px\)\{\s*\.t-hdr-right \.t-sep\{display:none\}", html)
