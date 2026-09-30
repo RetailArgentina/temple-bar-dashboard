@@ -139,3 +139,91 @@ def test_build_excepciones_pinta_filas_filtra_marca_y_avisa_sin_ultima_venta(tmp
     tabla, sub = json.loads(out.stdout)
     assert "WTC" in tabla and "LELOIR" not in tabla
     assert "sin datos de última venta" in sub.lower()
+
+
+# ── Badge de calidad de datos (encabezado): frescura por marca vs la fecha de quien mira ──
+
+def _uv(**marcas):
+    """marcas: {marca: [último día por local, ...]} → literal JS de ULTIMA_VENTA."""
+    return json.dumps([{"m": m, "l": f"L{i}", "u": u} for m, us in marcas.items() for i, u in enumerate(us)])
+
+
+HOY = "new Date(2026,8,29)"
+
+
+def test_calidad_todas_las_marcas_hasta_ayer_esta_al_dia(tmp_path):
+    uv = _uv(Temple=["2026-09-28"], Patagonia=["2026-09-28"], Feriado=["2026-09-28"])
+    r = run_js(f"calidadDatos({uv},{HOY})", tmp_path)
+    assert r["estado"] == "fresh"
+    assert "al día" in r["texto"] and "28/09" in r["texto"]
+
+
+def test_calidad_la_marca_toma_su_local_mas_reciente(tmp_path):
+    # un local viejo no atrasa a la marca (eso lo cubre "Locales a mirar")
+    uv = _uv(Temple=["2026-09-10", "2026-09-28"], Feriado=["2026-09-28"])
+    assert run_js(f"calidadDatos({uv},{HOY})", tmp_path)["estado"] == "fresh"
+
+
+def test_calidad_marca_atrasada_2_o_3_dias_es_warn_y_la_nombra(tmp_path):
+    for u in ("2026-09-27", "2026-09-26"):
+        uv = _uv(Temple=["2026-09-28"], Feriado=[u])
+        r = run_js(f"calidadDatos({uv},{HOY})", tmp_path)
+        assert r["estado"] == "warn"
+        assert "Feriado" in r["texto"] and u[8:10] + "/09" in r["texto"] and "Temple" not in r["texto"]
+
+
+def test_calidad_mas_de_3_dias_es_stale_y_ordena_peor_primero(tmp_path):
+    uv = _uv(Temple=["2026-09-28"], Patagonia=["2026-09-27"], Feriado=["2026-09-23"])
+    r = run_js(f"calidadDatos({uv},{HOY})", tmp_path)
+    assert r["estado"] == "stale"
+    assert r["texto"].index("Feriado") < r["texto"].index("Patagonia")
+    assert "Temple" not in r["texto"]
+    # el detalle (tooltip) lista todas las marcas
+    assert all(m in r["detalle"] for m in ("Temple", "Patagonia", "Feriado"))
+
+
+def test_calidad_pipeline_caido_se_pone_rojo_con_el_paso_de_los_dias(tmp_path):
+    # mismo HTML (datos hasta 28/09) mirado una semana después
+    uv = _uv(Temple=["2026-09-28"], Patagonia=["2026-09-28"], Feriado=["2026-09-28"])
+    assert run_js(f"calidadDatos({uv},new Date(2026,9,5))", tmp_path)["estado"] == "stale"
+
+
+def test_calidad_sin_ultima_venta_devuelve_null(tmp_path):
+    assert run_js(f"calidadDatos(null,{HOY})", tmp_path) is None
+    assert run_js(f"calidadDatos([],{HOY})", tmp_path) is None
+
+
+def _run_build_calidad(tmp_path, ultima_venta_js):
+    with open(TEMPLATE, encoding="utf-8") as f:
+        html = f.read()
+    fn = re.search(r"^function buildCalidadDatos\(.*?^\}\n", html, re.S | re.M)
+    assert fn, "no se encontró buildCalidadDatos"
+    dom = ("const _els={dataBadge:{className:'data-badge data-badge-fresh',title:'py'},"
+           "dataBadgeTxt:{textContent:'Datos al 28 Sep 2026 · actualizado hoy'}};"
+           "const document={getElementById:id=>_els[id]||null};\n")
+    script = tmp_path / "badge.js"
+    script.write_text(dom + _bloque(html, "FINANZAS_CORE") + _bloque(html, "EXCEPCIONES_CORE") + fn.group(0)
+                      + f"const ULTIMA_VENTA={ultima_venta_js};buildCalidadDatos(new Date(2026,8,29));"
+                      + "console.log(JSON.stringify([_els.dataBadge.className,_els.dataBadge.title,"
+                      + "_els.dataBadgeTxt.textContent]));", encoding="utf-8")
+    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True)
+    return json.loads(out.stdout)
+
+
+def test_build_calidad_pinta_el_badge_por_marca(tmp_path):
+    cls, title, txt = _run_build_calidad(tmp_path, _uv(Temple=["2026-09-28"], Feriado=["2026-09-23"]))
+    assert cls == "data-badge data-badge-stale"
+    assert txt.startswith("Atrasado: Feriado hasta 23/09")
+    assert "Temple: 28/09" in title
+
+
+def test_build_calidad_sin_ultima_venta_deja_el_badge_del_pipeline(tmp_path):
+    cls, title, txt = _run_build_calidad(tmp_path, "null")
+    assert cls == "data-badge data-badge-fresh" and title == "py" and txt.startswith("Datos al 28 Sep")
+
+
+def test_plantilla_badge_tiene_ids_para_el_render():
+    with open(TEMPLATE, encoding="utf-8") as f:
+        html = f.read()
+    assert 'id="dataBadge"' in html and 'id="dataBadgeTxt"' in html
+    assert "buildCalidadDatos()" in html

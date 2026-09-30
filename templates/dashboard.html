@@ -114,7 +114,7 @@ function loadChartJS(cb){
         </div>
       </div>
       <div class="t-hdr-right">
-        <span class="data-badge __BADGE_CLASS__" title="Último registro en BigQuery: __LAST_DATA_DATE__"><span class="dot"></span>Datos al __LAST_DATA_DATE__ &middot; __DAYS_STALE_LABEL__</span>
+        <span id="dataBadge" class="data-badge __BADGE_CLASS__" title="Último registro en BigQuery: __LAST_DATA_DATE__"><span class="dot"></span><span id="dataBadgeTxt">Datos al __LAST_DATA_DATE__ &middot; __DAYS_STALE_LABEL__</span></span>
         <div class="t-sep" style="height:20px"></div>
         <a href="/admin" class="t-btn-ghost">Admin</a>
       </div>
@@ -761,7 +761,36 @@ function excOrdenar(lista, marca){
   const o={Alta:0, Media:1};
   return lista.filter(x=>marca==="todas"||x.m===marca).sort((a,b)=>(o[a.sev]??9)-(o[b.sev]??9));
 }
+/* Badge del encabezado: frescura por marca (último día con venta de cualquiera de sus locales)
+   contra la fecha de quien mira, así también se pone rojo si el pipeline deja de correr.
+   fresh: todas hasta ayer · warn: peor atraso ≤ EXC_DIAS_SIN_DATOS · stale: más. null sin datos. */
+function calidadDatos(ultimaVenta, hoy){
+  if(!ultimaVenta||!ultimaVenta.length) return null;
+  const h=new Date(hoy.getFullYear(),hoy.getMonth(),hoy.getDate());
+  const diasDesde=u=>{ const [y,m,d]=u.split("-"); return Math.round((h-new Date(+y,+m-1,+d))/864e5); };
+  const fmt=u=>u.slice(8,10)+"/"+u.slice(5,7);
+  const ult={};
+  ultimaVenta.forEach(r=>{ if(!ult[r.m]||r.u>ult[r.m]) ult[r.m]=r.u; });
+  const marcas=Object.keys(ult).map(m=>({m, u:ult[m], dias:diasDesde(ult[m])})).sort((a,b)=>b.dias-a.dias||a.m.localeCompare(b.m));
+  const peor=marcas[0].dias;
+  const estado=peor<=1?"fresh":peor<=EXC_DIAS_SIN_DATOS?"warn":"stale";
+  const texto=estado==="fresh"
+    ? `Datos al día · hasta ${fmt(marcas[marcas.length-1].u)}`
+    : "Atrasado: "+marcas.filter(x=>x.dias>1).map(x=>`${x.m} hasta ${fmt(x.u)}`).join(" · ");
+  const detalle="Último día con venta — "+marcas.map(x=>`${x.m}: ${fmt(x.u)}`).join(" · ");
+  return {estado, texto, detalle, marcas};
+}
 /* EXCEPCIONES_CORE:END */
+
+/* Badge de frescura del encabezado; si ULTIMA_VENTA falló queda el que inyectó el pipeline. */
+function buildCalidadDatos(hoy){
+  const c=calidadDatos(ULTIMA_VENTA, hoy||new Date());
+  const el=document.getElementById("dataBadge"), txt=document.getElementById("dataBadgeTxt");
+  if(!c||!el||!txt) return;
+  el.className="data-badge data-badge-"+c.estado;
+  el.title=c.detalle;
+  txt.textContent=c.texto;
+}
 
 /* Panel "Locales a mirar" (Ventas): no depende del período elegido, solo de la marca. */
 function buildExcepciones(hoy){
@@ -2175,6 +2204,7 @@ function buildObjetivosPorMarca(){
 function updateAll(){
   try { updateBannerKPI(); buildTend(); buildRoyalties(); buildPlanAccion(); buildPotencialLocales(); buildDias(); buildTop10(); buildObjetivos(); buildObjetivosResumen(); buildObjetivosPorMarca(); buildLocalesTable(); } catch(e){ console.error('[updateAll]',e); }
   try { buildExcepciones(); } catch(e){ console.error('[updateAll excepciones]',e); }
+  try { buildCalidadDatos(); } catch(e){ console.error('[updateAll calidad datos]',e); }
   // try propio: un error en Ventas no deja a Finanzas sin actualizar (ni al revés)
   try { if(document.getElementById('view-finanzas').style.display==='block') buildFinanzas(); } catch(e){ console.error('[updateAll finanzas]',e); }
 }
