@@ -95,3 +95,146 @@ def test_parse_mes_actual_es_valido():
 def test_parse_texto_vacio_da_error():
     filas, errores = wtc.wtc_parse_filas("   \n ", HOY)
     assert filas == [] and errores == [{"linea": 0, "error": "No hay filas para cargar"}]
+
+
+# ── Tipo de cambio BCRA ──────────────────────────────────────────────────────
+
+from types import SimpleNamespace
+
+import requests
+
+# Forma real verificada 01/10/2026 contra la API BCRA (recortada; oct-26 sintético).
+BCRA_PAYLOAD = {
+    "status": 200,
+    "metadata": {"resultset": {"count": 5, "offset": 0, "limit": 1000}},
+    "results": [
+        {"fecha": "2026-10-01", "detalle": [{"codigoMoneda": "UYU", "descripcion": "PESO URUGUAYO",
+                                             "tipoPase": 0.0248, "tipoCotizacion": 37.70}]},
+        {"fecha": "2026-09-30", "detalle": [{"codigoMoneda": "UYU", "descripcion": "PESO URUGUAYO",
+                                             "tipoPase": 0.024846, "tipoCotizacion": 37.691782}]},
+        {"fecha": "2026-09-29", "detalle": [{"codigoMoneda": "UYU", "descripcion": "PESO URUGUAYO",
+                                             "tipoPase": 0.024837, "tipoCotizacion": 37.801925}]},
+        {"fecha": "2026-09-28", "detalle": [{"codigoMoneda": "UYU", "descripcion": "PESO URUGUAYO",
+                                             "tipoPase": 0.024832, "tipoCotizacion": 37.856965}]},
+        {"fecha": "2026-09-25", "detalle": [{"codigoMoneda": "UYU", "descripcion": "PESO URUGUAYO",
+                                             "tipoPase": 0.024766, "tipoCotizacion": 37.780942}]},
+    ],
+}
+
+
+class FakeBQ:
+    """Cliente BigQuery falso: devuelve filas según un fragmento del SQL y registra las llamadas."""
+    def __init__(self, respuestas=None, falla=None):
+        self.respuestas = respuestas or {}   # {fragmento_sql: [dict, ...]}
+        self.falla = falla
+        self.llamadas = []
+
+    def query(self, sql, job_config=None):
+        self.llamadas.append((sql, job_config))
+        if self.falla:
+            raise self.falla
+        filas = [] if sql.lstrip().upper().startswith("MERGE") else \
+            next((v for k, v in self.respuestas.items() if k in sql), [])
+        return SimpleNamespace(result=lambda: [SimpleNamespace(**f) for f in filas])
+
+
+def _merges(fake):
+    return [(sql, jc) for sql, jc in fake.llamadas if sql.lstrip().upper().startswith("MERGE")]
+
+
+def _struct(p):
+    """Valores de un StructQueryParameter como dict {campo: valor}."""
+    return dict(p.struct_values)
+
+
+def test_promedio_mensual_promedia_dias_habiles_por_mes():
+    p = wtc.promedio_mensual(BCRA_PAYLOAD)
+    sep = (37.691782 + 37.801925 + 37.856965 + 37.780942) / 4
+    assert p["2026-09"][0] == pytest.approx(sep) and p["2026-09"][1] == 4
+    assert p["2026-10"][0] == pytest.approx(37.70) and p["2026-10"][1] == 1
+
+
+def test_promedio_mensual_ignora_otras_monedas_y_nulos():
+    payload = {"results": [
+        {"fecha": "2026-09-30", "detalle": [{"codigoMoneda": "USD", "tipoCotizacion": 1400}]},
+        {"fecha": "2026-09-29", "detalle": [{"codigoMoneda": "UYU", "tipoCotizacion": None}]},
+        {"fecha": "2026-09-28", "detalle": [{"codigoMoneda": "UYU", "tipoCotizacion": 37.0}]},
+    ]}
+    assert wtc.promedio_mensual(payload) == {"2026-09": (37.0, 1)}
+
+
+def test_promedio_mensual_payload_vacio():
+    assert wtc.promedio_mensual({}) == {}
+
+
+def test_meses_pendientes_primera_vez_trae_desde_ene25():
+    assert wtc.meses_pendientes({}, date(2025, 3, 10)) == ["2025-01", "2025-02", "2025-03"]
+
+
+def test_meses_pendientes_solo_faltantes_o_incompletos():
+    existentes = {"2025-01": True, "2025-02": False, "2025-03": True}
+    assert wtc.meses_pendientes(existentes, date(2025, 4, 2)) == ["2025-02", "2025-04"]
+
+
+def test_descargar_cotizaciones_reintenta_2_veces_y_lanza(monkeypatch):
+    intentos = []
+    def get(*a, **kw):
+        intentos.append(kw.get("timeout"))
+        raise requests.ConnectionError("caída")
+    monkeypatch.setattr(wtc.requests, "get", get)
+    with pytest.raises(RuntimeError, match="BCRA"):
+        wtc.descargar_cotizaciones(date(2026, 9, 1), date(2026, 9, 30), espera=0)
+    assert len(intentos) == 3 and all(t and t <= 15 for t in intentos)
+
+
+def test_descargar_cotizaciones_pasa_rango_de_fechas(monkeypatch):
+    visto = {}
+    class R:
+        def raise_for_status(self): pass
+        def json(self): return BCRA_PAYLOAD
+    def get(url, params=None, timeout=None):
+        visto.update(url=url, params=params)
+        return R()
+    monkeypatch.setattr(wtc.requests, "get", get)
+    assert wtc.descargar_cotizaciones(date(2026, 9, 1), date(2026, 10, 1)) == BCRA_PAYLOAD
+    assert visto["url"] == wtc.BCRA_URL
+    assert visto["params"]["fechadesde"] == "2026-09-01" and visto["params"]["fechahasta"] == "2026-10-01"
+
+
+def test_actualizar_tc_escribe_meses_pendientes_con_completo(monkeypatch):
+    hechos = [f"2025-{i:02d}" for i in range(1, 13)] + [f"2026-{i:02d}" for i in range(1, 9)]
+    fake = FakeBQ({"tipo_cambio_uyu_ars": [{"mes": m, "completo": True} for m in hechos]})
+    monkeypatch.setattr(wtc, "descargar_cotizaciones", lambda d, h: BCRA_PAYLOAD)
+    wtc.actualizar_tipo_cambio_uyu(fake, HOY, log=lambda *_: None)
+    (sql, jc), = _merges(fake)
+    assert "INSERT (mes, ars_por_uyu, dias, completo, actualizado_en)" in sql
+    assert "INSERT ROW" not in sql
+    filas = {_struct(p)["mes"]: _struct(p) for p in jc.query_parameters[0].values}
+    assert set(filas) == {"2026-09", "2026-10"}
+    assert filas["2026-09"]["completo"] is True and filas["2026-09"]["dias"] == 4
+    assert filas["2026-10"]["completo"] is False
+
+
+def test_actualizar_tc_al_dia_no_llama_a_la_api(monkeypatch):
+    todos = [f"2025-{i:02d}" for i in range(1, 13)] + [f"2026-{i:02d}" for i in range(1, 11)]
+    fake = FakeBQ({"tipo_cambio_uyu_ars": [{"mes": m, "completo": True} for m in todos]})
+    monkeypatch.setattr(wtc, "descargar_cotizaciones", lambda d, h: pytest.fail("no debía llamar"))
+    wtc.actualizar_tipo_cambio_uyu(fake, HOY, log=lambda *_: None)
+    assert _merges(fake) == []
+
+
+def test_actualizar_tc_api_caida_no_lanza_ni_escribe(monkeypatch):
+    # Review Focus #4
+    logs = []
+    fake = FakeBQ({})
+    def caida(d, h): raise RuntimeError("API BCRA sin respuesta")
+    monkeypatch.setattr(wtc, "descargar_cotizaciones", caida)
+    wtc.actualizar_tipo_cambio_uyu(fake, HOY, log=logs.append)
+    assert _merges(fake) == []
+    assert any(l.strip().startswith("WARN WTC") for l in logs)
+
+
+def test_actualizar_tc_bq_caido_no_lanza():
+    logs = []
+    wtc.actualizar_tipo_cambio_uyu(FakeBQ(falla=RuntimeError("BQ 503")), HOY, log=logs.append)
+    assert any("WARN WTC" in l for l in logs)
