@@ -186,7 +186,11 @@ def actualizar_tipo_cambio_uyu(client, hoy=None, log=print):
                   "completo": m < mes_actual}
                  for m in pendientes if m in promedios and promedios[m][1] > 0]
         if not filas:
-            log(f"  WARN WTC tipo de cambio: la API no trajo cotizaciones para {pendientes[0]}..{pendientes[-1]}")
+            if pendientes == [mes_actual]:
+                # Normal los primeros días hábiles del mes: BCRA todavía no publicó el mes en curso
+                log(f"  WTC tipo de cambio: {mes_actual} todavía sin cotización publicada")
+            else:
+                log(f"  WARN WTC tipo de cambio: la API no trajo cotizaciones para {pendientes[0]}..{pendientes[-1]}")
             return
         client.query(MERGE_TC_SQL, job_config=_param_filas(
             filas, {"mes": "STRING", "ars_por_uyu": "STRING", "dias": "INT64", "completo": "BOOL"})).result()

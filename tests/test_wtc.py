@@ -417,3 +417,13 @@ def test_fetch_wtc_actualiza_tc_y_lee_tablas(monkeypatch):
 def test_plantilla_tiene_marcador_wtc_info():
     with open("templates/dashboard.html", encoding="utf-8") as f:
         assert "const WTC_INFO = __WTC_INFO_JSON__;" in f.read()
+
+
+def test_actualizar_tc_mes_en_curso_sin_publicar_no_es_warn(monkeypatch):
+    # Final review M1: el 1° hábil del mes BCRA todavía no publicó el mes en curso → no es una falla
+    hechos = [f"2025-{i:02d}" for i in range(1, 13)] + [f"2026-{i:02d}" for i in range(1, 10)]
+    fake = FakeBQ({"tipo_cambio_uyu_ars": [{"mes": m, "completo": True} for m in hechos]})
+    monkeypatch.setattr(wtc, "descargar_cotizaciones", lambda d, h: {"results": []})
+    logs = []
+    wtc.actualizar_tipo_cambio_uyu(fake, HOY, log=logs.append)
+    assert _merges(fake) == [] and logs and not any("WARN" in l for l in logs)
