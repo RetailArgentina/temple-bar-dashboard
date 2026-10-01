@@ -608,6 +608,25 @@ def inject_ipc(html, ipc_data):
     return html
 
 
+def fetch_wtc(client, hoy=None):
+    # WTC (Uruguay): primero completa el tipo de cambio BCRA (nunca lanza), después lee la carga
+    # manual y las cotizaciones. Si la lectura falla, _safe devuelve None y el tablero sale sin WTC.
+    import wtc
+    print("  WTC: tipo de cambio + carga manual...", flush=True)
+    wtc.actualizar_tipo_cambio_uyu(client, hoy)
+    filas = wtc.leer_carga(client)
+    cotizaciones = wtc.leer_cotizaciones(client)
+    print(f"  ✓ WTC: {len(filas)} meses cargados, {len(cotizaciones)} cotizaciones")
+    return {"filas": filas, "cotizaciones": cotizaciones}
+
+
+def inject_wtc_info(html, info):
+    """Reemplaza __WTC_INFO_JSON__ (nota y avisos de WTC en Ventas y Finanzas)."""
+    if '__WTC_INFO_JSON__' not in html:
+        return html
+    return html.replace('__WTC_INFO_JSON__', json.dumps(info, separators=(',', ':')))
+
+
 def fetch_turnos_data(client):
     # Mismo problema/fix que fetch_mensual_data: Orden se reinicia por Local,
     # asi que se agrupa por mes+Local primero y se suma despues (m,t no
@@ -1217,7 +1236,8 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
                              producto_data=None,
                              local_mensual_rows=None,
                              ipc_data=None,
-                             ultima_venta_rows=None):
+                             ultima_venta_rows=None,
+                             wtc_info=None):
     """Generate the dashboard HTML by reading the template.
 
     Template resolution order:
@@ -1348,6 +1368,7 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
     # ── Inyección de IPC (pestaña Finanzas) ──────────────────────────────
     html = inject_ipc(html, ipc_data)
     html = inject_ultima_venta(html, ultima_venta_rows)
+    html = inject_wtc_info(html, wtc_info)
 
     # ── Inyección de Royalties ────────────────────────────────────────────
     if '__ROYALTY_JSON__' in html:
@@ -1448,6 +1469,7 @@ def main():
             "local_mensual": lambda: fetch_local_mensual_data(client),
             "ipc":        lambda: fetch_ipc_data(args.gcs_bucket),
             "ultima_venta": lambda: fetch_ultima_venta_local(client),
+            "wtc":        lambda: fetch_wtc(client),
         }
 
         results = {}
@@ -1473,6 +1495,19 @@ def main():
         if not mensual_rows:
             print("ERROR: MENSUAL sin datos — abortando para no publicar tablero vacío")
             sys.exit(1)
+
+        # WTC (Uruguay, carga manual): se suma antes de compute_pd/compute_preset_meses
+        from datetime import date as _date
+        mensual_rows, local_mensual_rows, locales_obj_data, loc_count_by_mes, wtc_info = incorporar_wtc(
+            results["wtc"], mensual_rows, local_mensual_rows, locales_obj_data, loc_count_by_mes, _date.today())
+        if wtc_info["error"]:
+            print("  WARN WTC: no se pudo leer la carga manual — tablero sin WTC")
+        if wtc_info["sin_cotizacion"]:
+            print(f"  WARN WTC: meses sin cotización (no sumados): {', '.join(wtc_info['sin_cotizacion'])}")
+        if wtc_info["falta_ultimo_cerrado"]:
+            print(f"  WARN WTC: falta cargar {wtc_info['ultimo_cerrado']}")
+        print(f"  ✓ WTC sumado a Patagonia: {', '.join(wtc_info['meses']) or 'ningún mes'}")
+
         latest_mes   = sorted({r["mes"] for r in mensual_rows})[-1]
         top10_data   = compute_top10(top10_base, latest_mes)
         pd_data      = compute_pd(mensual_rows)
@@ -1495,6 +1530,7 @@ def main():
             local_mensual_rows=local_mensual_rows,
             ipc_data=ipc_data,
             ultima_venta_rows=results["ultima_venta"],
+            wtc_info=wtc_info,
         )
 
         # Upload to GCS if requested (Cloud Run mode)

@@ -385,3 +385,30 @@ def test_incorporar_info_avisa_meses_faltantes():
     assert info["ultimo_cerrado"] == "2026-09" and info["falta_ultimo_cerrado"] is False
     assert info["mes_actual"] == "2026-10" and info["falta_mes_actual"] is True
     assert _inc(hoy=date(2026, 11, 3))[4]["falta_ultimo_cerrado"] is True
+
+
+# ── Pipeline: fetch_wtc / inject_wtc_info ────────────────────────────────────
+
+import json
+
+import actualizar_retail
+
+
+def test_inject_wtc_info_reemplaza_marcador():
+    info = {"error": False, "meses": ["2026-09"]}
+    html = actualizar_retail.inject_wtc_info("const WTC_INFO = __WTC_INFO_JSON__;", info)
+    assert json.loads(html.split("= ", 1)[1].rstrip(";")) == info
+
+
+def test_inject_wtc_info_sin_marcador_no_cambia():
+    assert actualizar_retail.inject_wtc_info("<html>", {"x": 1}) == "<html>"
+
+
+def test_fetch_wtc_actualiza_tc_y_lee_tablas(monkeypatch):
+    orden = []
+    monkeypatch.setattr(wtc, "actualizar_tipo_cambio_uyu", lambda c, hoy=None, log=print: orden.append("tc"))
+    monkeypatch.setattr(wtc, "leer_carga", lambda c: orden.append("carga") or [{"mes": "2026-09"}])
+    monkeypatch.setattr(wtc, "leer_cotizaciones", lambda c: orden.append("cotiz") or {"2026-09": 37.8})
+    d = actualizar_retail.fetch_wtc(object(), HOY)
+    assert orden == ["tc", "carga", "cotiz"]
+    assert d == {"filas": [{"mes": "2026-09"}], "cotizaciones": {"2026-09": 37.8}}
