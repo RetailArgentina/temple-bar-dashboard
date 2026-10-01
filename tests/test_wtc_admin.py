@@ -111,3 +111,13 @@ def test_wtc_post_requiere_csrf(client):
         guardar.assert_not_called()
     finally:
         app.config["WTF_CSRF_ENABLED"] = False
+
+
+def test_admin_muestra_pestana_wtc_con_csrf_jinja(client):
+    c, app = client
+    _set_session(c, app, role="gerencia")
+    html = c.get("/admin").get_data(as_text=True)
+    assert 'id="tab-wtc"' in html and "switchTab('wtc')" in html
+    assert "/api/admin/wtc/preview" in html
+    # CSRF desde la variable Jinja, nunca de cookie
+    assert "'X-CSRFToken': CSRF_TOKEN" in html and "document.cookie" not in html

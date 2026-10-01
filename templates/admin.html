@@ -551,6 +551,7 @@
     <button class="tab-btn" onclick="switchTab('places')">Reseñas Google</button>
     {% endif %}
     <button class="tab-btn {% if user_role == 'gerencia' %}active{% endif %}" onclick="switchTab('objetivos')">Objetivos</button>
+    <button class="tab-btn" onclick="switchTab('wtc')">WTC Uruguay</button>
   </div>
 
   <div id="msg"></div>
@@ -744,6 +745,35 @@
 
   </div>
 
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- TAB: WTC Uruguay — carga mensual (spec 2026-10-01)          -->
+  <div id="tab-wtc" class="tab-panel">
+    <div id="wtc-msg" class="obj-msg"></div>
+    <div class="obj-import-box">
+      <h3>WTC Uruguay · carga mensual</h3>
+      <p style="color:#8b949e;font-size:12px;margin-bottom:12px;">
+        Pegá una fila por mes (tab, <code>;</code> o espacios):<br>
+        <code style="color:#c9a227">mes &nbsp; facturación UYU &nbsp; órdenes &nbsp; litros cerveza</code><br>
+        Mes: <code>2025-01</code>, <code>01/2025</code> o <code>ene-25</code>. Números: <code>12.345.678,50</code> o <code>12345678.50</code>.
+        Si el mes ya está cargado, se reemplaza.
+      </p>
+      <textarea id="wtc-texto" class="obj-input" rows="8" style="width:100%;font-family:monospace"
+                placeholder="2026-09&#9;12.345.678,50&#9;4.210&#9;3.150"></textarea>
+      <button class="btn-preview" onclick="wtcPreview()">Vista previa</button>
+      <button class="btn-save-obj" id="btn-wtc-save" style="display:none" onclick="wtcGuardar()">Guardar</button>
+      <div class="obj-preview-errors" id="wtc-errores"></div>
+      <div class="obj-preview-area" id="wtc-preview" style="overflow-x:auto"></div>
+    </div>
+    <h3 style="font-size:14px;font-weight:600;color:#8b949e;margin:16px 0 12px;">Cargado</h3>
+    <div class="table-wrap" style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Mes</th><th>Facturación UYU</th><th>ARS por UYU</th><th>Facturación ARS</th>
+          <th>Órdenes</th><th>Litros</th><th>Cargado por</th><th>Cuándo</th></tr></thead>
+        <tbody id="wtc-body"><tr><td colspan="8" style="color:#8b949e;text-align:center">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- Modal destilería crear/editar -->
   <div id="dest-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
     <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:28px;width:440px;max-width:95vw">
@@ -847,6 +877,74 @@
 
   <script>
     var CSRF_TOKEN = '{{ csrf_token() }}';
+
+    // ── WTC Uruguay ─────────────────────────────────────────────────────────
+    var wtcCargado = false;
+    function _wtcNum(v, dec) {
+      return (v === null || v === undefined) ? '—'
+        : Number(v).toLocaleString('es-AR', { minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0 });
+    }
+    function _wtcEsc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+    function _wtcMsg(text, type) {
+      var el = document.getElementById('wtc-msg');
+      el.textContent = text; el.className = 'obj-msg ' + type; el.style.display = 'block';
+      setTimeout(function() { el.style.display = 'none'; }, 6000);
+    }
+    function wtcPreview() {
+      var errEl = document.getElementById('wtc-errores'), prevEl = document.getElementById('wtc-preview');
+      var btn = document.getElementById('btn-wtc-save');
+      btn.style.display = 'none'; errEl.style.display = 'none'; prevEl.innerHTML = '';
+      fetch('/api/admin/wtc/preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+        body: JSON.stringify({ texto: document.getElementById('wtc-texto').value })
+      }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.error) { _wtcMsg(d.error, 'err'); return; }
+        if (d.errores && d.errores.length) {
+          errEl.innerHTML = d.errores.map(function(e) {
+            return (e.linea ? 'Línea ' + e.linea + ': ' : '') + _wtcEsc(e.error);
+          }).join('<br>') + '<br><b>No se guarda nada hasta corregir.</b>';
+          errEl.style.display = 'block';
+        }
+        var h = '<table style="font-size:12px;border-collapse:collapse;min-width:100%"><tr><th>Mes</th><th>UYU</th>'
+          + '<th>ARS por UYU</th><th>ARS</th><th>Órdenes</th><th>Litros</th><th></th></tr>';
+        (d.filas || []).forEach(function(f) {
+          h += '<tr><td>' + f.mes + '</td><td>' + _wtcNum(f.facturacion_uyu, 2) + '</td><td>'
+            + (f.ars_por_uyu ? _wtcNum(f.ars_por_uyu, 4) : 'sin cotización (no se suma al tablero)')
+            + '</td><td>' + _wtcNum(f.ars, 0) + '</td><td>' + _wtcNum(f.ordenes) + '</td><td>'
+            + _wtcNum(f.litros_cerveza, 1) + '</td><td>' + (f.reemplaza ? 'reemplaza' : 'nuevo') + '</td></tr>';
+        });
+        prevEl.innerHTML = h + '</table>';
+        if (d.ok) btn.style.display = 'inline-block';
+      }).catch(function(e) { _wtcMsg('Error: ' + e, 'err'); });
+    }
+    function wtcGuardar() {
+      fetch('/api/admin/wtc', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+        body: JSON.stringify({ texto: document.getElementById('wtc-texto').value })
+      }).then(function(r) { return r.json(); }).then(function(d) {
+        if (!d.ok) { _wtcMsg(d.error || 'Hay errores: revisá la vista previa', 'err'); return; }
+        _wtcMsg(d.escritas + ' mes(es) guardados. Se ven en el tablero en la próxima actualización.', 'ok');
+        document.getElementById('btn-wtc-save').style.display = 'none';
+        document.getElementById('wtc-preview').innerHTML = '';
+        document.getElementById('wtc-texto').value = '';
+        wtcCargar();
+      }).catch(function(e) { _wtcMsg('Error: ' + e, 'err'); });
+    }
+    function wtcCargar() {
+      var body = document.getElementById('wtc-body');
+      fetch('/api/admin/wtc', { headers: { 'X-CSRFToken': CSRF_TOKEN } })
+        .then(function(r) { return r.json(); }).then(function(d) {
+          wtcCargado = true;
+          if (!d.ok) { body.innerHTML = '<tr><td colspan="8">' + _wtcEsc(d.error) + '</td></tr>'; return; }
+          if (!d.filas.length) { body.innerHTML = '<tr><td colspan="8" style="color:#8b949e;text-align:center">Sin meses cargados</td></tr>'; return; }
+          body.innerHTML = d.filas.slice().reverse().map(function(f) {
+            return '<tr><td>' + f.mes + '</td><td>' + _wtcNum(f.facturacion_uyu, 2) + '</td><td>'
+              + (f.ars_por_uyu ? _wtcNum(f.ars_por_uyu, 4) : 'sin cotización') + '</td><td>' + _wtcNum(f.ars, 0)
+              + '</td><td>' + _wtcNum(f.ordenes) + '</td><td>' + _wtcNum(f.litros_cerveza, 1) + '</td><td>'
+              + _wtcEsc(f.cargado_por) + '</td><td>' + _wtcEsc((f.cargado_en || '').slice(0, 16).replace('T', ' ')) + '</td></tr>';
+          }).join('');
+        }).catch(function(e) { body.innerHTML = '<tr><td colspan="8">Error: ' + _wtcEsc(e) + '</td></tr>'; });
+    }
 
     // ── Objectives tab ──────────────────────────────────────────────────────
     var _pendingRows = { file: null, sheet: null };
@@ -1014,6 +1112,11 @@
         if (pmBtn) pmBtn.classList.add('active');
         document.getElementById('tab-places').classList.add('active');
         if (!pmDataLoaded) loadPlacesMapping();
+      } else if (tab === 'wtc') {
+        var wBtn = document.querySelector('.tab-btn[onclick*="wtc"]');
+        if (wBtn) wBtn.classList.add('active');
+        document.getElementById('tab-wtc').classList.add('active');
+        if (!wtcCargado) wtcCargar();
       } else {
         btns[1].classList.add('active');
         document.getElementById('tab-clusters').classList.add('active');
