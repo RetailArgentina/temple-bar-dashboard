@@ -17,7 +17,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 
 import anthropic
@@ -34,6 +34,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 import config
 import permissions
+import wtc
 import destileria_auth
 from whatsapp_agent import get_user, get_session, save_session, run_agent
 from weekly_report import run_weekly_report
@@ -1076,6 +1077,63 @@ def api_admin_save_objectives():
             logger.warning("No se pudo exportar objetivos a GCS: %s", gcs_err)
     status = 200 if result["ok"] else 400
     return jsonify(result), status
+
+
+# ---------------------------------------------------------------------------
+# Admin: WTC Uruguay — carga manual mensual (spec 2026-10-01-wtc-carga-manual)
+# ---------------------------------------------------------------------------
+
+def _wtc_con_ars(filas, cotiz):
+    for f in filas:
+        c = cotiz.get(f["mes"])
+        f["ars_por_uyu"] = c
+        f["ars"] = round(f["facturacion_uyu"] * c, 2) if c else None
+    return filas
+
+
+@app.route("/api/admin/wtc", methods=["GET"])
+@require_admin
+def api_admin_wtc_list():
+    try:
+        filas = _wtc_con_ars(wtc.leer_carga(bq_client), wtc.leer_cotizaciones(bq_client))
+    except Exception as exc:
+        logger.warning("WTC: no se pudo leer BigQuery: %s", exc)
+        return jsonify({"ok": False, "error": f"No se pudo leer BigQuery: {exc}"}), 502
+    return jsonify({"ok": True, "filas": filas})
+
+
+@app.route("/api/admin/wtc/preview", methods=["POST"])
+@require_admin
+def api_admin_wtc_preview():
+    """Parsea el pegado y muestra la conversión. No escribe."""
+    texto = (request.get_json(silent=True) or {}).get("texto", "")
+    filas, errores = wtc.wtc_parse_filas(texto, date.today())
+    try:
+        cargados = {r["mes"] for r in wtc.leer_carga(bq_client)}
+        cotiz = wtc.leer_cotizaciones(bq_client)
+    except Exception as exc:
+        logger.warning("WTC preview: no se pudo leer BigQuery: %s", exc)
+        return jsonify({"ok": False, "error": f"No se pudo leer BigQuery: {exc}"}), 502
+    for f in _wtc_con_ars(filas, cotiz):
+        f["reemplaza"] = f["mes"] in cargados
+    return jsonify({"ok": not errores, "filas": filas, "errores": errores})
+
+
+@app.route("/api/admin/wtc", methods=["POST"])
+@require_admin
+def api_admin_wtc_save():
+    """Vuelve a validar el texto (no confía en el navegador) y hace el MERGE. Todo o nada."""
+    texto = (request.get_json(silent=True) or {}).get("texto", "")
+    filas, errores = wtc.wtc_parse_filas(texto, date.today())
+    if errores:
+        return jsonify({"ok": False, "errores": errores}), 400
+    try:
+        n = wtc.guardar_filas(bq_client, filas, session["user"]["email"])
+    except Exception as exc:
+        logger.error("WTC: falló el MERGE: %s", exc)
+        return jsonify({"ok": False, "error": f"No se pudo guardar en BigQuery: {exc}"}), 500
+    logger.info("WTC: %d meses cargados por %s", n, session["user"]["email"])
+    return jsonify({"ok": True, "escritas": n})
 
 
 # ---------------------------------------------------------------------------
