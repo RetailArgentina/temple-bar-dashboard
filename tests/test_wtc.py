@@ -238,3 +238,41 @@ def test_actualizar_tc_bq_caido_no_lanza():
     logs = []
     wtc.actualizar_tipo_cambio_uyu(FakeBQ(falla=RuntimeError("BQ 503")), HOY, log=logs.append)
     assert any("WARN WTC" in l for l in logs)
+
+
+# ── BigQuery: carga manual ───────────────────────────────────────────────────
+
+def test_guardar_filas_merge_con_columnas_explicitas():
+    fake = FakeBQ()
+    filas = [{"mes": "2025-01", "facturacion_uyu": 12345678.5, "ordenes": 1200, "litros_cerveza": 3400.5}]
+    assert wtc.guardar_filas(fake, filas, "admin@ejemplo.com") == 1
+    (sql, jc), = _merges(fake)
+    assert "INSERT (mes, facturacion_uyu, ordenes, litros_cerveza, cargado_por, cargado_en)" in sql
+    assert "INSERT ROW" not in sql
+    params = {p.name: p for p in jc.query_parameters}
+    assert params["email"].value == "admin@ejemplo.com"
+    assert _struct(params["filas"].values[0]) == {"mes": "2025-01", "facturacion_uyu": "12345678.50",
+                                                  "ordenes": 1200, "litros_cerveza": "3400.50"}
+
+
+def test_guardar_filas_vacio_no_consulta():
+    fake = FakeBQ()
+    assert wtc.guardar_filas(fake, [], "x@y") == 0 and fake.llamadas == []
+
+
+def test_leer_carga_convierte_tipos():
+    from datetime import datetime, timezone
+    from decimal import Decimal
+    fake = FakeBQ({"wtc_manual_mensual": [{
+        "mes": "2025-01", "facturacion_uyu": Decimal("100.50"), "ordenes": 3,
+        "litros_cerveza": Decimal("7.25"), "cargado_por": "a@b",
+        "cargado_en": datetime(2026, 10, 1, 12, tzinfo=timezone.utc)}]})
+    assert wtc.leer_carga(fake) == [{"mes": "2025-01", "facturacion_uyu": 100.5, "ordenes": 3,
+                                     "litros_cerveza": 7.25, "cargado_por": "a@b",
+                                     "cargado_en": "2026-10-01T12:00:00+00:00"}]
+
+
+def test_leer_cotizaciones_devuelve_float_por_mes():
+    from decimal import Decimal
+    fake = FakeBQ({"tipo_cambio_uyu_ars": [{"mes": "2025-01", "ars_por_uyu": Decimal("23.6")}]})
+    assert wtc.leer_cotizaciones(fake) == {"2025-01": 23.6}

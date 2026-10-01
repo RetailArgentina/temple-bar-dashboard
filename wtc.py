@@ -193,3 +193,48 @@ def actualizar_tipo_cambio_uyu(client, hoy=None, log=print):
         log(f"  ✓ WTC tipo de cambio: {len(filas)} meses actualizados ({filas[0]['mes']}..{filas[-1]['mes']})")
     except Exception as exc:
         log(f"  WARN WTC tipo de cambio: {exc}")
+
+
+# ── BigQuery: carga manual ───────────────────────────────────────────────────
+
+MERGE_CARGA_SQL = f"""
+MERGE `{TABLA_CARGA}` T
+USING (SELECT PARSE_DATE('%Y-%m', f.mes) AS mes, CAST(f.facturacion_uyu AS NUMERIC) AS facturacion_uyu,
+              f.ordenes, CAST(f.litros_cerveza AS NUMERIC) AS litros_cerveza
+       FROM UNNEST(@filas) AS f) S
+ON T.mes = S.mes
+WHEN MATCHED THEN UPDATE SET facturacion_uyu = S.facturacion_uyu, ordenes = S.ordenes,
+                             litros_cerveza = S.litros_cerveza, cargado_por = @email,
+                             cargado_en = CURRENT_TIMESTAMP()
+WHEN NOT MATCHED THEN INSERT (mes, facturacion_uyu, ordenes, litros_cerveza, cargado_por, cargado_en)
+                      VALUES (S.mes, S.facturacion_uyu, S.ordenes, S.litros_cerveza, @email, CURRENT_TIMESTAMP())
+"""
+
+
+def guardar_filas(client, filas, email):
+    """Upsert por mes. filas = salida válida de wtc_parse_filas. Devuelve filas escritas."""
+    if not filas:
+        return 0
+    from google.cloud import bigquery
+    jc = _param_filas(
+        [{"mes": f["mes"], "facturacion_uyu": f"{f['facturacion_uyu']:.2f}", "ordenes": f["ordenes"],
+          "litros_cerveza": f"{f['litros_cerveza']:.2f}"} for f in filas],
+        {"mes": "STRING", "facturacion_uyu": "STRING", "ordenes": "INT64", "litros_cerveza": "STRING"})
+    jc.query_parameters = list(jc.query_parameters) + [bigquery.ScalarQueryParameter("email", "STRING", email)]
+    client.query(MERGE_CARGA_SQL, job_config=jc).result()
+    return len(filas)
+
+
+def leer_carga(client):
+    q = f"""SELECT FORMAT_DATE('%Y-%m', mes) AS mes, facturacion_uyu, ordenes, litros_cerveza,
+                   cargado_por, cargado_en
+            FROM `{TABLA_CARGA}` ORDER BY mes"""
+    return [{"mes": r.mes, "facturacion_uyu": float(r.facturacion_uyu), "ordenes": int(r.ordenes),
+             "litros_cerveza": float(r.litros_cerveza), "cargado_por": r.cargado_por,
+             "cargado_en": r.cargado_en.isoformat() if r.cargado_en else None}
+            for r in client.query(q).result()]
+
+
+def leer_cotizaciones(client):
+    q = f"SELECT FORMAT_DATE('%Y-%m', mes) AS mes, ars_por_uyu FROM `{TABLA_TC}`"
+    return {r.mes: float(r.ars_por_uyu) for r in client.query(q).result()}
