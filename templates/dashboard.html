@@ -230,6 +230,7 @@ function loadChartJS(cb){
     </div>
   </div>
 </section>
+<p class="note" id="wtcNotaVentas" style="padding:0 0 12px;margin:0;display:none"></p>
 
 <section class="sec card" style="padding-bottom:0">
   <h2>Locales a mirar</h2>
@@ -399,6 +400,7 @@ function loadChartJS(cb){
   <div class="kpi-grid" id="finResto"></div>
 </section>
 
+<p class="note" id="wtcNotaFin" style="display:none"></p>
 <p class="note" id="finEstimadoNota"></p>
 </div><!-- /finContenido -->
 
@@ -498,6 +500,9 @@ const LOCAL_MENSUAL = __LOCAL_MENSUAL_JSON__;
 const IPC = __IPC_JSON__;
 // Último día con venta por marca+local (60 días) para "Locales a mirar"; null si la consulta falló.
 const ULTIMA_VENTA = __ULTIMA_VENTA_JSON__;
+// WTC (Uruguay): carga manual mensual convertida a ARS, ya sumada a MENSUAL/LOCAL_MENSUAL/LOCALES_OBJ
+// en el pipeline. Acá solo viene la info para la nota y los avisos (null si la plantilla no se inyectó).
+const WTC_INFO = __WTC_INFO_JSON__;
 /* FINANZAS_CORE:START — cálculos de la pestaña Finanzas. Funciones puras: no leen el DOM
    ni variables globales (reciben todo por parámetro). Las testea tests/test_finanzas_js.py. */
 const FIN_UMBRAL_EXIGENTE = 10; // % real pedido por encima del cual un objetivo es "Exigente"
@@ -2206,10 +2211,38 @@ function buildObjetivosPorMarca(){
 }
 
 
+function _wtcMes(m){
+  const n=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+  return n[+m.slice(5,7)-1]+"-"+m.slice(2,4);
+}
+
+/* Nota de WTC (Uruguay) para Ventas y Finanzas. Pura: recibe WTC_INFO por parámetro. */
+function wtcNotaTexto(info, finanzas){
+  if(!info) return "";
+  let t="WTC (Uruguay): carga manual mensual, convertida al oficial BCRA.";
+  if(finanzas) t+=" Se deflacta con IPC argentino como el resto; en same-store entra solo si tiene cargado el mismo mes del año anterior.";
+  if(info.error) return t+" ⚠ No se pudo leer la carga de WTC: este tablero no lo incluye.";
+  if(info.falta_ultimo_cerrado) t+=" ⚠ Falta cargar "+_wtcMes(info.ultimo_cerrado)+".";
+  if(info.falta_mes_actual) t+=" Mes en curso ("+_wtcMes(info.mes_actual)+") sin cargar.";
+  if((info.sin_cotizacion||[]).length) t+=" ⚠ Sin cotización BCRA (no sumados): "+info.sin_cotizacion.map(_wtcMes).join(", ")+".";
+  return t;
+}
+
+function buildWtcNota(){
+  const ver=!!WTC_INFO&&(STATE.marca==="todas"||STATE.marca==="Patagonia");
+  [["wtcNotaVentas",false],["wtcNotaFin",true]].forEach(([id,fin])=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    el.textContent=wtcNotaTexto(WTC_INFO,fin);
+    el.style.display=ver?"block":"none";
+  });
+}
+
 function updateAll(){
   try { updateBannerKPI(); buildTend(); buildRoyalties(); buildPlanAccion(); buildPotencialLocales(); buildDias(); buildTop10(); buildObjetivos(); buildObjetivosResumen(); buildObjetivosPorMarca(); buildLocalesTable(); } catch(e){ console.error('[updateAll]',e); }
   try { buildExcepciones(); } catch(e){ console.error('[updateAll excepciones]',e); }
   try { buildCalidadDatos(); } catch(e){ console.error('[updateAll calidad datos]',e); }
+  try { buildWtcNota(); } catch(e){ console.error('[updateAll wtc]',e); }
   // try propio: un error en Ventas no deja a Finanzas sin actualizar (ni al revés)
   try { if(document.getElementById('view-finanzas').style.display==='block') buildFinanzas(); } catch(e){ console.error('[updateAll finanzas]',e); }
 }

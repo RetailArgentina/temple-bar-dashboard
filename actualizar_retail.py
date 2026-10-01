@@ -608,6 +608,25 @@ def inject_ipc(html, ipc_data):
     return html
 
 
+def fetch_wtc(client, hoy=None):
+    # WTC (Uruguay): primero completa el tipo de cambio BCRA (nunca lanza), después lee la carga
+    # manual y las cotizaciones. Si la lectura falla, _safe devuelve None y el tablero sale sin WTC.
+    import wtc
+    print("  WTC: tipo de cambio + carga manual...", flush=True)
+    wtc.actualizar_tipo_cambio_uyu(client, hoy)
+    filas = wtc.leer_carga(client)
+    cotizaciones = wtc.leer_cotizaciones(client)
+    print(f"  ✓ WTC: {len(filas)} meses cargados, {len(cotizaciones)} cotizaciones")
+    return {"filas": filas, "cotizaciones": cotizaciones}
+
+
+def inject_wtc_info(html, info):
+    """Reemplaza __WTC_INFO_JSON__ (nota y avisos de WTC en Ventas y Finanzas)."""
+    if '__WTC_INFO_JSON__' not in html:
+        return html
+    return html.replace('__WTC_INFO_JSON__', json.dumps(info, separators=(',', ':')))
+
+
 def fetch_turnos_data(client):
     # Mismo problema/fix que fetch_mensual_data: Orden se reinicia por Local,
     # asi que se agrupa por mes+Local primero y se suma despues (m,t no
@@ -813,6 +832,57 @@ def compute_preset_meses(mensual_rows):
         "ultimos_6m":   [last6[0], latest],
         "ytd":          [ytd[0] if ytd else latest[:4]+"-01", latest],
     }
+
+def incorporar_wtc(wtc_data, mensual_rows, local_mensual_rows, locales_obj_data, loc_count_by_mes, hoy):
+    """Suma WTC (Uruguay, carga manual mensual convertida a ARS) a Patagonia. Pura: no muta.
+    wtc_data = {"filas": wtc.leer_carga(), "cotizaciones": wtc.leer_cotizaciones()} o None si falló.
+    Solo suma meses que ya están en MENSUAL (no crea meses: correría el "mes actual").
+    Devuelve (mensual, local_mensual, locales_obj, loc_count, wtc_info)."""
+    import copy
+    mensual = copy.deepcopy(mensual_rows)
+    local_mensual = copy.deepcopy(local_mensual_rows)
+    locales_obj = copy.deepcopy(locales_obj_data)
+    loc_count = copy.deepcopy(loc_count_by_mes)
+    mes_actual = f"{hoy.year:04d}-{hoy.month:02d}"
+    ultimo_cerrado = _prev_month(mes_actual)
+    cargados = {f["mes"] for f in (wtc_data or {}).get("filas", [])}
+    info = {"error": wtc_data is None, "meses": [], "sin_cotizacion": [],
+            "ultimo_cerrado": ultimo_cerrado, "mes_actual": mes_actual,
+            "falta_ultimo_cerrado": ultimo_cerrado not in cargados,
+            "falta_mes_actual": mes_actual not in cargados}
+    if not wtc_data:
+        return mensual, local_mensual, locales_obj, loc_count, info
+
+    meses_mensual = {r["mes"] for r in mensual}
+    cotiz = wtc_data.get("cotizaciones", {})
+    wtc_obj = next((e for e in locales_obj if e["b"] == "P" and e["l"].strip().upper() == "WTC"), None)
+    for f in sorted(wtc_data.get("filas", []), key=lambda x: x["mes"]):
+        mes = f["mes"]
+        if mes not in meses_mensual:
+            continue
+        if not cotiz.get(mes):
+            info["sin_cotizacion"].append(mes)
+            continue
+        fac_M = f["facturacion_uyu"] * cotiz[mes] / 1e6
+        ordenes = int(f["ordenes"])
+        pat = next((r for r in mensual if r["mes"] == mes and r["m"] == "Patagonia"), None)
+        if pat is None:
+            pat = {"mes": mes, "m": "Patagonia", "fac": 0, "ord": 0, "tick": 0}
+            mensual.append(pat)
+        ord_ar = pat["ord"]
+        if ord_ar + ordenes > 0:
+            pat["tick"] = round((pat["tick"] * ord_ar + fac_M * 1e6) / (ord_ar + ordenes))
+        pat["fac"] = round(pat["fac"] + fac_M)
+        pat["ord"] = ord_ar + ordenes
+        local_mensual.append({"mes": mes, "m": "Patagonia", "l": "WTC", "fac": round(fac_M, 3), "ord": ordenes})
+        if wtc_obj and mes in wtc_obj["d"]:
+            wtc_obj["d"][mes][0] = round(fac_M, 1)
+            wtc_obj["d"][mes][2] = ordenes
+        if mes in loc_count:
+            loc_count[mes]["P"] = loc_count[mes].get("P", 0) + 1
+        info["meses"].append(mes)
+    mensual.sort(key=lambda r: (r["mes"], r["m"]))
+    return mensual, local_mensual, locales_obj, loc_count, info
 
 ## ─────────────────────────────────────────────────────────────────────────────
 
@@ -1166,7 +1236,8 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
                              producto_data=None,
                              local_mensual_rows=None,
                              ipc_data=None,
-                             ultima_venta_rows=None):
+                             ultima_venta_rows=None,
+                             wtc_info=None):
     """Generate the dashboard HTML by reading the template.
 
     Template resolution order:
@@ -1297,6 +1368,7 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
     # ── Inyección de IPC (pestaña Finanzas) ──────────────────────────────
     html = inject_ipc(html, ipc_data)
     html = inject_ultima_venta(html, ultima_venta_rows)
+    html = inject_wtc_info(html, wtc_info)
 
     # ── Inyección de Royalties ────────────────────────────────────────────
     if '__ROYALTY_JSON__' in html:
@@ -1397,6 +1469,7 @@ def main():
             "local_mensual": lambda: fetch_local_mensual_data(client),
             "ipc":        lambda: fetch_ipc_data(args.gcs_bucket),
             "ultima_venta": lambda: fetch_ultima_venta_local(client),
+            "wtc":        lambda: fetch_wtc(client),
         }
 
         results = {}
@@ -1422,6 +1495,19 @@ def main():
         if not mensual_rows:
             print("ERROR: MENSUAL sin datos — abortando para no publicar tablero vacío")
             sys.exit(1)
+
+        # WTC (Uruguay, carga manual): se suma antes de compute_pd/compute_preset_meses
+        from datetime import date as _date
+        mensual_rows, local_mensual_rows, locales_obj_data, loc_count_by_mes, wtc_info = incorporar_wtc(
+            results["wtc"], mensual_rows, local_mensual_rows, locales_obj_data, loc_count_by_mes, _date.today())
+        if wtc_info["error"]:
+            print("  WARN WTC: no se pudo leer la carga manual — tablero sin WTC")
+        if wtc_info["sin_cotizacion"]:
+            print(f"  WARN WTC: meses sin cotización (no sumados): {', '.join(wtc_info['sin_cotizacion'])}")
+        if wtc_info["falta_ultimo_cerrado"]:
+            print(f"  WARN WTC: falta cargar {wtc_info['ultimo_cerrado']}")
+        print(f"  ✓ WTC sumado a Patagonia: {', '.join(wtc_info['meses']) or 'ningún mes'}")
+
         latest_mes   = sorted({r["mes"] for r in mensual_rows})[-1]
         top10_data   = compute_top10(top10_base, latest_mes)
         pd_data      = compute_pd(mensual_rows)
@@ -1444,6 +1530,7 @@ def main():
             local_mensual_rows=local_mensual_rows,
             ipc_data=ipc_data,
             ultima_venta_rows=results["ultima_venta"],
+            wtc_info=wtc_info,
         )
 
         # Upload to GCS if requested (Cloud Run mode)
