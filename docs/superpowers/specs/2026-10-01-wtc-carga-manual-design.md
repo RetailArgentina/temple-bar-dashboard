@@ -89,7 +89,7 @@ Entrada: filas de WTC, cotizaciones, y los datasets ya consultados. Convierte
 
 | dataset | efecto |
 |---|---|
-| `MENSUAL` | Patagonia: `fac += fac_M`, `ord += ordenes`; `tick` recalculado ponderando el ticket existente (fac·1e6/ord del aporte WTC) |
+| `MENSUAL` | Patagonia: `fac += fac_M`, `ord += ordenes`; `tick = round((tick·ord_ar + fac_M·1e6) / (ord_ar + ordenes))` (ponderado por órdenes; el aporte de WTC usa su facturación ARS como total) |
 | `LOCAL_MENSUAL` | fila propia `{mes, m:"Patagonia", l:"WTC", fac, ord}` |
 | `LOCALES_OBJ` | real de WTC (`d[mes][0]`, `d[mes][2]`) en los meses cargados del año en curso |
 | `LOC_COUNT_BY_MES` | `P += 1` los meses cargados |
