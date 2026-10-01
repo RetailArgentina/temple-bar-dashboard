@@ -814,6 +814,57 @@ def compute_preset_meses(mensual_rows):
         "ytd":          [ytd[0] if ytd else latest[:4]+"-01", latest],
     }
 
+def incorporar_wtc(wtc_data, mensual_rows, local_mensual_rows, locales_obj_data, loc_count_by_mes, hoy):
+    """Suma WTC (Uruguay, carga manual mensual convertida a ARS) a Patagonia. Pura: no muta.
+    wtc_data = {"filas": wtc.leer_carga(), "cotizaciones": wtc.leer_cotizaciones()} o None si falló.
+    Solo suma meses que ya están en MENSUAL (no crea meses: correría el "mes actual").
+    Devuelve (mensual, local_mensual, locales_obj, loc_count, wtc_info)."""
+    import copy
+    mensual = copy.deepcopy(mensual_rows)
+    local_mensual = copy.deepcopy(local_mensual_rows)
+    locales_obj = copy.deepcopy(locales_obj_data)
+    loc_count = copy.deepcopy(loc_count_by_mes)
+    mes_actual = f"{hoy.year:04d}-{hoy.month:02d}"
+    ultimo_cerrado = _prev_month(mes_actual)
+    cargados = {f["mes"] for f in (wtc_data or {}).get("filas", [])}
+    info = {"error": wtc_data is None, "meses": [], "sin_cotizacion": [],
+            "ultimo_cerrado": ultimo_cerrado, "mes_actual": mes_actual,
+            "falta_ultimo_cerrado": ultimo_cerrado not in cargados,
+            "falta_mes_actual": mes_actual not in cargados}
+    if not wtc_data:
+        return mensual, local_mensual, locales_obj, loc_count, info
+
+    meses_mensual = {r["mes"] for r in mensual}
+    cotiz = wtc_data.get("cotizaciones", {})
+    wtc_obj = next((e for e in locales_obj if e["b"] == "P" and e["l"].strip().upper() == "WTC"), None)
+    for f in sorted(wtc_data.get("filas", []), key=lambda x: x["mes"]):
+        mes = f["mes"]
+        if mes not in meses_mensual:
+            continue
+        if not cotiz.get(mes):
+            info["sin_cotizacion"].append(mes)
+            continue
+        fac_M = f["facturacion_uyu"] * cotiz[mes] / 1e6
+        ordenes = int(f["ordenes"])
+        pat = next((r for r in mensual if r["mes"] == mes and r["m"] == "Patagonia"), None)
+        if pat is None:
+            pat = {"mes": mes, "m": "Patagonia", "fac": 0, "ord": 0, "tick": 0}
+            mensual.append(pat)
+        ord_ar = pat["ord"]
+        if ord_ar + ordenes > 0:
+            pat["tick"] = round((pat["tick"] * ord_ar + fac_M * 1e6) / (ord_ar + ordenes))
+        pat["fac"] = round(pat["fac"] + fac_M)
+        pat["ord"] = ord_ar + ordenes
+        local_mensual.append({"mes": mes, "m": "Patagonia", "l": "WTC", "fac": round(fac_M, 3), "ord": ordenes})
+        if wtc_obj and mes in wtc_obj["d"]:
+            wtc_obj["d"][mes][0] = round(fac_M, 1)
+            wtc_obj["d"][mes][2] = ordenes
+        if mes in loc_count:
+            loc_count[mes]["P"] = loc_count[mes].get("P", 0) + 1
+        info["meses"].append(mes)
+    mensual.sort(key=lambda r: (r["mes"], r["m"]))
+    return mensual, local_mensual, locales_obj, loc_count, info
+
 ## ─────────────────────────────────────────────────────────────────────────────
 
 def fetch_royalty_data():

@@ -276,3 +276,112 @@ def test_leer_cotizaciones_devuelve_float_por_mes():
     from decimal import Decimal
     fake = FakeBQ({"tipo_cambio_uyu_ars": [{"mes": "2025-01", "ars_por_uyu": Decimal("23.6")}]})
     assert wtc.leer_cotizaciones(fake) == {"2025-01": 23.6}
+
+
+# ── incorporar_wtc (tablero retail) ──────────────────────────────────────────
+
+import copy
+
+from actualizar_retail import incorporar_wtc
+
+MENSUAL = [
+    {"mes": "2026-08", "m": "Patagonia", "fac": 1000, "ord": 10000, "tick": 100000},
+    {"mes": "2026-08", "m": "Temple", "fac": 500, "ord": 5000, "tick": 100000},
+    {"mes": "2026-09", "m": "Patagonia", "fac": 1100, "ord": 11000, "tick": 100000},
+    {"mes": "2026-10", "m": "Temple", "fac": 50, "ord": 500, "tick": 100000},
+]
+LOCAL_MENSUAL = [{"mes": "2026-09", "m": "Patagonia", "l": "PALERMO", "fac": 100.0, "ord": 1000}]
+LOCALES_OBJ = [
+    {"b": "P", "l": "WTC", "d": {"2026-08": [0, 80.0, 0, 9000], "2026-09": [0, 85.0, 0, 9500]}},
+    {"b": "P", "l": "PALERMO", "d": {"2026-09": [100.0, 90.0, 1000, 900]}},
+]
+LOC_COUNT = {"2026-08": {"P": 30, "T": 19, "F": 1}, "2026-09": {"P": 31, "T": 19, "F": 1}}
+WTC_DATA = {
+    "filas": [{"mes": "2026-08", "facturacion_uyu": 2_000_000.0, "ordenes": 2000, "litros_cerveza": 900.0},
+              {"mes": "2026-09", "facturacion_uyu": 2_500_000.0, "ordenes": 2500, "litros_cerveza": 950.0}],
+    "cotizaciones": {"2026-08": 36.0, "2026-09": 37.8},
+}
+
+
+def _inc(wtc_data=WTC_DATA, hoy=HOY, mensual=MENSUAL):
+    return incorporar_wtc(wtc_data, mensual, LOCAL_MENSUAL, LOCALES_OBJ, LOC_COUNT, hoy)
+
+
+def test_incorporar_suma_a_patagonia_mensual_con_ticket_ponderado():
+    mensual, *_ = _inc()
+    ago = next(r for r in mensual if r["mes"] == "2026-08" and r["m"] == "Patagonia")
+    fac_M = 2_000_000 * 36.0 / 1e6                      # 72 M ARS
+    assert ago["fac"] == round(1000 + fac_M)             # 1072
+    assert ago["ord"] == 12000
+    assert ago["tick"] == round((100000 * 10000 + fac_M * 1e6) / 12000)
+    assert next(r for r in mensual if r["mes"] == "2026-08" and r["m"] == "Temple") == MENSUAL[1]
+
+
+def test_incorporar_agrega_fila_local_wtc():
+    _, local, *_ = _inc()
+    assert [r for r in local if r["l"] == "WTC"] == [
+        {"mes": "2026-08", "m": "Patagonia", "l": "WTC", "fac": 72.0, "ord": 2000},
+        {"mes": "2026-09", "m": "Patagonia", "l": "WTC", "fac": 94.5, "ord": 2500},
+    ]
+
+
+def test_incorporar_completa_real_de_wtc_en_objetivos():
+    _, _, obj, *_ = _inc()
+    w = next(e for e in obj if e["l"] == "WTC")
+    assert w["d"]["2026-08"] == [72.0, 80.0, 2000, 9000]
+    assert w["d"]["2026-09"] == [94.5, 85.0, 2500, 9500]
+
+
+def test_incorporar_cuenta_wtc_como_local_patagonia():
+    *_, cnt, _ = _inc()
+    assert cnt["2026-08"]["P"] == 31 and cnt["2026-09"]["P"] == 32 and cnt["2026-08"]["T"] == 19
+
+
+def test_incorporar_mes_sin_cotizacion_se_excluye_y_avisa():
+    # Review Focus #4
+    data = {"filas": WTC_DATA["filas"], "cotizaciones": {"2026-08": 36.0}}
+    mensual, local, obj, cnt, info = _inc(data)
+    assert next(r for r in mensual if r["mes"] == "2026-09" and r["m"] == "Patagonia") == MENSUAL[2]
+    assert [r["mes"] for r in local if r["l"] == "WTC"] == ["2026-08"]
+    assert next(e for e in obj if e["l"] == "WTC")["d"]["2026-09"][0] == 0
+    assert cnt["2026-09"]["P"] == 31
+    assert info["sin_cotizacion"] == ["2026-09"] and info["meses"] == ["2026-08"]
+
+
+def test_incorporar_no_crea_meses_fuera_de_mensual():
+    # Review Focus #3: oct-26 cargado pero MENSUAL no tiene el mes → no se inventa
+    mensual_sin_oct = [r for r in MENSUAL if r["mes"] != "2026-10"]
+    data = {"filas": WTC_DATA["filas"] + [{"mes": "2026-10", "facturacion_uyu": 1.0, "ordenes": 1,
+                                           "litros_cerveza": 1.0}],
+            "cotizaciones": {**WTC_DATA["cotizaciones"], "2026-10": 37.7}}
+    mensual, local, *_ = _inc(data, mensual=mensual_sin_oct)
+    assert {r["mes"] for r in mensual} == {"2026-08", "2026-09"}
+    assert "2026-10" not in {r["mes"] for r in local if r["l"] == "WTC"}
+
+
+def test_incorporar_mes_existente_sin_fila_patagonia_la_agrega():
+    data = {"filas": [{"mes": "2026-10", "facturacion_uyu": 1_000_000.0, "ordenes": 100,
+                       "litros_cerveza": 1.0}], "cotizaciones": {"2026-10": 37.7}}
+    mensual, *_ = _inc(data)
+    pat = [r for r in mensual if r["mes"] == "2026-10" and r["m"] == "Patagonia"]
+    assert pat == [{"mes": "2026-10", "m": "Patagonia", "fac": 38, "ord": 100, "tick": 377000}]
+
+
+def test_incorporar_sin_datos_deja_datasets_intactos():
+    for data in (None, {"filas": [], "cotizaciones": {}}):
+        mensual, local, obj, cnt, info = _inc(data)
+        assert (mensual, local, obj, cnt) == (MENSUAL, LOCAL_MENSUAL, LOCALES_OBJ, LOC_COUNT)
+    assert _inc(None)[4]["error"] is True
+
+
+def test_incorporar_no_muta_entradas():
+    antes = copy.deepcopy((MENSUAL, LOCAL_MENSUAL, LOCALES_OBJ, LOC_COUNT))
+    _inc()
+    assert (MENSUAL, LOCAL_MENSUAL, LOCALES_OBJ, LOC_COUNT) == antes
+
+
+def test_incorporar_info_avisa_meses_faltantes():
+    info = _inc()[4]                                   # HOY = 2026-10-01: sep cargado, oct no
+    assert info["ultimo_cerrado"] == "2026-09" and info["falta_ultimo_cerrado"] is False
+    assert info["mes_actual"] == "2026-10" and info["falta_mes_actual"] is True
+    assert _inc(hoy=date(2026, 11, 3))[4]["falta_ultimo_cerrado"] is True
