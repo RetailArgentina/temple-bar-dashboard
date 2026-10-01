@@ -412,3 +412,8 @@ def test_fetch_wtc_actualiza_tc_y_lee_tablas(monkeypatch):
     d = actualizar_retail.fetch_wtc(object(), HOY)
     assert orden == ["tc", "carga", "cotiz"]
     assert d == {"filas": [{"mes": "2026-09"}], "cotizaciones": {"2026-09": 37.8}}
+
+
+def test_plantilla_tiene_marcador_wtc_info():
+    with open("templates/dashboard.html", encoding="utf-8") as f:
+        assert "const WTC_INFO = __WTC_INFO_JSON__;" in f.read()
