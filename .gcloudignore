@@ -1,0 +1,26 @@
+# Archivos que `gcloud run deploy --source .` NO sube a Cloud Build.
+# Sin este archivo gcloud genera uno por defecto (.git + .gitignore), pero las
+# carpetas sin trackear (migración 869MB, Proyecto_Patagonia_Dashboard/) se
+# subían igual y rompían el deploy con "Container import failed" (01/10/2026).
+
+.gcloudignore
+.git
+.gitignore
+.github/
+
+# Todo lo que git ignora (secrets *.json, logs, venvs, subproyectos, etc.)
+#!include:.gitignore
+
+# .gitignore excluye .dockerignore, pero Cloud Build lo necesita para el build
+!.dockerignore
+
+# Carpetas/archivos sin trackear que viven en la misma carpeta de Drive
+migracion-pc-nueva-*/
+Proyecto_Patagonia_Dashboard/
+reporte_*.txt
+
+# Desarrollo local: no hacen falta en el contenedor
+tests/
+docs/
+.worktrees/
+.superpowers/
