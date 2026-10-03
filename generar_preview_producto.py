@@ -320,6 +320,57 @@ def build_locales_data(rows):
     )
 
 
+# ── WTC (Uruguay): litros de cerveza cargados a mano (fase 2) ─────
+def fetch_wtc_litros(client):
+    """Carga manual mensual de WTC (solo mes y litros). None si la lectura falla:
+    Producto sale sin WTC y la nota lo avisa; el paso nunca se cae por esto."""
+    try:
+        import wtc
+        filas = [{"mes": f["mes"], "litros_cerveza": f["litros_cerveza"]} for f in wtc.leer_carga(client)]
+        print(f"  ✓ WTC: {len(filas)} meses cargados")
+        return filas
+    except Exception as e:
+        print(f"  WARN WTC: no se pudo leer la carga manual — Producto sin WTC ({e})")
+        return None
+
+
+def _meses_entre(desde_m, hasta_m):
+    """Meses 'YYYY-MM' de desde_m a hasta_m inclusive."""
+    y, m = int(desde_m[:4]), int(desde_m[5:7])
+    out = []
+    while f"{y:04d}-{m:02d}" <= hasta_m:
+        out.append(f"{y:04d}-{m:02d}")
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    return out
+
+
+def incorporar_wtc_producto(result, wtc_filas, desde, hasta, hoy):
+    """Suma los litros de cerveza de WTC del período a PATAGONIA y TODAS (solo litros:
+    facturación, mix y ranking no se tocan) y deja result['wtc'] para la nota."""
+    if wtc_filas is None:
+        result["wtc"] = {"lts": 0, "meses_incluidos": [], "meses_faltantes": [], "error": True}
+        return result
+    from wtc import MES_MIN
+    d_m, h_m, mes_hoy = desde[:7], hasta[:7], hoy.isoformat()[:7]
+    cargados = {f["mes"]: f["litros_cerveza"] for f in wtc_filas}
+    incluidos = sorted(m for m in cargados if d_m <= m <= h_m)
+    lts = round(sum(cargados[m] for m in incluidos), 1)
+    faltantes = [m for m in _meses_entre(max(d_m, MES_MIN), h_m) if m < mes_hoy and m not in cargados]
+    result["wtc"] = {"lts": lts, "meses_incluidos": incluidos, "meses_faltantes": faltantes, "error": False}
+    if lts <= 0:
+        return result
+    for marca in ("PATAGONIA", "TODAS"):
+        d = result.get(marca)
+        if not d or d.get("sin_acceso"):
+            continue
+        d["lts_cerveza"] = round(d.get("lts_cerveza", 0) + lts, 1)
+        d["total_lts"] = round(d.get("total_lts", 0) + lts, 1)
+        fila = {"local": "WTC", "marca": "Patagonia", "lts_cerveza": lts, "lts_gin": 0,
+                "lts_fernet": 0, "lts_feriado": 0, "lts_tragos": 0, "lts_total": lts}
+        d["locales"] = sorted(d.get("locales", []) + [fila], key=lambda x: -x["lts_total"])
+    return result
+
+
 # ── Construir datos por marca ─────────────────────────────────────
 def build_brand_data(rows):
     """Convierte rows de BigQuery en el dict que consume el HTML."""
@@ -422,7 +473,7 @@ def compute_periods():
     }
 
 
-def fetch_all(desde, hasta, clients):
+def fetch_all(desde, hasta, clients, wtc_filas, hoy):
     """Fetches data for a single date range using pre-created BQ clients."""
     # Período anterior: mismo rango de días, mes previo
     desde_ant = _prev_month_date(date.fromisoformat(desde)).isoformat()
@@ -514,6 +565,7 @@ def fetch_all(desde, hasta, clients):
     todas['locales'] = todas_locales
     result['TODAS'] = todas
 
+    incorporar_wtc_producto(result, wtc_filas, desde, hasta, hoy)
     return result
 
 
@@ -587,11 +639,15 @@ def main():
         'FERIADO':   bigquery.Client(project='temple-bar-439715',      credentials=creds),
     }
 
+    # WTC (Uruguay): una sola lectura, se reparte por período en fetch_all
+    wtc_filas = fetch_wtc_litros(clients['TEMPLE'])
+    hoy = date.today()
+
     periods = compute_periods()
     datasets = {}
     for periodo, (desde, hasta) in periods.items():
         print(f"\n=== [{periodo}] {desde} → {hasta} ===")
-        data = fetch_all(desde, hasta, clients)
+        data = fetch_all(desde, hasta, clients, wtc_filas, hoy)
         # Agregar label legible para mostrar en el iframe
         data['label'] = f"{desde} al {hasta}"
         datasets[periodo] = data
