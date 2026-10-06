@@ -76,9 +76,13 @@ SCRIPTS = [
             # Acotamos a los últimos 30 días, suficiente para un sync incremental diario.
             "--desde", (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d"),
             "--hasta", datetime.now().strftime("%Y-%m-%d"),
+            # Corte propio a los 7 min: guarda lo obtenido y sale OK. El timeout
+            # de abajo queda solo como red de seguridad (matar el proceso a mitad
+            # de un flush puede dejar COT sin items, ver incidente 2026-08-25).
+            "--max-segundos", "420",
         ],
         "critical": False,
-        "timeout":  300,   # 5 min máx
+        "timeout":  600,   # 10 min máx (normal: 2-3 min; la API a veces se pone lenta)
     },
     {
         "label": "Destilería",
@@ -201,7 +205,13 @@ def run_script(entry):
             timeout=timeout,
             **extra,
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
+        # Volcar lo que alcanz\u00f3 a imprimir el proceso: sin esto el log no dice d\u00f3nde se trab\u00f3.
+        for parcial in (e.stdout, e.stderr):
+            if isinstance(parcial, bytes):
+                parcial = parcial.decode("utf-8", errors="replace")
+            for line in (parcial or "").splitlines():
+                log(f"  {line}")
         mins = timeout // 60
         log(f"  \u2717 {label} TIMEOUT (>{mins} min) \u2014 proceso terminado")
         return False

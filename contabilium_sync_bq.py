@@ -19,6 +19,13 @@ DATASET = "Destileria_Contabilium"
 BQ  = bigquery.Client(project=PROJECT)
 NOW = datetime.now(timezone.utc).isoformat()
 
+# Tope de tiempo propio (--max-segundos): al llegar, deja de pedir comprobantes
+# y guarda lo ya obtenido. Evita que el pipeline mate el proceso a mitad de un
+# flush (entre el DELETE de items COT y su reinserción). Lo que quede pendiente
+# lo levanta la próxima corrida incremental.
+T_INICIO = time.time()
+MAX_SEGUNDOS = None
+
 TIPOS_VALIDOS = {"FCA", "FCB", "FCC", "FCE", "FCM", "COT",
                  "NCA", "NCB", "NCC", "NCT"}
 
@@ -31,20 +38,20 @@ def get_token():
     r.raise_for_status()
     return r.json()["access_token"]
 
-def api_get(token, path, params=None, timeout=60, retries=3):
+def api_get(token, path, params=None, timeout=30, retries=3):
     for attempt in range(retries):
         try:
             r = requests.get(f"{BASE}{path}",
                 headers={"Authorization": f"Bearer {token}"},
                 params=params, verify=False, timeout=timeout)
             return r.json() if r.ok else None
-        except requests.exceptions.ConnectionError as e:
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             if attempt < retries - 1:
                 wait = 20 * (attempt + 1)
-                print(f"  [WARN] Connection error (intento {attempt+1}/{retries}), reintentando en {wait}s...")
+                print(f"  [WARN] {type(e).__name__} (intento {attempt+1}/{retries}), reintentando en {wait}s...")
                 time.sleep(wait)
             else:
-                print(f"  [ERROR] Connection error después de {retries} intentos: {e}")
+                print(f"  [ERROR] {type(e).__name__} después de {retries} intentos: {e}")
                 return None
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -182,10 +189,15 @@ def sync(fecha_desde, fecha_hasta, modo="incremental"):
     # Lata (mayoría COT) quedaba en $0 (incidente 2026-08-25).
     ids_cot = {c["Id"] for c in lista if c.get("TipoFc") == "COT"}
     ids_existentes -= ids_cot  # forzar reprocesamiento aunque ya estuvieran en BQ
+    # Primero los comprobantes nuevos y después el refresco de COT: si el tope
+    # de tiempo corta, lo que falta son COT que ya están en BQ (quedan con la
+    # versión anterior), no facturas ausentes.
+    lista.sort(key=lambda c: c.get("TipoFc") == "COT")
 
     rows_comp, rows_items = [], []
     pending_cot_ids = set()  # COT re-obtenidas con éxito en este lote, a borrar-y-reinsertar
     ok = err = 0
+    cortado = False
 
     def _flush_pending_cot_deletes():
         nonlocal pending_cot_ids
@@ -202,6 +214,13 @@ def sync(fecha_desde, fecha_hasta, modo="incremental"):
         id_c = c["Id"]
         if id_c in ids_existentes:
             continue
+
+        if MAX_SEGUNDOS and time.time() - T_INICIO > MAX_SEGUNDOS:
+            pendientes = sum(1 for x in lista[i:] if x["Id"] not in ids_existentes)
+            print(f"  [WARN] Corte por tiempo ({MAX_SEGUNDOS}s): quedan {pendientes} "
+                  f"comprobantes para la próxima corrida")
+            cortado = True
+            break
 
         d = api_get(token, f"/api/comprobantes/{id_c}")
         if not d:
@@ -293,7 +312,7 @@ def sync(fecha_desde, fecha_hasta, modo="incremental"):
         "items_insertados":   ok,
         "errores":            err,
         "duracion_seg":       dur,
-        "estado":             "OK" if err == 0 else "PARTIAL",
+        "estado":             "CORTE_TIEMPO" if cortado else ("OK" if err == 0 else "PARTIAL"),
         "created_at":         NOW,
     }])
     return ok
@@ -418,7 +437,10 @@ if __name__ == "__main__":
     parser.add_argument("--hasta", default=date.today().isoformat(), help="Fecha fin YYYY-MM-DD")
     parser.add_argument("--modo",  default="incremental", choices=["incremental", "full"])
     parser.add_argument("--solo-conceptos", action="store_true")
+    parser.add_argument("--max-segundos", type=int, default=None,
+                        help="Tope de tiempo total; al llegar guarda lo obtenido y termina OK")
     args = parser.parse_args()
+    MAX_SEGUNDOS = args.max_segundos
 
     if args.solo_conceptos:
         sync_conceptos()
