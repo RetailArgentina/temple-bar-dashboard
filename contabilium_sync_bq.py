@@ -229,8 +229,12 @@ def sync(fecha_desde, fecha_hasta, modo="incremental"):
 
         tipo    = d.get("TipoFc", "")
         items   = d.get("Items") or []
-        if tipo == "COT":
-            pending_cot_ids.add(id_c)
+        # Borrar-y-reinsertar las líneas de TODO comprobante re-obtenido, no solo
+        # COT: al emitir una factura (borrador → CAE) Contabilium le cambia la
+        # fecha y regenera los Id de ítem, así que el MERGE por id_item dejaba
+        # las líneas viejas además de las nuevas (87 comprobantes duplicados
+        # jun–sep 2026, ~$24M inflados).
+        pending_cot_ids.add(id_c)
         id_cli  = d.get("IdCliente")
         razon   = d.get("RazonSocial") or ""
         fecha_e = parse_date(d.get("FechaEmision"))
