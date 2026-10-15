@@ -1513,7 +1513,6 @@ def main():
 # ── Sell-in (compra) desde Contabilium — reemplaza Ventas_Maestro_Con_Cluster_Final
 # desde el 2026-07-01 (tabla congelada, sin filas nuevas desde esa fecha).
 # Nombres de cliente en Contabilium != NombreDeFantasia de Ventas_Maestro, de ahí este alias aparte.
-# ESPEJO en Proyecto_Temple_Dashboard/marcas.py (ALIAS_COMPRA) — actualizar los dos.
 _CBL_SI_ALIAS: dict[str, str | None] = {
     "TEMPLE PUERTO MADERO":   "Puerto Madero",
     "TEMPLE HOLLYWOOD NUEVO": "Hollywood",
