@@ -1513,6 +1513,7 @@ def main():
 # ── Sell-in (compra) desde Contabilium — reemplaza Ventas_Maestro_Con_Cluster_Final
 # desde el 2026-07-01 (tabla congelada, sin filas nuevas desde esa fecha).
 # Nombres de cliente en Contabilium != NombreDeFantasia de Ventas_Maestro, de ahí este alias aparte.
+# ESPEJO en Proyecto_Temple_Dashboard/marcas.py (ALIAS_COMPRA) — actualizar los dos.
 _CBL_SI_ALIAS: dict[str, str | None] = {
     "TEMPLE PUERTO MADERO":   "Puerto Madero",
     "TEMPLE HOLLYWOOD NUEVO": "Hollywood",
@@ -1534,6 +1535,11 @@ _CBL_SI_ALIAS: dict[str, str | None] = {
     # Los Templos Caballito S.R.L. es la razón social de facturación compartida
     # entre Barrio Chino y Monroe — no se puede separar la compra por local.
     "LOS TEMPLOS CABALLITO S.R.L.": "Barrio Chino + Monroe",
+    # Clientes nuevos sin cluster (quedaban afuera de la cadena) — confirmados 2026-10-15.
+    "TEMPLE RECOLETA (NUEVO)":  "Recoleta",
+    "TEMPLE ROSARIO 2":         "Rosario 2",
+    "TEMPLE PICHINCHA":         "Rosario 3",
+    "TEMPLE COMODORO":          "Comodoro Rivadavia",
 }
 
 _CBL_SELLIN_CUTOFF = "2026-07-01"
