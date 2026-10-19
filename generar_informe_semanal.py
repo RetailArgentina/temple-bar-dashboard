@@ -70,14 +70,22 @@ BRAND_MPL = {
 }
 
 # ── BQ client ─────────────────────────────────────────────────────────────────
+def credenciales(scopes):
+    """Key local si existe (PC); si no, ADC (GitHub Actions con Workload Identity)."""
+    if os.path.exists(SA_FILE):
+        return service_account.Credentials.from_service_account_file(SA_FILE, scopes=scopes)
+    import google.auth
+    creds, _ = google.auth.default(scopes=scopes)
+    return creds
+
+
 def get_client():
     scopes = [
         "https://www.googleapis.com/auth/bigquery",
         "https://www.googleapis.com/auth/drive.readonly",
         "https://www.googleapis.com/auth/cloud-platform",
     ]
-    creds = service_account.Credentials.from_service_account_file(SA_FILE, scopes=scopes)
-    return bigquery.Client(project=PROJECT_ID, credentials=creds)
+    return bigquery.Client(project=PROJECT_ID, credentials=credenciales(scopes))
 
 # ── Fetch datos semanales ─────────────────────────────────────────────────────
 def fetch_semana(client, desde, hasta):
@@ -120,8 +128,7 @@ def fetch_objetivos():
         "https://www.googleapis.com/auth/spreadsheets.readonly",
         "https://www.googleapis.com/auth/drive.readonly",
     ]
-    creds = service_account.Credentials.from_service_account_file(SA_FILE, scopes=scopes)
-    svc   = gbuild("sheets", "v4", credentials=creds, cache_discovery=False)
+    svc   = gbuild("sheets", "v4", credentials=credenciales(scopes), cache_discovery=False)
     res   = svc.spreadsheets().values().get(
         spreadsheetId=SHEET_ID_OBJ,
         range=f"{SHEET_NAME}!A1:Z2000"

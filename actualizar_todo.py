@@ -92,6 +92,19 @@ SCRIPTS = [
             "--output", os.path.join(_OUT_DIR, "destileria_dashboard.html"),
         ],
     },
+    # Alertas semanales (mix/performance/ticket de la semana cerrada) para la
+    # reunión del lunes. Antes era la tarea de Windows "Alertas Semanales Lunes",
+    # que no corría si la PC estaba dormida (2026-10-19). Solo los lunes.
+    *([{
+        "label": "Alertas semanales",
+        "cmd":   [
+            sys.executable, "-X", "utf8", "generar_alertas_semanales.py",
+            "--gcs-bucket", "temple-bar-dashboard-cache",
+            "--gcs-blob",   "alertas_semanales.html",
+            "--output",     os.path.join(_OUT_DIR, "alertas_semanales.html"),
+        ],
+        "critical": False,
+    }] if datetime.now().weekday() == 0 else []),
     # Verificación de gap Feriado vs Toteat: paso aparte y al final porque es lento
     # (pausas de rate limit) y solo escribe/borra el banner de alerta en GCS.
     {

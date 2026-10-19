@@ -467,12 +467,8 @@ def main():
     print(f"Generado {args.output} con {len(hallazgos)} hallazgo(s)")
 
     if not args.no_upload:
-        from google.oauth2 import service_account
-        import os as _os
-        scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-        sa_file = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
-                                 "temple-bar-439715-da51b292ce5d.json")
-        creds = service_account.Credentials.from_service_account_file(sa_file, scopes=scopes)
+        from generar_informe_semanal import credenciales
+        creds = credenciales(["https://www.googleapis.com/auth/cloud-platform"])
         upload_to_gcs(args.output, args.gcs_bucket, args.gcs_blob, creds)
 
 
