@@ -184,6 +184,9 @@ def classify_familia(producto, envase):
     p = str(producto or "").upper()
     e = str(envase  or "").upper()
 
+    # Barriles de cerveza 50 L (Contabilium desde sep-2026) — antes que los de Feriado
+    if "BARRIL CERVEZA" in e: return "cerveza_barril"
+
     # Barriles (Feriado) — detectar por envase primero, distinguir tamaño
     if "BARRIL" in e:
         if "50" in e or "50" in p: return "feriado_barril_50"
@@ -569,7 +572,7 @@ def fetch_rows(client):
       -- Deduplica filas idénticas ignorando Clusterizacion (que puede ser NULL en algunas copias)
       SELECT DISTINCT
         FechaPedido, NombreDeFantasia, GrupoCliente,
-        Producto, Envase, Tipo, CantEnvases, Litros, Total_
+        Producto, Envase, Tipo, CantEnvases, Litros, TotalSImp_
       FROM `{TABLE}`
       WHERE FechaPedido IS NOT NULL
         AND FechaPedido < '2026-07-01'   -- datos históricos solo hasta el corte; julio en adelante viene de Contabilium
@@ -593,7 +596,9 @@ def fetch_rows(client):
       COALESCE(b.Tipo, '')                                 AS ti,
       COALESCE(b.CantEnvases, 0)                           AS ce,
       ROUND(COALESCE(b.Litros,  0.0), 3)                   AS li,
-      ROUND(COALESCE(b.Total_,  0.0), 0)                   AS to_
+      -- Neto sin impuestos (TotalSImp_), misma base que neto_linea de Contabilium.
+      -- Total_ incluye impuestos (+13-20%) y rompía el YoY/YTD contra julio en adelante.
+      ROUND(COALESCE(b.TotalSImp_, 0.0), 0)                AS to_
     FROM base b
     LEFT JOIN cl_latest c ON b.NombreDeFantasia = c.NombreDeFantasia
     ORDER BY b.FechaPedido
@@ -628,14 +633,49 @@ _CBL_CLUSTER_MAP: dict[str, str] = {
 }
 
 
+# COT que después se formalizó con una factura (mismo cliente, neto ±0,5%, factura
+# dentro de 60 días). Sin esto la venta se cuenta dos veces (caso CM Distribución
+# sep/oct-2026, $14,3M). Emparejamiento 1 a 1: cada COT con su factura más temprana
+# y cada factura con su COT más reciente, solo si ambos se eligen mutuamente.
+# Del par se toma el $ de la factura (fiscal) y las unidades/litros de la COT
+# (entrega real — la FCE de CM cargó packs x6 como si fueran latas).
+_CBL_COT_FC_PAIRS_CTE = """
+    cot_comp AS (
+      SELECT id_comprobante, ANY_VALUE(tipo_fc) AS tipo_fc, ANY_VALUE(id_cliente) AS id_cliente,
+             MIN(fecha_emision) AS f, SUM(neto_linea) AS neto
+      FROM `temple-bar-439715.Destileria_Contabilium.comprobantes_items`
+      WHERE fecha_emision >= '2026-07-01'
+        AND tipo_fc IN ('FCA','FCB','FCC','FCE','FCM','COT')
+        AND COALESCE(cantidad, 0) > 0
+        AND COALESCE(tipo_item, 'P') != 'S'
+      GROUP BY id_comprobante
+    ),
+    cot_fc_cand AS (
+      SELECT c.id_comprobante AS cot_id, fc.id_comprobante AS fc_id,
+             ROW_NUMBER() OVER (PARTITION BY c.id_comprobante  ORDER BY fc.f, fc.id_comprobante)          AS rn_cot,
+             ROW_NUMBER() OVER (PARTITION BY fc.id_comprobante ORDER BY c.f DESC, c.id_comprobante DESC) AS rn_fc
+      FROM cot_comp c
+      JOIN cot_comp fc
+        ON fc.id_cliente = c.id_cliente
+       AND fc.tipo_fc != 'COT'
+       AND fc.f BETWEEN c.f AND DATE_ADD(c.f, INTERVAL 60 DAY)
+       AND ABS(fc.neto - c.neto) <= 0.005 * c.neto
+      WHERE c.tipo_fc = 'COT' AND c.neto > 0
+    ),
+    cot_fc_pares AS (
+      SELECT cot_id, fc_id FROM cot_fc_cand WHERE rn_cot = 1 AND rn_fc = 1
+    )"""
+
+
 def fetch_rows_contabilium(creds):
     """Trae ventas de Contabilium (temple-bar-439715) desde 2026-07-01.
     Devuelve SimpleNamespace con los mismos campos que fetch_rows()."""
     import types
     import google.cloud.bigquery as _bq
     client = _bq.Client(project="temple-bar-439715", credentials=creds)
-    query = """
-    WITH cluster_map AS (
+    query = f"""
+    WITH {_CBL_COT_FC_PAIRS_CTE},
+    cluster_map AS (
       SELECT NombreDeFantasia, Clusterizacion
       FROM `temple-brewery.Destileria.vw_ventas_con_cluster`
       WHERE Clusterizacion IS NOT NULL
@@ -653,20 +693,33 @@ def fetch_rows_contabilium(creds):
             WHEN UPPER(ci.concepto) LIKE '%473%'
               OR UPPER(ci.concepto) LIKE '%LATA%'  THEN 'LATA'
             WHEN UPPER(ci.concepto) LIKE '%BARRIL%' THEN 'BARRIL'
+            -- Cerveza que no es lata = barril 50 L (Temple, Guinness, Suburbier — desde sep-2026)
+            WHEN UPPER(TRIM(ci.concepto)) LIKE 'CERVEZA%' THEN 'BARRIL CERVEZA'
             ELSE ''
         END                                                                     AS en,
         COALESCE(ci.tipo_fc, '')                                                AS ti,
         (CASE WHEN ci.tipo_fc LIKE 'NC%' THEN -1 ELSE 1 END)
-            * COALESCE(ci.cantidad,    0.0)                                     AS ce,
+            * IF(pf.fc_id IS NULL, COALESCE(ci.cantidad, 0.0), 0.0)             AS ce,
         (CASE WHEN ci.tipo_fc LIKE 'NC%' THEN -1 ELSE 1 END)
-            * ROUND(COALESCE(ci.litros,     0.0), 3)                            AS li,
+            * IF(pf.fc_id IS NULL, ROUND(
+                CASE
+                  -- Barriles de cerveza vienen casi siempre sin litros: 50 L por barril
+                  WHEN UPPER(TRIM(ci.concepto)) LIKE 'CERVEZA%'
+                   AND UPPER(ci.concepto) NOT LIKE '%473%'
+                   AND UPPER(ci.concepto) NOT LIKE '%LATA%'
+                   AND COALESCE(ci.litros, 0) = 0
+                  THEN COALESCE(ci.cantidad, 0.0) * 50
+                  ELSE COALESCE(ci.litros, 0.0)
+                END, 3), 0.0)                                                   AS li,
         (CASE WHEN ci.tipo_fc LIKE 'NC%' THEN -1 ELSE 1 END)
-            * ROUND(COALESCE(ci.neto_linea, 0.0), 0)                            AS to_
+            * IF(pc.cot_id IS NULL, ROUND(COALESCE(ci.neto_linea, 0.0), 0), 0.0) AS to_
     FROM `temple-bar-439715.Destileria_Contabilium.comprobantes_items` ci
     LEFT JOIN `temple-bar-439715.Destileria_Contabilium.clientes` cl
         ON ci.id_cliente = cl.id_cliente
     LEFT JOIN cluster_map cm
         ON TRIM(cl.nombre_fantasia) = cm.NombreDeFantasia
+    LEFT JOIN cot_fc_pares pc ON pc.cot_id = ci.id_comprobante   -- COT ya facturada: sin $
+    LEFT JOIN cot_fc_pares pf ON pf.fc_id  = ci.id_comprobante   -- su factura: sin unidades/litros
     WHERE ci.fecha_emision >= '2026-07-01'
       -- FCA/FCB/FCC/FCE/FCM = facturas reales; COT = venta entregada aún no facturada (a pedido del usuario);
       -- NCA/NCB/NCC/NCT = notas de crédito (se restan via el signo arriba)
@@ -1556,7 +1609,8 @@ def _fetch_cbl_sellin_by_week_local(creds, product_regex, alias_map=None,
     from google.cloud import bigquery as _bq
     client = _bq.Client(project="temple-bar-439715", credentials=creds)
     query = f"""
-    WITH cluster_map AS (
+    WITH {_CBL_COT_FC_PAIRS_CTE},
+    cluster_map AS (
       SELECT NombreDeFantasia, Clusterizacion
       FROM `temple-brewery.Destileria.vw_ventas_con_cluster`
       WHERE Clusterizacion IS NOT NULL
@@ -1569,12 +1623,13 @@ def _fetch_cbl_sellin_by_week_local(creds, product_regex, alias_map=None,
       COALESCE(NULLIF(TRIM(cl.nombre_fantasia),''), NULLIF(TRIM(cl.razon_social),''), 'Sin nombre') AS nd,
       COALESCE(cl.cluster, cm.Clusterizacion, 'Sin Cluster') AS cluster_raw,
       (CASE WHEN ci.tipo_fc LIKE 'NC%' THEN -1 ELSE 1 END)
-          * ROUND(COALESCE(ci.litros, 0.0), 3)   AS litros
+          * IF(pf.fc_id IS NULL, ROUND(COALESCE(ci.litros, 0.0), 3), 0.0)   AS litros
     FROM `temple-bar-439715.Destileria_Contabilium.comprobantes_items` ci
     LEFT JOIN `temple-bar-439715.Destileria_Contabilium.clientes` cl
         ON ci.id_cliente = cl.id_cliente
     LEFT JOIN cluster_map cm
         ON TRIM(cl.nombre_fantasia) = cm.NombreDeFantasia
+    LEFT JOIN cot_fc_pares pf ON pf.fc_id = ci.id_comprobante   -- litros ya contados en la COT
     WHERE ci.fecha_emision >= '{since}'
       AND ci.tipo_fc IN ('FCA','FCB','FCC','FCE','FCM','COT','NCA','NCB','NCC','NCT')
       AND COALESCE(ci.cantidad, 0) > 0
@@ -1609,7 +1664,8 @@ def _fetch_cbl_sellin_by_month_local(creds, product_regex, alias_map=None,
     from google.cloud import bigquery as _bq
     client = _bq.Client(project="temple-bar-439715", credentials=creds)
     query = f"""
-    WITH cluster_map AS (
+    WITH {_CBL_COT_FC_PAIRS_CTE},
+    cluster_map AS (
       SELECT NombreDeFantasia, Clusterizacion
       FROM `temple-brewery.Destileria.vw_ventas_con_cluster`
       WHERE Clusterizacion IS NOT NULL
@@ -1622,12 +1678,13 @@ def _fetch_cbl_sellin_by_month_local(creds, product_regex, alias_map=None,
       COALESCE(NULLIF(TRIM(cl.nombre_fantasia),''), NULLIF(TRIM(cl.razon_social),''), 'Sin nombre') AS nd,
       COALESCE(cl.cluster, cm.Clusterizacion, 'Sin Cluster') AS cluster_raw,
       (CASE WHEN ci.tipo_fc LIKE 'NC%' THEN -1 ELSE 1 END)
-          * ROUND(COALESCE(ci.litros, 0.0), 3)   AS litros
+          * IF(pf.fc_id IS NULL, ROUND(COALESCE(ci.litros, 0.0), 3), 0.0)   AS litros
     FROM `temple-bar-439715.Destileria_Contabilium.comprobantes_items` ci
     LEFT JOIN `temple-bar-439715.Destileria_Contabilium.clientes` cl
         ON ci.id_cliente = cl.id_cliente
     LEFT JOIN cluster_map cm
         ON TRIM(cl.nombre_fantasia) = cm.NombreDeFantasia
+    LEFT JOIN cot_fc_pares pf ON pf.fc_id = ci.id_comprobante   -- litros ya contados en la COT
     WHERE ci.fecha_emision >= '{since}'
       AND ci.tipo_fc IN ('FCA','FCB','FCC','FCE','FCM','COT','NCA','NCB','NCC','NCT')
       AND COALESCE(ci.cantidad, 0) > 0

@@ -427,7 +427,7 @@ __STALE_BANNER__
   <!-- KPIs -->
   <div class="kpi-grid">
     <div class="kpi-card" style="border-top-color:#c9a227">
-      <div class="kpi-lbl">Facturación Bruta</div>
+      <div class="kpi-lbl">Facturación Neta</div>
       <div class="kpi-val" id="kpi-fac">—</div>
       <div class="kpi-foot">
         <span class="badge neu" id="kpi-fac-yoy">—</span>
@@ -1070,8 +1070,10 @@ let chartBosqueEvol = null, chartBosqueClientes = null;
 const BRAND_FA_KEYS = {
   bosque:  ['bosque_nativo','bosque_alta_montana','bosque_refugios','bosque_nativo_mini','bosque_alta_montana_mini','bosque_otro'],
   feriado: ['feriado_rojo','feriado_rosado','feriado_barril_20','feriado_barril_50'],
-  cerveza: ['lata_wolf','lata_scottish','lata_golden','lata_wolf0','lata_otras']
+  cerveza: ['lata_wolf','lata_scottish','lata_golden','lata_wolf0','lata_otras','cerveza_barril']
 };
+// Objetivos de Cerveza están en latas: los barriles 50 L no cuentan para el cumplimiento
+const LATA_FA_KEYS = ['lata_wolf','lata_scottish','lata_golden','lata_wolf0','lata_otras'];
 const OBJ_MES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 const OBJ_PROD_LABELS = {
   bosque_nativo:'Bosque Nativo', bosque_alta_montana:'Alta Montaña',
@@ -1081,6 +1083,7 @@ const OBJ_PROD_LABELS = {
   feriado_barril_20:'Barril 20lt', feriado_barril_50:'Barril 50lt',
   lata_wolf:'Wolf IPA', lata_scottish:'Scottish',
   lata_wolf0:'Wolf IPA 0%', lata_golden:'Indie Golden', lata_otras:'Otras Latas',
+  cerveza_barril:'Barril 50lt',
 };
 const OBJ_YEAR = new Date().getFullYear();
 function getObjMonths() {
@@ -1426,7 +1429,7 @@ function renderBosqueFeriado(rows, rowsYoY, rowsPop) {
   try {
     const bObjRows = rows.filter(r => BRAND_FA_KEYS.bosque.includes(r.fa));
     const fObjRows = rows.filter(r => BRAND_FA_KEYS.feriado.includes(r.fa));
-    const cObjRows = rows.filter(r => BRAND_FA_KEYS.cerveza.includes(r.fa));
+    const cObjRows = rows.filter(r => LATA_FA_KEYS.includes(r.fa));
     renderObjPanel('bosque',   bObjRows, 'gen-bosque-obj-panel');
     renderObjPanel('feriado',  fObjRows, 'gen-feriado-obj-panel');
     renderObjPanel('cerveza',  cObjRows, 'gen-cerveza-obj-panel');
@@ -1659,7 +1662,7 @@ function renderEvolChart(rows, rowsYoY) {
   const bosqueKeys  = ['bosque_nativo','bosque_alta_montana','bosque_refugios',
                        'bosque_nativo_mini','bosque_alta_montana_mini','bosque_otro'];
   const feriadoKeys = ['feriado_rojo','feriado_rosado','feriado_barril_20','feriado_barril_50'];
-  const cervezaKeys = ['lata_wolf','lata_scottish','lata_golden','lata_wolf0','lata_otras'];
+  const cervezaKeys = ['lata_wolf','lata_scottish','lata_golden','lata_wolf0','lata_otras','cerveza_barril'];
 
   function byMonthBrand(rs) {
     const out = {};
@@ -3137,7 +3140,7 @@ function renderObjPanel(brand, brandRows, panelId) {
   if (totalReal < 0) totalReal = 0;
   // realByMonth usa ROWS global para cubrir todo el año independientemente del filtro activo
   const realByMonth = {};
-  var _faKeys = BRAND_FA_KEYS[brand];
+  var _faKeys = brand === 'cerveza' ? LATA_FA_KEYS : BRAND_FA_KEYS[brand];
   (ROWS || []).forEach(function(r) {
     if (r.f && r.f.substring(0,4) === String(_objYear) && (!_faKeys || _faKeys.includes(r.fa))) {
       var mm = parseInt(r.f.substring(5,7)) - 1;
@@ -5319,16 +5322,21 @@ function renderCervezaTab(rows, rowsYoY, rowsPop) {
   const lRows = rows.filter(r    => LATA_KEYS.includes(r.fa));
   const lYoY  = (rowsYoY||[]).filter(r => LATA_KEYS.includes(r.fa));
   const lPop  = (rowsPop||[]).filter(r  => LATA_KEYS.includes(r.fa));
+  // Barriles 50 L: suman a Facturación y Litros, no a latas/ranking/pivot/objetivos
+  const bRows = rows.filter(r    => r.fa === 'cerveza_barril');
+  const bYoY  = (rowsYoY||[]).filter(r => r.fa === 'cerveza_barril');
+  const bPop  = (rowsPop||[]).filter(r  => r.fa === 'cerveza_barril');
+  const sumF  = (rs, f) => rs.reduce((s,r) => s+r[f], 0);
 
-  const totCe    = lRows.reduce((s,r) => s+r.ce, 0);
-  const totLi    = lRows.reduce((s,r) => s+r.li, 0);
-  const totFac   = lRows.reduce((s,r) => s+r.to, 0);
-  const yoyCe    = lYoY.reduce((s,r)  => s+r.ce, 0);
-  const yoyLi    = lYoY.reduce((s,r)  => s+r.li, 0);
-  const yoyFac   = lYoY.reduce((s,r)  => s+r.to, 0);
-  const popCe    = lPop.reduce((s,r)   => s+r.ce, 0);
-  const popLi    = lPop.reduce((s,r)   => s+r.li, 0);
-  const popFac   = lPop.reduce((s,r)   => s+r.to, 0);
+  const totCe    = sumF(lRows, 'ce');
+  const totLi    = sumF(lRows, 'li') + sumF(bRows, 'li');
+  const totFac   = sumF(lRows, 'to') + sumF(bRows, 'to');
+  const yoyCe    = sumF(lYoY, 'ce');
+  const yoyLi    = sumF(lYoY, 'li') + sumF(bYoY, 'li');
+  const yoyFac   = sumF(lYoY, 'to') + sumF(bYoY, 'to');
+  const popCe    = sumF(lPop, 'ce');
+  const popLi    = sumF(lPop, 'li') + sumF(bPop, 'li');
+  const popFac   = sumF(lPop, 'to') + sumF(bPop, 'to');
 
   function dPct(cur, prv) { return prv ? (cur-prv)/prv : null; }
   function badge1(d, color) {
@@ -5349,7 +5357,7 @@ function renderCervezaTab(rows, rowsYoY, rowsPop) {
   const kpiWrap = document.getElementById('cerv-kpi-row');
   if (kpiWrap) kpiWrap.innerHTML = `
     <div style="background:#0c1f35;border:1px solid #1e3a5f;border-radius:12px;padding:18px 22px;text-align:center">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#38bdf8;margin-bottom:10px">Facturación Bruta</div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#38bdf8;margin-bottom:10px">Facturación Neta · latas + barriles</div>
       <div style="font-size:36px;font-weight:900;color:#e6edf3;font-variant-numeric:tabular-nums">${totFac >= 1e6 ? '$ ' + (totFac/1e6).toLocaleString('es-AR',{minimumFractionDigits:1,maximumFractionDigits:1}) + 'M' : '$ ' + Math.round(totFac).toLocaleString('es-AR')}</div>
       <div style="margin-top:10px">${dBadgeDual(dPct(totFac,yoyFac), dPct(totFac,popFac))}</div>
     </div>
@@ -5359,7 +5367,7 @@ function renderCervezaTab(rows, rowsYoY, rowsPop) {
       <div style="margin-top:10px">${dBadgeDual(dPct(totCe,yoyCe), dPct(totCe,popCe))}</div>
     </div>
     <div style="background:#0c1f35;border:1px solid #1e3a5f;border-radius:12px;padding:18px 22px;text-align:center">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#38bdf8;margin-bottom:10px">Litros</div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#38bdf8;margin-bottom:10px">Litros · latas + barriles</div>
       <div style="font-size:36px;font-weight:900;color:#e6edf3;font-variant-numeric:tabular-nums">${totLi.toLocaleString('es-AR',{maximumFractionDigits:2})}</div>
       <div style="margin-top:10px">${dBadgeDual(dPct(totLi,yoyLi), dPct(totLi,popLi))}</div>
     </div>`;
@@ -5377,6 +5385,11 @@ function renderCervezaTab(rows, rowsYoY, rowsPop) {
   lYoY.forEach(r  => { byYoyFa[r.fa] = (byYoyFa[r.fa]||0) + r.ce; });
   lPop.forEach(r  => { byPopFa[r.fa] = (byPopFa[r.fa]||0) + r.ce; });
 
+  PRODS.push({ fa:'cerveza_barril', name:'Barriles 50 L', color:'#a78bfa', bg:'#1a1530', unit:'barriles' });
+  byCurFa.cerveza_barril = sumF(bRows, 'ce');
+  byYoyFa.cerveza_barril = sumF(bYoY, 'ce');
+  byPopFa.cerveza_barril = sumF(bPop, 'ce');
+
   const prodWrap = document.getElementById('cerv-prod-row');
   if (prodWrap) prodWrap.innerHTML = PRODS.map(p => {
     const cur  = byCurFa[p.fa]||0;
@@ -5385,7 +5398,7 @@ function renderCervezaTab(rows, rowsYoY, rowsPop) {
     return `<div style="flex:1;min-width:140px;background:${p.bg};border:1px solid rgba(255,255,255,.07);border-top:3px solid ${p.color};border-radius:10px;padding:14px 12px;text-align:center">
       <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:${p.color};margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
       <div style="font-size:28px;font-weight:900;color:#e6edf3;font-variant-numeric:tabular-nums">${cur.toLocaleString('es-AR')}</div>
-      <div style="font-size:10px;color:#6e7681;margin:3px 0 8px">latas</div>
+      <div style="font-size:10px;color:#6e7681;margin:3px 0 8px">${p.unit || 'latas'}</div>
       ${dBadgeDual(dPct(cur,yoyV), dPct(cur,popV))}
     </div>`;
   }).join('');
