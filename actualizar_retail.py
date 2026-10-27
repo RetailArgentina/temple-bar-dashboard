@@ -470,6 +470,17 @@ def fetch_locales_obj(client):
         if d:
             result_list.append({"b": b, "l": local_upper, "d": d})
 
+    # Locales con venta y sin objetivo cargado (ej. local nuevo): entran con obj=0
+    # para que la tabla los muestre como "sin objetivo" en vez de ocultarlos.
+    con_obj = {(b, LOCAL_ALIASES.get((b, l), l)) for (b, l) in obj_dict}
+    for (b, local_upper), real_months in real_dict.items():
+        if (b, local_upper) in con_obj or not local_upper:
+            continue
+        d = {mes: [real_M, 0.0, int(real_ord), 0]
+             for mes, (real_M, real_ord) in real_months.items() if real_M > 0}
+        if d:
+            result_list.append({"b": b, "l": local_upper, "d": d})
+
     result_list.sort(key=lambda x: (x["b"], x["l"]))
 
     total_entries = sum(len(r["d"]) for r in result_list)
