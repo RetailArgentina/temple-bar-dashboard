@@ -44,7 +44,7 @@ def test_validar_acepta_baja_chica_del_rubro_con_aviso():
 def test_obtener_ipc_con_baja_chica_usa_api_y_guarda_cache(monkeypatch):
     guardado = {}
     s = _series(rubro={"2026-06": 200.0, "2026-07": 198.0, "2026-08": 204.02})
-    monkeypatch.setattr(ipc_indec, "descargar", lambda: s)
+    monkeypatch.setattr(ipc_indec, "descargar", lambda **_: s)
     monkeypatch.setattr(ipc_indec, "_guardar_cache", lambda b, x: guardado.update(s=x))
     p = ipc_indec.obtener_ipc("bucket-x", HOY, log=lambda *_: None)
     assert p["fuente"] == "api" and guardado["s"] == s
@@ -99,6 +99,60 @@ def test_descargar_reintenta_y_devuelve_series(monkeypatch):
     assert s == {"general": {"2026-08": 104.0}, "rubro": {"2026-08": 204.0}}
 
 
+CSV_IPC = ("indice_tiempo,ipc_alimentos_bebidas_no_alcoholicas_nacional,ipc_restaurantes_hoteles_nacional\n"
+           "2023-12-01,90.0,190.0\n2026-08-01,104.0,204.0\n2026-09-01,105.0,206.0\n")
+
+
+def test_descargar_rubro_vacio_en_api_lo_toma_del_csv(monkeypatch):
+    class Resp:
+        def __init__(self, url):
+            self.url = url
+            self.content = CSV_IPC.encode("utf-8")
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": [["2026-08-01", 104.0, None]]}   # la API trae el rubro vacío
+
+    monkeypatch.setattr(ipc_indec.requests, "get", lambda url, params=None, timeout=None: Resp(url))
+    logs = []
+    s = ipc_indec.descargar(espera=0, log=logs.append)
+    assert s == {"general": {"2026-08": 104.0}, "rubro": {"2026-08": 204.0, "2026-09": 206.0}}  # sin 2023
+    assert any("tomada del CSV" in l for l in logs)
+
+
+def test_descargar_rubro_vacio_y_csv_caido_devuelve_rubro_vacio(monkeypatch):
+    class Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"data": [["2026-08-01", 104.0, None]]}
+
+    def fake_get(url, params=None, timeout=None):
+        if params is None:
+            raise requests.ConnectionError("CSV caído")
+        return Resp()
+
+    monkeypatch.setattr(ipc_indec.requests, "get", fake_get)
+    logs = []
+    s = ipc_indec.descargar(espera=0, log=logs.append)
+    assert s == {"general": {"2026-08": 104.0}, "rubro": {}}
+    assert any("falló el CSV" in l for l in logs)
+
+
+def test_obtener_ipc_serie_vacia_se_completa_con_cache_y_no_pierde_la_otra(monkeypatch):
+    # general fresco de la API + rubro de la cache: antes se tiraba todo y general quedaba viejo
+    general = {"2026-07": 102.0, "2026-08": 104.04}
+    monkeypatch.setattr(ipc_indec, "descargar", lambda **_: {"general": general, "rubro": {}})
+    monkeypatch.setattr(ipc_indec, "_leer_cache", lambda b: _series())
+    monkeypatch.setattr(ipc_indec, "_guardar_cache", lambda b, x: None)
+    p = ipc_indec.obtener_ipc("bucket-x", HOY, log=lambda *_: None)
+    assert p["fuente"] == "api" and p["general"]["2026-08"] == 104.04
+    assert p["rubro"]["2026-08"] == 204.02
+
+
 def test_descargar_falla_despues_de_3_intentos(monkeypatch):
     def fake_get(url, params, timeout):
         raise requests.ConnectionError("caída")
@@ -110,7 +164,7 @@ def test_descargar_falla_despues_de_3_intentos(monkeypatch):
 
 def test_obtener_ipc_api_ok_guarda_cache(monkeypatch):
     guardado = {}
-    monkeypatch.setattr(ipc_indec, "descargar", lambda: _series())
+    monkeypatch.setattr(ipc_indec, "descargar", lambda **_: _series())
     monkeypatch.setattr(ipc_indec, "_guardar_cache", lambda b, s: guardado.update(b=b, s=s))
     p = ipc_indec.obtener_ipc("bucket-x", HOY, log=lambda *_: None)
     assert p["fuente"] == "api" and p["base"] == "2026-08"
@@ -118,7 +172,7 @@ def test_obtener_ipc_api_ok_guarda_cache(monkeypatch):
 
 
 def test_obtener_ipc_sin_bucket_no_toca_gcs(monkeypatch):
-    monkeypatch.setattr(ipc_indec, "descargar", lambda: _series())
+    monkeypatch.setattr(ipc_indec, "descargar", lambda **_: _series())
 
     def no_llamar(*a):
         raise AssertionError("no debe tocar GCS")
@@ -131,7 +185,7 @@ def test_obtener_ipc_sin_bucket_no_toca_gcs(monkeypatch):
 def test_obtener_ipc_api_caida_usa_cache(monkeypatch):
     logs = []
 
-    def caida():
+    def caida(**_):
         raise RuntimeError("API IPC sin respuesta")
 
     monkeypatch.setattr(ipc_indec, "descargar", caida)
@@ -143,7 +197,7 @@ def test_obtener_ipc_api_caida_usa_cache(monkeypatch):
 
 def test_obtener_ipc_datos_invalidos_de_api_usan_cache_y_no_se_guardan(monkeypatch):
     monkeypatch.setattr(ipc_indec, "descargar",
-                        lambda: _series(general={"2026-07": 102.0, "2026-08": 90.0}))
+                        lambda **_: _series(general={"2026-07": 102.0, "2026-08": 90.0}))
 
     def no_guardar(*a):
         raise AssertionError("no debe guardar datos inválidos")
@@ -156,7 +210,7 @@ def test_obtener_ipc_datos_invalidos_de_api_usan_cache_y_no_se_guardan(monkeypat
 def test_obtener_ipc_sin_api_ni_cache_devuelve_none(monkeypatch):
     logs = []
 
-    def caida():
+    def caida(**_):
         raise RuntimeError("API IPC sin respuesta")
 
     monkeypatch.setattr(ipc_indec, "descargar", caida)
@@ -207,7 +261,7 @@ def test_obtener_ipc_cache_desactualizada_se_usa_con_aviso(monkeypatch):
 
 
 def test_obtener_ipc_falla_al_guardar_cache_no_rompe(monkeypatch):
-    monkeypatch.setattr(ipc_indec, "descargar", lambda: _series())
+    monkeypatch.setattr(ipc_indec, "descargar", lambda **_: _series())
 
     def falla(*a):
         raise OSError("sin permisos")

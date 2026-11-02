@@ -8,6 +8,8 @@ por si la API falla en una corrida futura.
 obtener_ipc() nunca lanza: ante cualquier falla devuelve la copia de GCS o None
 (la pestaña muestra "Datos de inflación no disponibles").
 """
+import csv
+import io
 import json
 import time
 from datetime import date
@@ -18,6 +20,13 @@ API_URL = "https://apis.datos.gob.ar/series/api/series/"
 SERIES = {  # el orden importa: es el orden de las columnas en la respuesta
     "general": "148.3_INIVELNAL_DICI_M_26",  # IPC Nivel general nacional, base dic-2016
     "rubro": "146.3_IRESTAUNAL_DICI_M_33",   # IPC Hoteles y restaurantes nacional, base dic-2016
+}
+# Respaldo si la API devuelve una serie vacía (pasó con el rubro en oct-2026: la API
+# respondía 200 sin datos mientras el CSV de origen sí estaba publicado).
+CSV_RESPALDO = {
+    "rubro": ("https://infra.datos.gob.ar/catalog/sspm/dataset/145/distribution/145.5/download/"
+              "indice-precios-al-consumidor-apertura-por-capitulos-base-diciembre-2016-mensual.csv",
+              "ipc_restaurantes_hoteles_nacional"),
 }
 CACHE_BLOB = "ipc_cache.json"
 MAX_ATRASO_MESES = 3
@@ -113,7 +122,16 @@ def variaciones_mensuales(payload):
     return {b: round((serie[b] / serie[a] - 1) * 100, 1) for a, b in zip(meses, meses[1:])}
 
 
-def descargar(desde="2024-01", intentos=3, espera=3, timeout=20):
+def _descargar_csv(url, columna, desde, timeout):
+    """Serie {"AAAA-MM": float} desde el CSV de datos.gob.ar, desde `desde` inclusive."""
+    r = requests.get(url, timeout=timeout)
+    r.raise_for_status()
+    filas = csv.DictReader(io.StringIO(r.content.decode("utf-8-sig")))
+    return {f["indice_tiempo"][:7]: float(f[columna]) for f in filas
+            if f["indice_tiempo"][:7] >= desde and f.get(columna)}
+
+
+def descargar(desde="2024-01", intentos=3, espera=3, timeout=20, log=print):
     params = {"ids": ",".join(SERIES.values()), "start_date": f"{desde}-01",
               "format": "json", "limit": 1000}
     ultimo_error = None
@@ -121,12 +139,23 @@ def descargar(desde="2024-01", intentos=3, espera=3, timeout=20):
         try:
             r = requests.get(API_URL, params=params, timeout=timeout)
             r.raise_for_status()
-            return parse_respuesta(r.json())
+            series = parse_respuesta(r.json())
+            break
         except (requests.RequestException, ValueError) as exc:
             ultimo_error = exc
             if i < intentos - 1:
                 time.sleep(espera)
-    raise RuntimeError(f"API IPC sin respuesta: {ultimo_error}")
+    else:
+        raise RuntimeError(f"API IPC sin respuesta: {ultimo_error}")
+    for nombre, (url, columna) in CSV_RESPALDO.items():
+        if series[nombre]:
+            continue
+        try:
+            series[nombre] = _descargar_csv(url, columna, desde, timeout * 3)
+            log(f"  ⚠ IPC: serie {nombre} vacía en la API, tomada del CSV ({len(series[nombre])} meses)")
+        except (requests.RequestException, ValueError, KeyError) as exc:
+            log(f"  ⚠ IPC: serie {nombre} vacía en la API y falló el CSV ({exc})")
+    return series
 
 
 def _leer_cache(bucket):
@@ -149,7 +178,19 @@ def obtener_ipc(bucket="", hoy=None, log=print):
     """Payload IPC para el tablero, o None si no hay datos. Nunca lanza.
     Con bucket vacío (corridas locales) no lee ni escribe GCS."""
     try:
-        series = descargar()
+        series = descargar(log=log)
+        vacias = [n for n, s in series.items() if not s]
+        if vacias and bucket:
+            # una serie caída no tira la otra: la vacía sale de la copia de GCS
+            try:
+                cache = _leer_cache(bucket) or {}
+            except Exception as exc:
+                cache = {}
+                log(f"  ⚠ IPC: no se pudo leer {CACHE_BLOB}: {exc}")
+            for n in vacias:
+                if cache.get(n):
+                    series[n] = cache[n]
+                    log(f"  ⚠ IPC: serie {n} vacía en la API y en el CSV, usando cache")
         avisos = validar(series, hoy)
         fuente = "api"
         if bucket:
