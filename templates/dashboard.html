@@ -335,11 +335,6 @@ function loadChartJS(cb){
   <div id="objTableWrap"></div>
 </section>
 
-<section class="sec card" style="padding-bottom:0">
-  <h2>Top 10 locales</h2>
-  <div class="csub" id="top10Sub">Filtrado por marca y período</div>
-  <div class="table-scroll bleed" style="margin-top:16px"><table id="topTable" style="min-width:620px"></table></div>
-</section>
 
 <section class="sec">
   <div class="sec-hd">
@@ -513,6 +508,13 @@ function mtdPorMarca(mes){
     const a=agg[r.m]||(agg[r.m]={mes, m:r.m, fac:0, ord:0}); a.fac+=r.fac; a.ord+=r.ord;
   });
   return Object.values(agg);
+}
+/* "Hoy" según los datos: el pipeline trae hasta ayer, así que el avance esperado del mes
+   se mide al último día con datos (MTD.dia), no al día del calendario (exigía un día de más). */
+function hoyDatos(){
+  const t=new Date();
+  if(MTD){ const [y,m]=MTD.mes.split("-"); if(+y===t.getFullYear()&&+m===t.getMonth()+1) return new Date(+y,+m-1,MTD.dia); }
+  return t;
 }
 /* Reemplaza en `rows` el mes `mes` por su versión "mismos días" de MTD. */
 function mtdSwap(rows,mes){
@@ -1196,14 +1198,12 @@ function updateBannerKPI(){
   const _lastMes = meses && meses.length ? meses[meses.length-1] : null;
   const _dynCount = (_lastMes && LOC_COUNT_BY_MES && LOC_COUNT_BY_MES[_lastMes]) || null;
   const locCount = _dynCount ? {P:_dynCount.P||0, T:_dynCount.T||0, F:_dynCount.F||0} : {P:36, T:26, F:2};
-  const _prevYear = (new Date().getFullYear() - 1).toString();
-  const _prevYearMeses = Object.keys(LOC_COUNT_BY_MES||{}).filter(m => m.startsWith(_prevYear));
-  const locCount25 = _prevYearMeses.length > 0
-    ? _prevYearMeses.reduce((best, m) => {
-        const d = LOC_COUNT_BY_MES[m];
-        return {P: Math.max(best.P, d.P||0), T: Math.max(best.T, d.T||0), F: Math.max(best.F, d.F||0)};
-      }, {P:0, T:0, F:0})
-    : {P:43, T:39, F:3}; // fallback hardcodeado si no hay datos del año anterior
+  // Año anterior: locales con venta en el MISMO mes del año anterior (antes era el máximo de
+  // cualquier mes del año, que mezclaba locales que cerraron hace meses: "-33 vs 80").
+  const _yoyLastMes = yoyMeses && yoyMeses.length ? yoyMeses[yoyMeses.length-1] : null;
+  const _yc = (_yoyLastMes && LOC_COUNT_BY_MES && LOC_COUNT_BY_MES[_yoyLastMes]) || null;
+  const locCount25 = _yc ? {P:_yc.P||0, T:_yc.T||0, F:_yc.F||0} : {P:0, T:0, F:0};
+  const _yoyLocLbl = _yoyLastMes ? MN[+_yoyLastMes.slice(5)]+" "+_yoyLastMes.slice(2,4) : "";
   const locEl=document.getElementById("locBanner");
   if(locEl){
     const BRANDS=[["Patagonia","P"],["Temple","T"],["Feriado","F"]];
@@ -1223,7 +1223,7 @@ function updateBannerKPI(){
         <div>
           <div class="loc-name">${dotHtml}${name}</div>
           <div class="loc-sub">${fmtM(fac)} &middot; ${tNum1(sh)}% del total</div>
-          <div class="loc-sub">${fmtYoyLoc(n,n25)}</div>
+          <div class="loc-sub">${fmtYoyLoc(n,n25,_yoyLocLbl)}</div>
         </div>
         <div>
           <div class="loc-num">${n||"—"}</div>
@@ -1231,7 +1231,9 @@ function updateBannerKPI(){
         </div>
       </div>`;
     };
-    const vis=STATE.marca==="todas"?BRANDS:BRANDS.filter(([m])=>m===STATE.marca);
+    // Marca cerrada sin venta en el período (Feriado desde 29/10): no mostrar su fila con −100%
+    const vis=(STATE.marca==="todas"?BRANDS:BRANDS.filter(([m])=>m===STATE.marca))
+      .filter(([m])=>!(esCerrado(m,null,new Date())&&facOf(m,meses)===0));
     let html=vis.map(([m,c])=>row(m,tDot(m),locCount[c],locCount25[c],facOf(m,meses),facYoyOf(m))).join("");
     if(vis.length>1){
       const nT=locCount.P+locCount.T+locCount.F, nT25=locCount25.P+locCount25.T+locCount25.F;
@@ -1267,7 +1269,7 @@ function updateBannerKPI(){
   const oTickAño=oOrdAño>0?(oFacAño*1e6)/oOrdAño:0;
 
   // ── Ritmo del período seleccionado (días transcurridos / días totales) ──
-  const _today2=new Date();
+  const _today2=hoyDatos();
   const _todayMes2=_today2.getFullYear()+"-"+String(_today2.getMonth()+1).padStart(2,"0");
   let _pElD=0,_pTotD=0;
   if(meses) meses.forEach(mes=>{
@@ -1363,7 +1365,7 @@ function getMesContext(marcasFiltro,allObjMarcas){
   const monthsWithReal=allMonths.filter(m=>mensualMeses.has(m));
   if(!monthsWithReal.length) return null;
   const latestMes=monthsWithReal[monthsWithReal.length-1];
-  const today=new Date();
+  const today=hoyDatos();
   const todayMes=today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0");
   const [y,mo]=latestMes.split("-").map(Number);
   const daysInMonth=new Date(y,mo,0).getDate();
@@ -1724,7 +1726,7 @@ function buildPotencialLocales(){
   if(isPartialMes && latestSel){
     const [_py,_pm]=latestSel.split("-");
     const _dTot=new Date(+_py,+_pm,0).getDate();
-    daysElapsedMes=Math.min(new Date().getDate(),_dTot);
+    daysElapsedMes=Math.min(hoyDatos().getDate(),_dTot);
     diasRestMes=_dTot-daysElapsedMes;
     paceEsp=Math.round(daysElapsedMes/_dTot*100);
   }
@@ -1741,7 +1743,9 @@ function buildPotencialLocales(){
       <td class="r strong neg">${fmtML(r.gap)}</td>
       <td class="r strong">+${fmtN(edr)} órd/día</td>
       <td class="c muted">ó</td>
-      <td class="r strong">+${fmtPesos(Math.round(r.deltaTicket/100)*100)}/ticket</td>
+      ${r.deltaTicket>tickRef*0.5
+        ? `<td class="r muted">no alcanza solo con ticket (+${Math.round(r.deltaTicket/tickRef*100)}%)</td>`
+        : `<td class="r strong">+${fmtPesos(Math.round(r.deltaTicket/100)*100)}/ticket</td>`}
     </tr>`;
   }).join("");
   el.innerHTML=`<div class="table-scroll bleed"><table style="min-width:820px">
@@ -1820,6 +1824,8 @@ function buildDias(){
 }
 
 function buildTop10(){
+  // Sección retirada el 11/11/2026 (repetía el Ranking de locales): sin tabla no hace nada
+  if(!document.getElementById("topTable")) return;
   // Para rango personalizado mapeamos al preset más cercano por cantidad de meses
   let pkFallback="ultimos_6m", customNote="";
   if(STATE.periodo==="custom"){
@@ -1998,7 +2004,7 @@ function buildLocalesTable() {
   if (isPartialMes && latestSelL) {
     const [_py, _pm] = latestSelL.split("-");
     const _dTotal = new Date(+_py, +_pm, 0).getDate();
-    dElapsed = Math.min(new Date().getDate(), _dTotal);
+    dElapsed = Math.min(hoyDatos().getDate(), _dTotal);
     paceExact = dElapsed / _dTotal;
     paceEsp = Math.round(paceExact * 100);
   }
@@ -2107,7 +2113,11 @@ function buildLocalesTable() {
     }
     // El ticket no se acumula en el mes: se compara contra 100%
     const espRow = mt==="tick" ? 100 : espPer;
-    const pctCell = pctVal===null
+    // WTC (Uruguay) se carga a mano después del cierre: en el mes en curso no es "0% de cumplimiento"
+    const wtcPend = isPartialMes && row.l==="WTC" && WTC_INFO && WTC_INFO.falta_mes_actual && !realV;
+    const pctCell = wtcPend
+      ? `<td class="muted">pendiente de carga</td>`
+      : pctVal===null
       ? `<td class="muted">sin objetivo</td>`
       : `<td><div class="pct-cell">${tProgressBar(pctVal,espRow)}<b class="${tPctCls(pctVal,espRow)==="neg"?"neg":""}">${tNum1(pctVal)}%</b></div></td>`;
     const cv = (a,b) => { if(!a||!b) return null; const va=mt==="ord"?a.ord:mt==="tick"?a.tick:a.fac, vb=mt==="ord"?b.ord:mt==="tick"?b.tick:b.fac; return cmpVal(va,vb); };
@@ -2158,12 +2168,12 @@ function setLocSort(s, btn) {
   buildLocalesTable();
 }
 
-function fmtYoyLoc(cur, prev) {
+function fmtYoyLoc(cur, prev, lbl) {
   if(!prev) return '<span class="na2">sin datos del año anterior</span>';
   const d = cur - prev;
   const sign = d > 0 ? "+" : "";
   const css = d > 0 ? "up2" : d < 0 ? "dn2" : "na2";
-  return '<span class="'+css+'">'+sign+d+' locales</span> vs '+prev+' en '+YRP;
+  return '<span class="'+css+'">'+sign+d+' locales</span> vs '+prev+' en '+(lbl||YRP);
 }
 
 /* ── Proyección de cierre anual (4ª tarjeta, en pizarra) ── */

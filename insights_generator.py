@@ -17,6 +17,7 @@ from collections import defaultdict
 import calendar
 import json
 import os
+import re
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -631,6 +632,14 @@ def generate_insights(ventas_data, economic_context=None):
 # ══════════════════════════════════════════════════════════════════════════
 #  RENDERER HTML
 # ══════════════════════════════════════════════════════════════════════════
+_NUM_EN = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d+")
+
+
+def _es_ar(texto):
+    """Números en formato argentino como el resto del tablero: 14.3 → 14,3 y 43,421 → 43.421."""
+    return _NUM_EN.sub(lambda m: m.group(0).translate(str.maketrans(",.", ".,")), texto)
+
+
 def render_insights_html(insights):
     """
     Convierte lista de insight dicts en HTML listo para inyectar
@@ -649,8 +658,8 @@ def render_insights_html(insights):
         chip_txt, chip_cls = chips.get(ins.get("color"), ("Dato", "t-chip"))
         parts.append(
             f'<div class="ic">'
-            f'<div class="it"><span class="{chip_cls}">{chip_txt}</span><span>{ins["title"]}</span></div>'
-            f'<div class="ib">{ins["body"]}</div>'
+            f'<div class="it"><span class="{chip_cls}">{chip_txt}</span><span>{_es_ar(ins["title"])}</span></div>'
+            f'<div class="ib">{_es_ar(ins["body"])}</div>'
             f'</div>'
         )
     return "\n    ".join(parts)

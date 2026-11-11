@@ -100,6 +100,12 @@ def test_es_cerrado_vale_solo_desde_el_dia_siguiente_al_cierre(tmp_path):
     assert r == [False, True, True, False]
 
 
+def test_insights_numeros_en_formato_argentino():
+    from insights_generator import _es_ar
+    assert _es_ar("+14.3% · $43,421 · $247.5M · 2.3x · 04/11 · 2026-11 · $1,234.5") == \
+        "+14,3% · $43.421 · $247,5M · 2,3x · 04/11 · 2026-11 · $1.234,5"
+
+
 def test_plantilla_tiene_placeholder_mtd():
     with open(TEMPLATE, encoding="utf-8") as f:
         assert "const MTD = __MTD_JSON__;" in f.read()
