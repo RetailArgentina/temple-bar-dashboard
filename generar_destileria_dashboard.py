@@ -570,12 +570,16 @@ def fetch_rows(client):
     query = f"""
     WITH base AS (
       -- Deduplica filas idénticas ignorando Clusterizacion (que puede ser NULL en algunas copias)
-      SELECT DISTINCT
+      -- Total_ va con MAX y fuera de la clave: así la deduplicación queda igual que antes.
+      SELECT
         FechaPedido, NombreDeFantasia, GrupoCliente,
-        Producto, Envase, Tipo, CantEnvases, Litros, TotalSImp_
+        Producto, Envase, Tipo, CantEnvases, Litros, TotalSImp_,
+        MAX(Total_) AS Total_
       FROM `{TABLE}`
       WHERE FechaPedido IS NOT NULL
         AND FechaPedido < '2026-07-01'   -- datos históricos solo hasta el corte; julio en adelante viene de Contabilium
+      GROUP BY FechaPedido, NombreDeFantasia, GrupoCliente,
+               Producto, Envase, Tipo, CantEnvases, Litros, TotalSImp_
     ),
     cl_latest AS (
       -- Cluster más reciente no-null por cliente
@@ -598,7 +602,9 @@ def fetch_rows(client):
       ROUND(COALESCE(b.Litros,  0.0), 3)                   AS li,
       -- Neto sin impuestos (TotalSImp_), misma base que neto_linea de Contabilium.
       -- Total_ incluye impuestos (+13-20%) y rompía el YoY/YTD contra julio en adelante.
-      ROUND(COALESCE(b.TotalSImp_, 0.0), 0)                AS to_
+      -- Feb-dic 2024 vienen sin TotalSImp_ (solo Total_): se estima el neto sacando IVA 21%
+      -- (aproximado: ignora impuestos internos; decisión Darwin 11/11/2026).
+      ROUND(COALESCE(b.TotalSImp_, b.Total_ / 1.21, 0.0), 0) AS to_
     FROM base b
     LEFT JOIN cl_latest c ON b.NombreDeFantasia = c.NombreDeFantasia
     ORDER BY b.FechaPedido
