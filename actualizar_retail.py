@@ -601,6 +601,61 @@ def fetch_ultima_venta_local(client):
     return [{"m": r.m, "l": r.l, "u": r.u.isoformat()} for r in rows]
 
 
+def fetch_mtd(client):
+    """Mes en curso parcial: venta por marca+local de los días 1..N (N = último
+    día con datos) del mes actual, del mes anterior y del mismo mes del año
+    anterior. Permite comparar "mismos días" en vez de 10 días contra un mes
+    entero. Devuelve None si el último mes con datos ya está completo."""
+    print("  Querying MTD (mismos días mes ant./año ant.)...", end='', flush=True)
+    q = f"""
+        WITH ult AS (
+          SELECT MAX(Fecha) AS u FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_VENTAS}`
+          WHERE Fecha BETWEEN DATE_SUB(CURRENT_DATE(), INTERVAL 40 DAY) AND CURRENT_DATE()
+            AND SAFE_CAST(Facturacion AS FLOAT64) BETWEEN 0 AND 1e12
+        )
+        SELECT FORMAT_DATE('%Y-%m', v.Fecha) AS mes, v.Marca AS m, v.Local AS l,
+               ROUND(SUM(SAFE_CAST(v.Facturacion AS FLOAT64))/1e6, 3) AS fac,
+               COUNT(DISTINCT v.Orden) AS ord, ANY_VALUE(ult.u) AS u
+        FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_VENTAS}` v CROSS JOIN ult
+        WHERE v.Marca IS NOT NULL AND v.Local IS NOT NULL
+          AND SAFE_CAST(v.Facturacion AS FLOAT64) BETWEEN 0 AND 1e12
+          AND EXTRACT(DAY FROM v.Fecha) <= EXTRACT(DAY FROM ult.u)
+          AND DATE_TRUNC(v.Fecha, MONTH) IN (
+                DATE_TRUNC(ult.u, MONTH),
+                DATE_SUB(DATE_TRUNC(ult.u, MONTH), INTERVAL 1 MONTH),
+                DATE_SUB(DATE_TRUNC(ult.u, MONTH), INTERVAL 12 MONTH))
+        GROUP BY mes, m, l
+    """
+    rows = list(client.query(q).result())
+    print(f" {len(rows)} rows OK")
+    return build_mtd(rows)
+
+
+def build_mtd(rows):
+    """Arma {mes, dia, prev, yoy, rows} a partir de filas (mes, m, l, fac, ord, u)."""
+    import calendar
+    if not rows:
+        return None
+    u = rows[0].u
+    if u.day >= calendar.monthrange(u.year, u.month)[1]:
+        return None  # mes completo: no hay nada parcial que comparar
+    mes = u.strftime('%Y-%m')
+    prev = (u.replace(day=1) - timedelta(days=1)).strftime('%Y-%m')
+    yoy = f"{u.year - 1}-{u.month:02d}"
+    return {"mes": mes, "dia": u.day, "prev": prev, "yoy": yoy,
+            "rows": [{"mes": r.mes, "m": r.m, "l": r.l, "fac": r.fac or 0, "ord": r.ord or 0}
+                     for r in rows]}
+
+
+def inject_mtd(html, mtd):
+    """Reemplaza __MTD_JSON__ (null = sin mes parcial o consulta fallida)."""
+    if '__MTD_JSON__' not in html:
+        return html
+    html = html.replace('__MTD_JSON__', json.dumps(mtd, separators=(',', ':')))
+    print(f"  ✓ MTD inyectado ({'día ' + str(mtd['dia']) if mtd else 'sin mes parcial'})")
+    return html
+
+
 def inject_ultima_venta(html, rows):
     """Reemplaza __ULTIMA_VENTA_JSON__ (null si la consulta falló: la regla no se evalúa)."""
     if '__ULTIMA_VENTA_JSON__' not in html:
@@ -812,17 +867,23 @@ def compute_dias_data(ventas_rows, mensual_rows):
         filtered = [r for r in ventas_rows if r["d"][:7] in meses_filter] if meses_filter else ventas_rows
 
         agg = {}
+        fechas_por_dia = {}  # dia → fechas distintas del período (cualquier marca)
         for r in filtered:
             weekday = get_dow(r["d"])
             if weekday is None: continue
             dia = DOW_ES[weekday]
+            fechas_por_dia.setdefault(dia, set()).add(r["d"])
             key = (r["marca"], dia)
             if key not in agg:
                 agg[key] = {"m": r["marca"], "dia": dia, "dow": DOW_NUM[weekday], "fac": 0.0}
             agg[key]["fac"] += r["v"] / 1_000_000
 
+        # n = cantidad de lunes, martes, ... del período: el frontend promedia
+        # por día para que un mes parcial con 2 domingos y 1 miércoles no
+        # muestre el miércoles como "peor día" solo por calendario.
         result[periodo] = [
-            {"m": v["m"], "dia": v["dia"], "dow": v["dow"], "fac": round(v["fac"])}
+            {"m": v["m"], "dia": v["dia"], "dow": v["dow"], "fac": round(v["fac"]),
+             "n": len(fechas_por_dia.get(v["dia"], ()))}
             for v in agg.values()
         ]
 
@@ -1248,7 +1309,8 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
                              local_mensual_rows=None,
                              ipc_data=None,
                              ultima_venta_rows=None,
-                             wtc_info=None):
+                             wtc_info=None,
+                             mtd=None):
     """Generate the dashboard HTML by reading the template.
 
     Template resolution order:
@@ -1379,6 +1441,7 @@ def generate_html_from_file(data, output_path, gcs_bucket='',
     # ── Inyección de IPC (pestaña Finanzas) ──────────────────────────────
     html = inject_ipc(html, ipc_data)
     html = inject_ultima_venta(html, ultima_venta_rows)
+    html = inject_mtd(html, mtd)
     html = inject_wtc_info(html, wtc_info)
 
     # ── Inyección de Royalties ────────────────────────────────────────────
@@ -1481,6 +1544,7 @@ def main():
             "ipc":        lambda: fetch_ipc_data(args.gcs_bucket),
             "ultima_venta": lambda: fetch_ultima_venta_local(client),
             "wtc":        lambda: fetch_wtc(client),
+            "mtd":        lambda: fetch_mtd(client),
         }
 
         results = {}
@@ -1542,6 +1606,7 @@ def main():
             ipc_data=ipc_data,
             ultima_venta_rows=results["ultima_venta"],
             wtc_info=wtc_info,
+            mtd=results["mtd"],
         )
 
         # Upload to GCS if requested (Cloud Run mode)

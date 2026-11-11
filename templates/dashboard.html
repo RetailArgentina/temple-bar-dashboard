@@ -500,6 +500,25 @@ const LOCAL_MENSUAL = __LOCAL_MENSUAL_JSON__;
 const IPC = __IPC_JSON__;
 // Último día con venta por marca+local (60 días) para "Locales a mirar"; null si la consulta falló.
 const ULTIMA_VENTA = __ULTIMA_VENTA_JSON__;
+// Mes en curso parcial: venta por local de los días 1..dia del mes actual, del mes anterior (prev) y del
+// mismo mes del año anterior (yoy). null si el último mes está completo. Sirve para comparar "mismos días"
+// en vez de 10 días contra un mes entero (daba −65% con el negocio creciendo).
+const MTD = __MTD_JSON__;
+/* Filas tipo MENSUAL {mes,m,fac,ord} de MTD para `mes`, sumadas por marca, con el filtro de marca activo. */
+function mtdPorMarca(mes){
+  if(!MTD||!mes) return null;
+  const agg={};
+  MTD.rows.forEach(r=>{
+    if(r.mes!==mes||(STATE.marca!=="todas"&&r.m!==STATE.marca)) return;
+    const a=agg[r.m]||(agg[r.m]={mes, m:r.m, fac:0, ord:0}); a.fac+=r.fac; a.ord+=r.ord;
+  });
+  return Object.values(agg);
+}
+/* Reemplaza en `rows` el mes `mes` por su versión "mismos días" de MTD. */
+function mtdSwap(rows,mes){
+  const mt=mtdPorMarca(mes);
+  return mt&&rows?rows.filter(r=>r.mes!==mes).concat(mt):rows;
+}
 // WTC (Uruguay): carga manual mensual convertida a ARS, ya sumada a MENSUAL/LOCAL_MENSUAL/LOCALES_OBJ
 // en el pipeline. Acá solo viene la info para la nota y los avisos (null si la plantilla no se inyectó).
 const WTC_INFO = __WTC_INFO_JSON__;
@@ -681,6 +700,15 @@ const EXC_DIAS_SIN_DATOS = 3; // días sin ventas (el pipeline trae hasta ayer)
 const EXC_DIAS_ALTA = 7;
 const EXC_MARCA = {P:"Patagonia", T:"Temple", F:"Feriado"};
 const EXC_MN = ["","ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+/* Marcas y locales cerrados (fecha = última venta). Desde el día siguiente no generan alertas
+   ni el cartel de atraso: se sabe por qué no venden. Agregar acá cuando cierre un local. */
+const CERRADOS = {marcas:{"Feriado":"2026-10-29"}, locales:{"Patagonia|SFE - ROSARIO LA FLORIDA":"2026-10-12"}};
+function esCerrado(m, l, hoy){
+  const f=CERRADOS.marcas[m]||(l!=null?CERRADOS.locales[m+"|"+String(l).trim()]:null);
+  if(!f) return false;
+  const [y,mm,d]=f.split("-");
+  return hoy>new Date(+y,+mm-1,+d,23,59,59);
+}
 function excMesLbl(mes){ const [y,m]=mes.split("-"); return EXC_MN[+m]+"-"+y.slice(2); }
 function excPct(v){ return (v>=0?"+":"−")+Math.abs(Math.round(v))+"%"; }
 
@@ -794,7 +822,8 @@ function calidadDatos(ultimaVenta, hoy){
 
 /* Badge de frescura del encabezado; si ULTIMA_VENTA falló queda el que inyectó el pipeline. */
 function buildCalidadDatos(hoy){
-  const c=calidadDatos(ULTIMA_VENTA, hoy||new Date());
+  hoy=hoy||new Date();
+  const c=calidadDatos(ULTIMA_VENTA?ULTIMA_VENTA.filter(r=>!esCerrado(r.m,r.l,hoy)):null, hoy);
   const el=document.getElementById("dataBadge"), txt=document.getElementById("dataBadgeTxt");
   if(!c||!el||!txt) return;
   el.className="data-badge data-badge-"+c.estado;
@@ -810,7 +839,9 @@ function buildExcepciones(hoy){
   let lista=[];
   if(meses.length&&IPC) lista=lista.concat(excCaidaVsMarca(LOCAL_MENSUAL,IPC.general,meses));
   lista=lista.concat(excObjSinVenta(LOCALES_OBJ,ult.slice(0,4),ult));
-  lista=excOrdenar(lista.concat(excSinDatos(ULTIMA_VENTA,hoy,EXC_DIAS_SIN_DATOS)),STATE.marca);
+  lista=lista.concat(excSinDatos(ULTIMA_VENTA,hoy,EXC_DIAS_SIN_DATOS));
+  // Marcas y locales cerrados (CERRADOS) no son alertas: se sabe por qué no venden
+  lista=excOrdenar(lista.filter(x=>!esCerrado(x.m,x.l,hoy)),STATE.marca);
   document.getElementById("excSub").textContent=
     (meses.length?"Últimos meses cerrados ("+meses.map(excMesLbl).join(", ")+") y ventas de los últimos días":"")
     +" · no depende del período elegido"
@@ -1061,7 +1092,10 @@ function getYoyBadge(c,y){
    (same-store), respetando el filtro de marca activo (STATE.marca). */
 function computeSameStore(meses,yoyMeses){
   if(!meses||!meses.length||!yoyMeses||!yoyMeses.length) return null;
-  const rows=STATE.marca==="todas"?LOCAL_MENSUAL:LOCAL_MENSUAL.filter(r=>r.m===STATE.marca);
+  let rows=STATE.marca==="todas"?LOCAL_MENSUAL:LOCAL_MENSUAL.filter(r=>r.m===STATE.marca);
+  // Mes en curso parcial: el mismo mes del año anterior entra solo con los mismos días (1..N)
+  if(MTD&&meses.includes(MTD.mes)&&yoyMeses.includes(MTD.yoy))
+    rows=rows.filter(r=>r.mes!==MTD.yoy).concat(MTD.rows.filter(r=>r.mes===MTD.yoy&&(STATE.marca==="todas"||r.m===STATE.marca)));
   const key=r=>r.m+"|"+r.l;
   const curKeys=new Set(rows.filter(r=>meses.includes(r.mes)).map(key));
   const yoyKeys=new Set(rows.filter(r=>yoyMeses.includes(r.mes)).map(key));
@@ -1141,7 +1175,17 @@ function updateBannerKPI(){
     }
   }
 
-  const cr=filterM(meses), pr=filterM(prevMeses), yr=filterM(yoyMeses);
+  const cr=filterM(meses);
+  let pr=filterM(prevMeses), yr=filterM(yoyMeses);
+  // Mes en curso parcial: comparar contra los mismos días (1..N) del mes anterior y del año anterior
+  const _mtdOn=!!(MTD&&meses&&meses.includes(MTD.mes));
+  const _mtdPrev=_mtdOn&&meses.length===1&&prevMeses&&prevMeses.length===1&&prevMeses[0]===MTD.prev;
+  const _mtdYoy=_mtdOn&&!!yoyMeses&&yoyMeses.includes(MTD.yoy);
+  if(_mtdPrev) pr=mtdSwap(pr,MTD.prev);
+  if(_mtdYoy) yr=mtdSwap(yr,MTD.yoy);
+  const _dTxt=_mtdOn?"1–"+MTD.dia+" ":"";
+  const prevSubLbl=_mtdPrev?_dTxt+MN[+MTD.prev.slice(5)].toLowerCase():"ant.";
+  const yoySubLbl=(_mtdYoy&&meses.length===1?_dTxt:"")+(yoyLabel||"");
   const cf=cr.reduce((s,r)=>s+r.fac,0), co=cr.reduce((s,r)=>s+r.ord,0);
   const pf=pr.reduce((s,r)=>s+r.fac,0), po=pr.reduce((s,r)=>s+r.ord,0);
   const yf=yr.reduce((s,r)=>s+r.fac,0), yo=yr.reduce((s,r)=>s+r.ord,0);
@@ -1164,6 +1208,13 @@ function updateBannerKPI(){
   if(locEl){
     const BRANDS=[["Patagonia","P"],["Temple","T"],["Feriado","F"]];
     const facOf=(m,ms)=>ms?MENSUAL.filter(r=>r.m===m&&ms.includes(r.mes)).reduce((s,r)=>s+r.fac,0):0;
+    // Interanual: con mes en curso parcial, ese mes del año anterior entra solo con los mismos días
+    const facYoyOf=m=>{
+      if(!yoyMeses) return 0;
+      let rs=MENSUAL.filter(r=>r.m===m&&yoyMeses.includes(r.mes));
+      if(_mtdYoy) rs=rs.filter(r=>r.mes!==MTD.yoy).concat(MTD.rows.filter(r=>r.mes===MTD.yoy&&r.m===m));
+      return rs.reduce((s,r)=>s+r.fac,0);
+    };
     const facTot=BRANDS.reduce((s,[m])=>s+facOf(m,meses),0);
     const row=(name,dotHtml,n,n25,fac,facY)=>{
       const sh=facTot>0?Math.round(fac/facTot*1000)/10:0;
@@ -1181,10 +1232,10 @@ function updateBannerKPI(){
       </div>`;
     };
     const vis=STATE.marca==="todas"?BRANDS:BRANDS.filter(([m])=>m===STATE.marca);
-    let html=vis.map(([m,c])=>row(m,tDot(m),locCount[c],locCount25[c],facOf(m,meses),facOf(m,yoyMeses))).join("");
+    let html=vis.map(([m,c])=>row(m,tDot(m),locCount[c],locCount25[c],facOf(m,meses),facYoyOf(m))).join("");
     if(vis.length>1){
       const nT=locCount.P+locCount.T+locCount.F, nT25=locCount25.P+locCount25.T+locCount25.F;
-      const fY=BRANDS.reduce((s,[m])=>s+facOf(m,yoyMeses),0);
+      const fY=BRANDS.reduce((s,[m])=>s+facYoyOf(m),0);
       html+=row("Total",'<span class="t-dot" style="background:#F8F7F7"></span>',nT,nT25,facTot,fY);
     }
     locEl.innerHTML=html;
@@ -1280,13 +1331,13 @@ function updateBannerKPI(){
     }
     const espTxt=ov>0&&espK<100?"Esperado al día "+_pElD+": "+Math.round(espK)+"%":"";
     note.textContent=[espTxt,anualTxt].filter(Boolean).join(" · ");
-    setCmp("k-"+id+"-b","k-"+id+"-s",v,pv,pv?"ant. "+fmt(pv):"sin comparación");
-    setCmp("k-"+id+"-yoy","k-"+id+"-yoys",v,yv,yoyLabel&&yv?yoyLabel+" · "+fmt(yv):"sin datos");
+    setCmp("k-"+id+"-b","k-"+id+"-s",v,pv,pv?prevSubLbl+" · "+fmt(pv):"sin comparación");
+    setCmp("k-"+id+"-yoy","k-"+id+"-yoys",v,yv,yoyLabel&&yv?yoySubLbl+" · "+fmt(yv):"sin datos");
     // same-store: solo locales presentes en ambos períodos
     if(ss){
       const curVal=id==="fac"?ss.curFac:id==="ord"?ss.curOrd:ss.curTick;
       const yoyVal=id==="fac"?ss.yoyFac:id==="ord"?ss.yoyOrd:ss.yoyTick;
-      setCmp("k-"+id+"-ss","k-"+id+"-sss",curVal,yoyVal,ss.n+" locales");
+      setCmp("k-"+id+"-ss","k-"+id+"-sss",curVal,yoyVal,ss.n+" locales"+(_mtdYoy?" · días "+_dTxt.trim():""));
     } else {
       setCmp("k-"+id+"-ss","k-"+id+"-sss",0,null,"sin datos");
     }
@@ -1410,14 +1461,20 @@ function buildTend(){
     `<span><i style="background:${TC.ash}"></i>${_prevYear}</span><span><i style="background:${TC.slate}"></i>${_curYear}</span>`;
   // Variación interanual bajo cada mes, alineada con el área del gráfico
   const yoyEl=document.getElementById("tendYoy");
-  yoyEl.innerHTML=months12.map((_,i)=>{
-    const cv=d26[i]!==null?cmpVal(d26[i],d25[i]):null;
+  // Mes en curso parcial: su variación se calcula sobre los mismos días (1..N) del año anterior
+  const _met=rs=>{const f=rs.reduce((s,r)=>s+r.fac,0),o=rs.reduce((s,r)=>s+r.ord,0);return v==="fac"?f:v==="ord"?o:(o>0?f*1e6/o:0);};
+  yoyEl.innerHTML=months12.map((mo,i)=>{
+    let cv=d26[i]!==null?cmpVal(d26[i],d25[i]):null;
+    if(cv&&MTD&&MTD.mes===_curYear+"-"+mo){
+      const c=mtdPorMarca(MTD.mes), p=mtdPorMarca(MTD.yoy);
+      if(c&&c.length&&p&&p.length) cv=cmpVal(_met(c),_met(p));
+    }
     return `<div class="${cv?cv.cls:""}">${cv?cv.txt:""}</div>`;
   }).join("");
   const ca=CHARTS.tend.chartArea;
   if(ca){yoyEl.style.gap="0";yoyEl.style.paddingLeft=ca.left+"px";yoyEl.style.paddingRight=(CHARTS.tend.width-ca.right)+"px";}
   const note=document.getElementById("tendNote");
-  note.textContent=d26[curIdx]!==null?MN[curIdx+1]+" "+String(YR).slice(2)+" parcial (barra atenuada) · debajo: variación vs "+_prevYear:"Debajo de cada mes: variación vs "+_prevYear;
+  note.textContent=d26[curIdx]!==null?MN[curIdx+1]+" "+String(YR).slice(2)+" parcial (barra atenuada"+(MTD?"; su variación compara los días 1–"+MTD.dia:"")+") · debajo: variación vs "+_prevYear:"Debajo de cada mes: variación vs "+_prevYear;
 }
 
 function buildRoyalties(){
@@ -1532,7 +1589,8 @@ function buildPlanAccion(){
   // Plan rows (mensual)
   const paceEsp=Math.round(daysElapsed/daysInMonth*100);
   const añoCls=p=>p>=1?"pos":p>=0.85?"":"neg";
-  const planRows=brandData.map(d=>{
+  // Marca sin objetivo ni venta en el mes (cerrada): fuera del seguimiento mensual, sigue en la tabla anual
+  const planRows=brandData.filter(d=>d.targetPonderado>0||d.realMes>0).map(d=>{
     const pctMesPct=Math.round(d.pctMes*100);
     // Estado contra el ritmo esperado si el mes está en curso, contra 100% si está cerrado
     const mesRef=isCurrentMonth?paceEsp:100;
@@ -1709,17 +1767,21 @@ function buildDias(){
   const pL=STATE.periodo==="custom"?STATE.fromMes+" → "+STATE.toMes:PD[STATE.periodo]?PD[STATE.periodo].label:"Todo el período";
   const mL=STATE.marca!=="todas"?STATE.marca:"todas las marcas";
   const sub=document.getElementById("diasSub");
-  if(sub) sub.textContent="% de la facturación por día de semana · "+mL+" · "+pL;
+  if(sub) sub.textContent="% de una semana promedio (facturación promedio por día) · "+mL+" · "+pL;
 
   const weekOrder=["Lun","Mar","Mie","Jue","Vie","Sab","Dom"];
   const dayFull={Lun:"Lunes",Mar:"Martes",Mie:"Miércoles",Jue:"Jueves",Vie:"Viernes",Sab:"Sábado",Dom:"Domingo"};
   const dayLbl={Lun:"Lun",Mar:"Mar",Mie:"Mié",Jue:"Jue",Vie:"Vie",Sab:"Sáb",Dom:"Dom"};
   const isWE={Vie:true,Sab:true,Dom:true,Lun:false,Mar:false,Mie:false,Jue:false};
 
-  const agg={};
-  rows.forEach(r=>{if(!agg[r.dia])agg[r.dia]=0; agg[r.dia]+=r.fac;});
-  const vals=weekOrder.map(d=>agg[d]||0);
+  // Promedio por día: suma / cantidad de ese día en el período (n). Sin esto, un mes parcial con
+  // 2 domingos y 1 miércoles muestra el miércoles como "peor día" solo por calendario.
+  // Si el pipeline no trae n (HTML viejo), queda la suma como antes.
+  const agg={}, nDias={};
+  rows.forEach(r=>{agg[r.dia]=(agg[r.dia]||0)+r.fac; if(r.n) nDias[r.dia]=Math.max(nDias[r.dia]||0,r.n);});
+  const vals=weekOrder.map(d=>nDias[d]?(agg[d]||0)/nDias[d]:(agg[d]||0));
   const total=vals.reduce((s,v)=>s+v,0);
+  const realTot=weekOrder.reduce((s,d)=>s+(agg[d]||0),0);
   if(!total){viz.innerHTML='<div class="empty">Sin datos para este filtro</div>';return;}
 
   const maxVal=Math.max(...vals);
@@ -1727,9 +1789,11 @@ function buildDias(){
   const maxDay=weekOrder[vals.indexOf(maxVal)];
   const minDay=weekOrder[vals.findIndex(v=>v===minVal)];
 
+  // Montos de semana / fin de semana: facturación real del período; % sobre la semana promedio
   const fsTot=(agg.Vie||0)+(agg.Sab||0)+(agg.Dom||0);
-  const semTot=total-fsTot;
-  const fsPct=Math.round(fsTot/total*100);
+  const semTot=realTot-fsTot;
+  const fsAvg=vals[4]+vals[5]+vals[6];
+  const fsPct=Math.round(fsAvg/total*100);
   const semPct=100-fsPct;
   const fsp=document.getElementById("finSemanaPct");
   if(fsp) fsp.textContent=fsPct+"%";
@@ -1737,19 +1801,19 @@ function buildDias(){
   // Columnas verticales: L–J en pizarra, V–D en verde azulado
   const bars=weekOrder.map((d,i)=>{
     const v=vals[i], pct=v/total*100, h=maxVal>0?v/maxVal*85:0;
-    return `<div class="dias-col" title="${dayFull[d]}: ${fmtM(v)}"><div class="p">${tNum1(pct)}%</div><div class="b" style="height:${h}%;background:${isWE[d]?TC.teal:TC.slate}"></div></div>`;
+    return `<div class="dias-col" title="${dayFull[d]}: ${fmtM(v)} promedio por día"><div class="p">${tNum1(pct)}%</div><div class="b" style="height:${h}%;background:${isWE[d]?TC.teal:TC.slate}"></div></div>`;
   }).join("");
   const lbls=weekOrder.map(d=>`<div>${dayLbl[d]}</div>`).join("");
 
   const stats=`<div class="stat-2x2">
     <div><div class="l"><span class="t-dot" style="background:${TC.slate}"></span>Semana (L–J)</div><div class="v">${semPct}%</div><div class="s">${fmtM(semTot)}</div></div>
     <div><div class="l"><span class="t-dot" style="background:${TC.teal}"></span>Fin de semana (V–D)</div><div class="v">${fsPct}%</div><div class="s">${fmtM(fsTot)}</div></div>
-    <div><div class="l">Mejor día</div><div class="v pos">${dayFull[maxDay]}</div><div class="s">${fmtM(maxVal)} &middot; ${tNum1(maxVal/total*100)}% del total</div></div>
-    <div><div class="l">Peor día</div><div class="v">${dayFull[minDay]}</div><div class="s">${fmtM(minVal)} &middot; ${tNum1(minVal/total*100)}% del total</div></div>
+    <div><div class="l">Mejor día</div><div class="v pos">${dayFull[maxDay]}</div><div class="s">${fmtM(maxVal)} promedio por día &middot; ${tNum1(maxVal/total*100)}% de la semana</div></div>
+    <div><div class="l">Peor día</div><div class="v">${dayFull[minDay]}</div><div class="s">${fmtM(minVal)} promedio por día &middot; ${tNum1(minVal/total*100)}% de la semana</div></div>
   </div>`;
 
   // Oportunidad: cuánto vale un punto porcentual del fin de semana
-  const ppVal=total/100;
+  const ppVal=realTot/100;
   const oportunidad=`<p class="note">1 pp de fin de semana equivale a <b style="color:${TC.ink}">${fmtM(ppVal)}</b> adicionales en facturación total.</p>`;
 
   viz.innerHTML=`<div class="dias-bars">${bars}</div><div class="dias-lbls">${lbls}</div>`+stats+oportunidad;
@@ -2142,7 +2206,20 @@ function buildObjetivosResumen(){
       if(md) objPendiente+=md.obj_fac;
     });
   });
-  const proyeccion=realAño+objPendiente;
+  // Mes en curso: los días que faltan también se proyectan al 100% del objetivo (antes quedaban afuera
+  // y la proyección contaba noviembre con solo 10 días de venta: −8,4% en vez de ~−2%).
+  const _hoyMes=currentYear+"-"+String(today.getMonth()+1).padStart(2,"0");
+  let objRestoMes=0, diasRestoMes=0;
+  if(mensualMeses.has(_hoyMes)){
+    const dim=new Date(today.getFullYear(),today.getMonth()+1,0).getDate();
+    const diaDatos=MTD&&MTD.mes===_hoyMes?MTD.dia:today.getDate();
+    diasRestoMes=Math.max(0,dim-diaDatos);
+    marcasFiltro.forEach(marca=>{
+      const md=OBJETIVOS[marca]&&OBJETIVOS[marca][_hoyMes];
+      if(md) objRestoMes+=md.obj_fac*diasRestoMes/dim;
+    });
+  }
+  const proyeccion=realAño+objRestoMes+objPendiente;
   const difProy=proyeccion-objAño;
   const pctProy=objAño>0?(difProy/objAño)*100:0;
 
@@ -2151,9 +2228,10 @@ function buildObjetivosResumen(){
     <div class="proj-val">${fmtM(proyeccion)}</div>
     <div class="proj-row"><span>Objetivo anual</span><b>${fmtM(objAño)}</b></div>
     <div class="proj-row"><span>Real YTD &middot; ${mesesConDatos} meses</span><b>${fmtM(realAño)}</b></div>
+    ${diasRestoMes>0?`<div class="proj-row"><span>Obj. resto de ${MN[today.getMonth()+1]} &middot; ${diasRestoMes} días</span><b>${fmtM(objRestoMes)}</b></div>`:""}
     <div class="proj-row"><span>Obj. meses restantes &middot; ${mesesPendientes.length}</span><b>${fmtM(objPendiente)}</b></div>
     <div class="proj-row"><span>Diferencia</span><b class="${difProy>=0?"pos-l":"neg-l"}">${difProy>=0?"+":"−"}${fmtM(Math.abs(difProy))} (${tPct(pctProy)})</b></div>
-    <div class="proj-note">Asumiendo cumplimiento 100% en meses restantes</div>`;
+    <div class="proj-note">Asumiendo cumplimiento 100% en los días y meses restantes</div>`;
 }
 
 /* ── Objetivos por marca: barra del mes y del año con marca de avance esperado ── */
@@ -2174,7 +2252,13 @@ function buildObjetivosPorMarca(){
   const dd=String(today.getDate()).padStart(2,"0")+"/"+String(today.getMonth()+1).padStart(2,"0");
   if(ttl) ttl.textContent="Objetivos por marca · "+MES_LARGO[mo]+" "+y;
   if(nte) nte.textContent=isCurrentMonth?"Día "+daysElapsed+" de "+daysInMonth+" · "+daysRemaining+" días restantes":"Mes cerrado";
-  el.innerHTML=marcasFiltro.map(marca=>{
+  // Sin objetivo ni venta en el mes (marca cerrada, ej. Feriado desde 29/10): no mostrar la tarjeta
+  // (antes decía "0% · $0 de $0 · Cumplido").
+  const conMes=marcasFiltro.filter(marca=>{
+    const o=OBJETIVOS[marca]&&OBJETIVOS[marca][latestMes], r=MENSUAL.find(x=>x.mes===latestMes&&x.m===marca);
+    return (o&&o.obj_fac>0)||(r&&r.fac>0);
+  });
+  el.innerHTML=conMes.map(marca=>{
     const objMdMes=OBJETIVOS[marca]&&OBJETIVOS[marca][latestMes];
     const targetMes=objMdMes?objMdMes.obj_fac:0;
     const rrMes=MENSUAL.find(r=>r.mes===latestMes&&r.m===marca);

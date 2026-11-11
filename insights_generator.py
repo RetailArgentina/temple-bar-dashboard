@@ -14,6 +14,7 @@ Uso:
 
 from datetime import datetime, timedelta, date as date_type
 from collections import defaultdict
+import calendar
 import json
 import os
 
@@ -177,6 +178,18 @@ def generate_insights(ventas_data, economic_context=None):
 
     last_date = max(r["d"] for r in rows)
     meses_disponibles = sorted(set(r["mes"] for r in rows))
+
+    # Mes en curso parcial: las comparaciones contra otros meses usan solo los
+    # días 1..corte_dia de cada mes (antes comparaba 10 días contra un mes entero).
+    _dim = calendar.monthrange(last_date.year, last_date.month)[1]
+    mes_parcial = last_date.strftime("%Y-%m") if last_date.day < _dim else None
+    corte_dia = last_date.day
+    nota_parcial = (f" Mes en curso: se comparan los días 1 a {corte_dia} de cada mes."
+                    if mes_parcial else "")
+
+    def _comparable(r):
+        """True si la fila entra en la comparación mes contra mes."""
+        return not mes_parcial or r["d"].day <= corte_dia
     marcas_validas = [m for m in set(r["marca"] for r in rows)
                      if m.lower() not in ("feriado", "feriados", "")]
 
@@ -247,9 +260,9 @@ def generate_insights(ventas_data, economic_context=None):
         prev_mes_disp   = _prev_ym(ultimo_mes_disp, 1)  # ej. "2026-02"
 
         mes_rows  = [r for r in rows if r["mes"] == ultimo_mes_disp
-                     and r["marca"].lower() not in ("feriado",)]
+                     and r["marca"].lower() not in ("feriado",) and _comparable(r)]
         prev_rows = [r for r in rows if r["mes"] == prev_mes_disp
-                     and r["marca"].lower() not in ("feriado",)]
+                     and r["marca"].lower() not in ("feriado",) and _comparable(r)]
 
         if mes_rows and prev_rows:
             fac_m  = sum(r["v"] for r in mes_rows)
@@ -270,7 +283,7 @@ def generate_insights(ventas_data, economic_context=None):
             lbl_m  = f"{MESES_ES[m_num]} {m_year}"
             lbl_p  = f"{MESES_ES[mp_num]}"
 
-            nota_datos = f"(Último dato disponible en BigQuery: {last_date.strftime('%d/%m/%Y')})"
+            nota_datos = f"(Último dato disponible en BigQuery: {last_date.strftime('%d/%m/%Y')}.{nota_parcial})"
 
             if delta_fac > ipc_m and delta_ord > 0:
                 col, ico = "green", "📈"
@@ -317,6 +330,8 @@ def generate_insights(ventas_data, economic_context=None):
 
         by_marca_mes = defaultdict(lambda: defaultdict(lambda: {"v": 0, "o": 0}))
         for r in rows:
+            if not _comparable(r):
+                continue
             by_marca_mes[r["marca"]][r["mes"]]["v"] += r["v"]
             by_marca_mes[r["marca"]][r["mes"]]["o"] += r["o"]
 
@@ -328,32 +343,36 @@ def generate_insights(ventas_data, economic_context=None):
                 yoy_marcas[marca] = (cur / prev - 1) * 100
 
         if yoy_marcas:
-            meses_12 = _months_between(mismo_mes_anio_ant, ultimo_mes)
+            # 12 meses posteriores al mismo mes del año anterior (antes incluía ambos extremos: 13 meses)
+            meses_12 = _months_between(_prev_ym(ultimo_mes, 11), ultimo_mes)
             infl_12m = _acum_inflation(ipc, meses_12)
+
+            # Variación real = deflactar, no restar: (1+nominal)/(1+inflación) − 1.
+            # Restar daba valores imposibles (ej. −105,8% real).
+            def _real(nominal):
+                return ((1 + nominal / 100) / (1 + infl_12m / 100) - 1) * 100
 
             best_m = max(yoy_marcas, key=yoy_marcas.get)
             best_v = yoy_marcas[best_m]
-            best_real = best_v - infl_12m
+            best_real = _real(best_v)
 
             worst_m = min(yoy_marcas, key=yoy_marcas.get)
             worst_v = yoy_marcas[worst_m]
-            worst_real = worst_v - infl_12m
+            worst_real = _real(worst_v)
 
             col = "green" if best_real > 0 else "yellow"
             ico = "🏆"
-            title = (
-                f"{best_m} lidera el portfolio: {best_v:+.1f}% YoY "
-                f"({'real +'+str(round(best_real,1))+'%' if best_real > 0 else 'real '+str(round(best_real,1))+'%'})"
-            )
+            verbo = "lidera el portfolio" if best_real > 0 else "es la marca que mejor sostiene"
+            title = f"{best_m} {verbo}: {best_v:+.1f}% interanual ({best_real:+.1f}% real)"
             body = (
-                f"En {ultimo_mes}, {best_m} creció {best_v:+.1f}% YoY en facturación. "
+                f"En {ultimo_mes}, la facturación de {best_m} varió {best_v:+.1f}% interanual. "
                 f"Con inflación acumulada de ~{infl_12m:.0f}% en los últimos 12 meses (IPC INDEC), "
-                f"el crecimiento real es {'positivo: +' if best_real > 0 else ''}{best_real:.1f}%. "
+                f"la variación real es {best_real:+.1f}%.{nota_parcial} "
             )
             if len(yoy_marcas) > 1:
                 body += (
-                    f"{worst_m} creció {worst_v:+.1f}% nominal ({worst_real:+.1f}% real) — "
-                    f"{'aún por debajo de la inflación.' if worst_real < 0 else 'también superando la inflación.'} "
+                    f"{worst_m} varió {worst_v:+.1f}% nominal ({worst_real:+.1f}% real) — "
+                    f"{'por debajo de la inflación.' if worst_real < 0 else 'también por encima de la inflación.'} "
                 )
             body += (
                 f"La brecha entre marcas refleja diferencias en posicionamiento de precio, "
@@ -367,7 +386,8 @@ def generate_insights(ventas_data, economic_context=None):
         mes_ant = _prev_ym(mes_rec, 1)
 
         def _mes_totals(mes):
-            rs = [r for r in rows if r["mes"] == mes and r["marca"].lower() not in ("feriado",)]
+            rs = [r for r in rows if r["mes"] == mes and r["marca"].lower() not in ("feriado",)
+                  and _comparable(r)]
             return sum(r["v"] for r in rs), sum(r["o"] for r in rs)
 
         fac_rec, ord_rec = _mes_totals(mes_rec)
@@ -590,16 +610,18 @@ def generate_insights(ventas_data, economic_context=None):
         f"Macro AR retail: inflación {infl_ytd:.1f}% acum. {year_now} · "
         f"{infl_3m:.1f}% últimos 3 meses"
     )
-    nota = ctx.get("nota_sector", "")
+    # Sin texto editorial fijo (nota_sector hablaba de "Q1/Q2 2026" como presente
+    # y quedaba viejo): solo datos calculados del IPC.
+    ultimos_ipc = [m for m in sorted(ipc) if m <= ym_now]
+    ipc_ult_mes = ipc.get(ultimos_ipc[-1]) if ultimos_ipc else None
+    benchmark = (f"Benchmark: con el último IPC mensual en {ipc_ult_mes:.1f}%, crecer por encima "
+                 f"de ese número mes contra mes implica expansión real del negocio."
+                 if ipc_ult_mes is not None else "")
     body = (
         f"Con {infl_ytd:.1f}% de inflación acumulada en {year_now} y {infl_12m:.0f}% interanual "
-        f"(IPC INDEC), el entorno del sector gastronómico/retail argentino en {year_now} "
-        f"muestra desaceleración inflacionaria respecto al pico de 2024 "
-        f"(ene-feb 2024: +20.6% y +13.2% mensual). "
-        f"{''+nota+' ' if nota else ''}"
-        f"Para el portfolio Temple Bar, el termómetro clave es si la facturación nominal "
+        f"(IPC INDEC). Para el portfolio, el termómetro clave es si la facturación nominal "
         f"crece por encima del IPC — cualquier número por debajo implica contracción real. "
-        f"Benchmark: crecer >3–4% mensual nominal en Q2 2026 implica expansión real del negocio."
+        f"{benchmark}"
     )
     insights.append(_insight(col, ico, title, body, generated_at))
 
