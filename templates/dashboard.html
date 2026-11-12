@@ -182,6 +182,10 @@ function loadChartJS(cb){
   <div class="sec-hd">
     <div class="sec-title" id="kpiLabel">Indicadores</div>
     <div class="sec-note" id="kpiNote"></div>
+    <div class="seg" id="realToggle" title="Real: facturación en pesos del último mes con IPC publicado (IPC general INDEC). Los objetivos se comparan siempre en nominal.">
+      <button class="fb active-per" onclick="setReal(false)">Nominal</button>
+      <button class="fb" onclick="setReal(true)">Real</button>
+    </div>
   </div>
   <div class="kpi-grid">
     <div class="kpi-card">
@@ -1066,6 +1070,7 @@ function cmpVal(c,p){
   return {txt:tPct(v),cls:v>=0?"pos":"neg",v};
 }
 let STATE = {marca:"todas", periodo:"mes_actual", tendView:"fac", locMetric:"fac", locSort:"real", fromMes:"__STATE_FROM_MES__", toMes:"__STATE_TO_MES__"};
+try { STATE.real = localStorage.getItem("ventasReal")==="1" && !!IPC; } catch(e) { STATE.real = false; }
 let _potMarca = "Patagonia"; // brand filter for Locales con Mayor Potencial card
 let CHARTS = {};
 
@@ -1098,6 +1103,7 @@ function computeSameStore(meses,yoyMeses){
   // Mes en curso parcial: el mismo mes del año anterior entra solo con los mismos días (1..N)
   if(MTD&&meses.includes(MTD.mes)&&yoyMeses.includes(MTD.yoy))
     rows=rows.filter(r=>r.mes!==MTD.yoy).concat(MTD.rows.filter(r=>r.mes===MTD.yoy&&(STATE.marca==="todas"||r.m===STATE.marca)));
+  rows=enVentas(rows);
   const key=r=>r.m+"|"+r.l;
   const curKeys=new Set(rows.filter(r=>meses.includes(r.mes)).map(key));
   const yoyKeys=new Set(rows.filter(r=>yoyMeses.includes(r.mes)).map(key));
@@ -1137,6 +1143,33 @@ function filterM(meses){
 /* Filtra usando el rango personalizado */
 function filterMCustom(){
   return filterM(getCustomMeses());
+}
+
+/* Nominal / real (Ventas). En "real" la facturación de cada mes se pasa a pesos del mes base del
+   IPC (último publicado, IPC general INDEC). Pura: devuelve copias; un mes sin IPC queda nominal.
+   Los objetivos siguen nominales: el % de cumplimiento compara el mes contra sí mismo. */
+function deflactarFilas(rows, ipc){
+  if(!ipc||!ipc.general||!ipc.general[ipc.base]) return rows;
+  const g=ipc.general, b=g[ipc.base];
+  return rows.map(r=>g[r.mes]?Object.assign({},r,{fac:r.fac*b/g[r.mes]}):r);
+}
+function ventasReal(){ return !!STATE.real&&!!IPC&&!!IPC.general; }
+function enVentas(rows){ return ventasReal()?deflactarFilas(rows,IPC):rows; }
+function ventasRealTxt(){
+  if(!ventasReal()) return "";
+  return "En $ de "+finMesLbl(IPC.base)+" (IPC general"+((IPC.estimados||[]).length?"; meses sin dato publicado, estimado":"")+")";
+}
+function syncRealToggle(){
+  const el=document.getElementById("realToggle"); if(!el) return;
+  el.querySelectorAll(".fb").forEach((b,i)=>{
+    b.className="fb"+((i===1)===ventasReal()?" active-per":"");
+    if(i===1){ b.disabled=!IPC; if(!IPC) b.title="Sin IPC disponible"; }
+  });
+}
+function setReal(on){
+  STATE.real=!!on&&!!IPC;
+  try{ localStorage.setItem("ventasReal",STATE.real?"1":"0"); }catch(e){}
+  updateAll();
 }
 
 function updateBannerKPI(){
@@ -1188,7 +1221,10 @@ function updateBannerKPI(){
   const _dTxt=_mtdOn?"1–"+MTD.dia+" ":"";
   const prevSubLbl=_mtdPrev?_dTxt+MN[+MTD.prev.slice(5)].toLowerCase():"ant.";
   const yoySubLbl=(_mtdYoy&&meses.length===1?_dTxt:"")+(yoyLabel||"");
-  const cf=cr.reduce((s,r)=>s+r.fac,0), co=cr.reduce((s,r)=>s+r.ord,0);
+  // Nominal para el cumplimiento de objetivo; valores y comparaciones según el interruptor nominal / real
+  const cfNom=cr.reduce((s,r)=>s+r.fac,0);
+  pr=enVentas(pr); yr=enVentas(yr);
+  const cf=enVentas(cr).reduce((s,r)=>s+r.fac,0), co=cr.reduce((s,r)=>s+r.ord,0);
   const pf=pr.reduce((s,r)=>s+r.fac,0), po=pr.reduce((s,r)=>s+r.ord,0);
   const yf=yr.reduce((s,r)=>s+r.fac,0), yo=yr.reduce((s,r)=>s+r.ord,0);
   const ct=co>0?(cf*1e6)/co:0, pt=po>0?(pf*1e6)/po:0, yt=yo>0?(yf*1e6)/yo:0;
@@ -1207,13 +1243,13 @@ function updateBannerKPI(){
   const locEl=document.getElementById("locBanner");
   if(locEl){
     const BRANDS=[["Patagonia","P"],["Temple","T"],["Feriado","F"]];
-    const facOf=(m,ms)=>ms?MENSUAL.filter(r=>r.m===m&&ms.includes(r.mes)).reduce((s,r)=>s+r.fac,0):0;
+    const facOf=(m,ms)=>ms?enVentas(MENSUAL.filter(r=>r.m===m&&ms.includes(r.mes))).reduce((s,r)=>s+r.fac,0):0;
     // Interanual: con mes en curso parcial, ese mes del año anterior entra solo con los mismos días
     const facYoyOf=m=>{
       if(!yoyMeses) return 0;
       let rs=MENSUAL.filter(r=>r.m===m&&yoyMeses.includes(r.mes));
       if(_mtdYoy) rs=rs.filter(r=>r.mes!==MTD.yoy).concat(MTD.rows.filter(r=>r.mes===MTD.yoy&&r.m===m));
-      return rs.reduce((s,r)=>s+r.fac,0);
+      return enVentas(rs).reduce((s,r)=>s+r.fac,0);
     };
     const facTot=BRANDS.reduce((s,[m])=>s+facOf(m,meses),0);
     const row=(name,dotHtml,n,n25,fac,facY)=>{
@@ -1317,13 +1353,14 @@ function updateBannerKPI(){
     if(s) s.textContent=subTxt;
   };
   // espK: avance esperado del KPI (el ticket no se acumula en el mes → siempre contra 100%)
-  function sk(id,v,pv,yv,ov,fmt,fmtObj,ss,espK,anualTxt){
+  // vObj: valor nominal contra el objetivo (en modo real `v` está deflactado y el objetivo no)
+  function sk(id,v,pv,yv,ov,fmt,fmtObj,ss,espK,anualTxt,vObj){
     document.getElementById("k-"+id).textContent=fmt(v);
     const elo=document.getElementById("k-"+id+"-ob"), elos=document.getElementById("k-"+id+"-os");
     const bar=document.getElementById("k-"+id+"-bar"), chip=document.getElementById("k-"+id+"-chip");
     const note=document.getElementById("k-"+id+"-anual-obj");
     if(ov>0){
-      const pct=v/ov*100;
+      const pct=(vObj!==undefined?vObj:v)/ov*100;
       elos.textContent="Objetivo "+fmtObj(ov);
       elo.textContent=tNum1(pct)+"%";
       bar.innerHTML=tProgressBar(pct,espK);
@@ -1345,15 +1382,16 @@ function updateBannerKPI(){
     }
   }
   const ssData=computeSameStore(meses,yoyMeses);
-  sk("fac",cf,pf,yf,oFac,fmtM,fmtM,ssData,esp,oFacAño>0?"Obj. "+_year+": "+fmtM(oFacAño):"");
+  sk("fac",cf,pf,yf,oFac,fmtM,fmtM,ssData,esp,oFacAño>0?"Obj. "+_year+": "+fmtM(oFacAño):"",cfNom);
   sk("ord",co,po,yo,oOrd,fmtN,fmtN,ssData,esp,oOrdAño>0?"Obj. "+_year+": "+fmtN(oOrdAño):"");
-  sk("tick",Math.round(ct),Math.round(pt),Math.round(yt),Math.round(oTick),fmtT,fmtT,ssData,100,oTickAño>0?"Obj. "+_year+": "+fmtT(Math.round(oTickAño)):"");
+  sk("tick",Math.round(ct),Math.round(pt),Math.round(yt),Math.round(oTick),fmtT,fmtT,ssData,100,oTickAño>0?"Obj. "+_year+": "+fmtT(Math.round(oTickAño)):"",co>0?Math.round(cfNom*1e6/co):0);
+  if(ventasReal()) document.getElementById("kpiNote").textContent+=" · "+ventasRealTxt();
 
   // Actualizar títulos dinámicos con año actual
   const royaltiesTitle=document.getElementById("royaltiesTitle");
   if(royaltiesTitle) royaltiesTitle.textContent="Royalties "+YR;
   const tendenciaSubtitle=document.getElementById("tendencia-subtitle");
-  if(tendenciaSubtitle) tendenciaSubtitle.textContent=YR+" vs "+YRP+" · filtrado por marca";
+  if(tendenciaSubtitle) tendenciaSubtitle.textContent=YR+" vs "+YRP+" · filtrado por marca"+(ventasReal()?" · "+ventasRealTxt():"");
 }
 
 const MN=["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
@@ -1410,7 +1448,7 @@ function buildTend(){
   const months12=["01","02","03","04","05","06","07","08","09","10","11","12"];
   const labels=months12.map(mo=>MN[+mo]);
 
-  let rows=MENSUAL;
+  let rows=enVentas(MENSUAL);
   if(STATE.marca!=="todas") rows=rows.filter(r=>r.m===STATE.marca);
 
   function aggYear(yr){
@@ -1469,7 +1507,7 @@ function buildTend(){
     let cv=d26[i]!==null?cmpVal(d26[i],d25[i]):null;
     if(cv&&MTD&&MTD.mes===_curYear+"-"+mo){
       const c=mtdPorMarca(MTD.mes), p=mtdPorMarca(MTD.yoy);
-      if(c&&c.length&&p&&p.length) cv=cmpVal(_met(c),_met(p));
+      if(c&&c.length&&p&&p.length) cv=cmpVal(_met(enVentas(c)),_met(enVentas(p)));
     }
     return `<div class="${cv?cv.cls:""}">${cv?cv.txt:""}</div>`;
   }).join("");
@@ -2323,6 +2361,11 @@ function wtcNotaTexto(info, finanzas){
   if(info.error) return t+" ⚠ No se pudo leer la carga de WTC: este tablero no lo incluye.";
   if(info.falta_ultimo_cerrado) t+=" ⚠ Falta cargar "+_wtcMes(info.ultimo_cerrado)+".";
   if(info.falta_mes_actual) t+=" Mes en curso ("+_wtcMes(info.mes_actual)+") sin cargar.";
+  const od=info.obj_descontado||{}, odM=Object.keys(od).sort();
+  if(odM.length){
+    const tot=odM.reduce((s,m)=>s+od[m],0);
+    t+=" Objetivo de Patagonia sin WTC ($ "+(Math.round(tot*10)/10).toLocaleString("es-AR")+" M) en "+odM.map(_wtcMes).join(", ")+" hasta que se cargue.";
+  }
   if((info.sin_cotizacion||[]).length) t+=" ⚠ Sin cotización BCRA (no sumados): "+info.sin_cotizacion.map(_wtcMes).join(", ")+".";
   return t;
 }
@@ -2338,6 +2381,7 @@ function buildWtcNota(){
 }
 
 function updateAll(){
+  try { syncRealToggle(); } catch(e){ console.error('[updateAll realToggle]',e); }
   try { updateBannerKPI(); buildTend(); buildRoyalties(); buildPlanAccion(); buildPotencialLocales(); buildDias(); buildTop10(); buildObjetivos(); buildObjetivosResumen(); buildObjetivosPorMarca(); buildLocalesTable(); } catch(e){ console.error('[updateAll]',e); }
   try { buildExcepciones(); } catch(e){ console.error('[updateAll excepciones]',e); }
   try { buildCalidadDatos(); } catch(e){ console.error('[updateAll calidad datos]',e); }
