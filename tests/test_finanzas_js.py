@@ -24,7 +24,7 @@ def run_js(expr, tmp_path):
     assert m, "no se encontró el bloque FINANZAS_CORE en la plantilla"
     script = tmp_path / "fin.js"
     script.write_text(m.group(1) + "\nconsole.log(JSON.stringify(" + expr + "));", encoding="utf-8")
-    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True)
+    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8")
     return json.loads(out.stdout)
 
 
@@ -43,7 +43,7 @@ def run_dom_js(funciones, setup, expr, tmp_path):
     script = tmp_path / "dom.js"
     script.write_text(dom + "\n".join(fuentes) + "\n" + setup
                       + "\nconsole.log(JSON.stringify(" + expr + "));", encoding="utf-8")
-    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True)
+    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8")
     return json.loads(out.stdout)
 
 

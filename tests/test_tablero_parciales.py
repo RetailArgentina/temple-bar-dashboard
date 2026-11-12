@@ -88,7 +88,7 @@ def _run_js(expr, tmp_path):
     script = tmp_path / "cerr.js"
     script.write_text(_bloque(html, "FINANZAS_CORE") + _bloque(html, "EXCEPCIONES_CORE")
                       + "\nconsole.log(JSON.stringify(" + expr + "));", encoding="utf-8")
-    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True)
+    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8")
     return json.loads(out.stdout)
 
 
@@ -125,7 +125,7 @@ def _run_fns(nombres, expr, tmp_path):
     script = tmp_path / "fns.js"
     script.write_text("".join(_fn(html, n) for n in nombres)
                       + "\nconsole.log(JSON.stringify(" + expr + "));", encoding="utf-8")
-    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True)
+    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8")
     return json.loads(out.stdout)
 
 
