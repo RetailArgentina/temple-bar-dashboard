@@ -309,6 +309,10 @@ ALERT_BLOB               = "feriado_sync_alert.json"
 GAP_CHECK_DIAS_ATRAS_INI = RESYNC_DIAS + 30   # inicio de la ventana a chequear
 GAP_CHECK_DIAS_ATRAS_FIN = RESYNC_DIAS + 1    # recién salió de la ventana de re-sync
 GAP_UMBRAL_PCT           = 3.0  # % de diferencia en órdenes que dispara la alerta
+# Feriado cerró: última venta 29/10/2026 (mismo dato que CERRADOS en templates/dashboard.html).
+# Cerrado, Toteat no trae órdenes nuevas: un gap viejo ya no se corrige solo y el banner
+# quedaría para siempre. Desde el día siguiente el chequeo no corre y borra el alert.
+FERIADO_ULTIMA_VENTA     = date(2026, 10, 29)
 
 
 def verificar_gap_historico(client: bigquery.Client, dry_run: bool):
@@ -317,6 +321,15 @@ def verificar_gap_historico(client: bigquery.Client, dry_run: bool):
     en GCS. Si no hay gap, borra el alert si existía (se autorresuelve).
     Devuelve False si no se pudo verificar (BQ o Toteat fallaron)."""
     hoy   = date.today()
+    if hoy > FERIADO_ULTIMA_VENTA:
+        log(f"Feriado cerrado (última venta {FERIADO_ULTIMA_VENTA}): no se verifica el gap histórico")
+        if not dry_run:
+            from google.cloud import storage
+            blob = storage.Client().bucket(CACHE_BUCKET).blob(ALERT_BLOB)
+            if blob.exists():
+                blob.delete()
+                log(f"  {ALERT_BLOB} borrado")
+        return True
     desde = hoy - timedelta(days=GAP_CHECK_DIAS_ATRAS_INI)
     hasta = hoy - timedelta(days=GAP_CHECK_DIAS_ATRAS_FIN)
     if desde > hasta:
