@@ -704,7 +704,7 @@ const EXC_MARCA = {P:"Patagonia", T:"Temple", F:"Feriado"};
 const EXC_MN = ["","ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 /* Marcas y locales cerrados (fecha = última venta). Desde el día siguiente no generan alertas
    ni el cartel de atraso: se sabe por qué no venden. Agregar acá cuando cierre un local. */
-const CERRADOS = {marcas:{"Feriado":"2026-10-29"}, locales:{"Patagonia|SFE - ROSARIO LA FLORIDA":"2026-10-12"}};
+const CERRADOS = {marcas:{"Feriado":"2026-10-29"}, locales:{"Patagonia|SFE - ROSARIO LA FLORIDA":"2026-10-12","Temple|PINAMAR":"2026-04-04"}};
 function esCerrado(m, l, hoy){
   const f=CERRADOS.marcas[m]||(l!=null?CERRADOS.locales[m+"|"+String(l).trim()]:null);
   if(!f) return false;
