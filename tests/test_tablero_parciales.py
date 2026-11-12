@@ -96,8 +96,10 @@ def test_es_cerrado_vale_solo_desde_el_dia_siguiente_al_cierre(tmp_path):
     r = _run_js("[esCerrado('Feriado',null,new Date(2026,9,29,12)),"
                 "esCerrado('Feriado',null,new Date(2026,9,30)),"
                 "esCerrado('Patagonia','SFE - ROSARIO LA FLORIDA ',new Date(2026,10,1)),"
-                "esCerrado('Patagonia','USHUAIA',new Date(2026,10,1))]", tmp_path)
-    assert r == [False, True, True, False]
+                "esCerrado('Patagonia','USHUAIA',new Date(2026,10,1)),"
+                "esCerrado('Temple','PINAMAR',new Date(2026,3,4,12)),"
+                "esCerrado('Temple','PINAMAR',new Date(2026,10,12))]", tmp_path)
+    assert r == [False, True, True, False, False, True]
 
 
 def test_insights_numeros_en_formato_argentino():
