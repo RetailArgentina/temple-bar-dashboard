@@ -28,7 +28,7 @@ def run_js(expr, tmp_path, extra=""):
     script = tmp_path / "exc.js"
     script.write_text(_bloque(html, "FINANZAS_CORE") + _bloque(html, "EXCEPCIONES_CORE") + extra
                       + "\nconsole.log(JSON.stringify(" + expr + "));", encoding="utf-8")
-    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True)
+    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8")
     return json.loads(out.stdout)
 
 
@@ -135,7 +135,7 @@ def test_build_excepciones_pinta_filas_filtra_marca_y_avisa_sin_ultima_venta(tmp
                       + datos + 'const STATE={marca:"Patagonia"};buildExcepciones(new Date(2026,8,29));'
                       + "console.log(JSON.stringify([_els.excTable.innerHTML,_els.excSub.textContent]));",
                       encoding="utf-8")
-    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True)
+    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8")
     tabla, sub = json.loads(out.stdout)
     assert "WTC" in tabla and "LELOIR" not in tabla
     assert "sin datos de última venta" in sub.lower()
@@ -206,7 +206,7 @@ def _run_build_calidad(tmp_path, ultima_venta_js):
                       + f"const ULTIMA_VENTA={ultima_venta_js};buildCalidadDatos(new Date(2026,8,29));"
                       + "console.log(JSON.stringify([_els.dataBadge.className,_els.dataBadge.title,"
                       + "_els.dataBadgeTxt.textContent]));", encoding="utf-8")
-    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True)
+    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True, encoding="utf-8")
     return json.loads(out.stdout)
 
 
