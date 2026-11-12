@@ -956,6 +956,30 @@ def incorporar_wtc(wtc_data, mensual_rows, local_mensual_rows, locales_obj_data,
     mensual.sort(key=lambda r: (r["mes"], r["m"]))
     return mensual, local_mensual, locales_obj, loc_count, info
 
+def descontar_obj_wtc_sin_carga(objetivos, locales_obj, wtc_info):
+    """Saca el objetivo de WTC del de Patagonia en los meses hasta el actual en que WTC no se sumó
+    al real (sin carga, sin cotización o carga ilegible): si no, el real sin WTC se compara contra
+    un objetivo que lo incluye. Los meses futuros no se tocan (la proyección anual los usa).
+    Pura: devuelve (objetivos, {mes: objetivo de WTC descontado en $M})."""
+    import copy
+    objs = copy.deepcopy(objetivos)
+    descontado = {}
+    wtc_obj = next((e for e in locales_obj if e["b"] == "P" and e["l"].strip().upper() == "WTC"), None)
+    if not wtc_obj:
+        return objs, descontado
+    sumados = set(wtc_info.get("meses", []))
+    for mes, v in sorted(wtc_obj["d"].items()):
+        obj_M, obj_ord = v[1], v[3]
+        if mes > wtc_info["mes_actual"] or mes in sumados or not obj_M > 0:
+            continue
+        pat = objs.get("Patagonia", {}).get(mes)
+        if not pat:
+            continue
+        pat["obj_fac"] = max(0, pat["obj_fac"] - round(obj_M))
+        pat["obj_ord"] = max(0, pat["obj_ord"] - int(obj_ord))
+        descontado[mes] = obj_M
+    return objs, descontado
+
 ## ─────────────────────────────────────────────────────────────────────────────
 
 def fetch_royalty_data():
@@ -1582,6 +1606,10 @@ def main():
         if wtc_info["falta_ultimo_cerrado"]:
             print(f"  WARN WTC: falta cargar {wtc_info['ultimo_cerrado']}")
         print(f"  ✓ WTC sumado a Patagonia: {', '.join(wtc_info['meses']) or 'ningún mes'}")
+        objetivos_data, wtc_info["obj_descontado"] = descontar_obj_wtc_sin_carga(
+            objetivos_data, locales_obj_data, wtc_info)
+        if wtc_info["obj_descontado"]:
+            print(f"  WTC: objetivo descontado de Patagonia (sin carga): {wtc_info['obj_descontado']}")
 
         latest_mes   = sorted({r["mes"] for r in mensual_rows})[-1]
         top10_data   = compute_top10(top10_base, latest_mes)

@@ -111,3 +111,37 @@ def test_insights_numeros_en_formato_argentino():
 def test_plantilla_tiene_placeholder_mtd():
     with open(TEMPLATE, encoding="utf-8") as f:
         assert "const MTD = __MTD_JSON__;" in f.read()
+
+
+def _fn(html, nombre):
+    m = re.search(r"^function " + nombre + r"\(.*?^}", html, re.S | re.M)
+    assert m, nombre
+    return m.group(0) + "\n"
+
+
+def _run_fns(nombres, expr, tmp_path):
+    with open(TEMPLATE, encoding="utf-8") as f:
+        html = f.read()
+    script = tmp_path / "fns.js"
+    script.write_text("".join(_fn(html, n) for n in nombres)
+                      + "\nconsole.log(JSON.stringify(" + expr + "));", encoding="utf-8")
+    out = subprocess.run(["node", str(script)], capture_output=True, text=True, check=True)
+    return json.loads(out.stdout)
+
+
+def test_deflactar_filas_lleva_a_pesos_del_mes_base_y_no_muta(tmp_path):
+    r = _run_fns(["deflactarFilas"],
+                 "(()=>{const ipc={base:'2026-08',general:{'2025-08':100,'2026-08':130}};"
+                 "const rows=[{mes:'2025-08',fac:100},{mes:'2026-08',fac:130},{mes:'2026-11',fac:50}];"
+                 "const d=deflactarFilas(rows,ipc);return [d.map(x=>x.fac),rows[0].fac,deflactarFilas(rows,null)===rows];})()",
+                 tmp_path)
+    assert r == [[130, 130, 50], 100, True]
+
+
+def test_nota_wtc_avisa_objetivo_descontado(tmp_path):
+    r = _run_fns(["_wtcMes", "wtcNotaTexto"],
+                 "[wtcNotaTexto({meses:[],sin_cotizacion:[],falta_mes_actual:true,mes_actual:'2026-11',"
+                 "obj_descontado:{'2026-11':100.5}},false),"
+                 "wtcNotaTexto({meses:[],sin_cotizacion:[]},false)]", tmp_path)
+    assert "Objetivo de Patagonia sin WTC" in r[0] and "100,5" in r[0]
+    assert "sin WTC" not in r[1]

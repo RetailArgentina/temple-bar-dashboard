@@ -427,3 +427,37 @@ def test_actualizar_tc_mes_en_curso_sin_publicar_no_es_warn(monkeypatch):
     logs = []
     wtc.actualizar_tipo_cambio_uyu(fake, HOY, log=logs.append)
     assert _merges(fake) == [] and logs and not any("WARN" in l for l in logs)
+
+
+# ── Objetivo de WTC fuera de Patagonia mientras no esté cargado ─────────────
+from actualizar_retail import descontar_obj_wtc_sin_carga
+
+OBJ = {"Patagonia": {m: {"obj_fac": 1000, "obj_ord": 50000} for m in ("2026-08", "2026-09", "2026-10", "2026-12")},
+       "Temple": {"2026-10": {"obj_fac": 400, "obj_ord": 9000}}}
+LOC_OBJ_WTC = [{"b": "P", "l": "WTC", "d": {m: [0, 100.5, 0, 9000] for m in ("2026-08", "2026-09", "2026-10", "2026-12")}}]
+
+
+def _info(meses, mes_actual="2026-10"):
+    return {"meses": meses, "mes_actual": mes_actual}
+
+
+def test_descontar_solo_meses_sin_wtc_hasta_el_actual():
+    objs, desc = descontar_obj_wtc_sin_carga(OBJ, LOC_OBJ_WTC, _info(["2026-08", "2026-09"]))
+    assert desc == {"2026-10": 100.5}
+    assert objs["Patagonia"]["2026-10"] == {"obj_fac": 900, "obj_ord": 41000}
+    assert objs["Patagonia"]["2026-09"]["obj_fac"] == 1000      # cargado: no se toca
+    assert objs["Patagonia"]["2026-12"]["obj_fac"] == 1000      # futuro: la proyección lo usa
+    assert objs["Temple"] == OBJ["Temple"]
+
+
+def test_descontar_carga_ilegible_saca_todos_los_meses_hasta_el_actual():
+    _, desc = descontar_obj_wtc_sin_carga(OBJ, LOC_OBJ_WTC, _info([]))
+    assert sorted(desc) == ["2026-08", "2026-09", "2026-10"]
+
+
+def test_descontar_sin_wtc_en_objetivos_no_cambia_nada_ni_muta():
+    antes = copy.deepcopy(OBJ)
+    objs, desc = descontar_obj_wtc_sin_carga(OBJ, [], _info([]))
+    assert desc == {} and objs == OBJ
+    descontar_obj_wtc_sin_carga(OBJ, LOC_OBJ_WTC, _info([]))
+    assert OBJ == antes
