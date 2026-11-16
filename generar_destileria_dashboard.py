@@ -187,6 +187,10 @@ def classify_familia(producto, envase):
     # Barriles de cerveza 50 L (Contabilium desde sep-2026) — antes que los de Feriado
     if "BARRIL CERVEZA" in e: return "cerveza_barril"
 
+    # Contabilium factura el barril de 20 L como "FERIADO ROJO VERMÚ GRANEL LITRO 20 LTS"
+    # (sin la palabra BARRIL) — desde ago-2026 es la carga principal; sin esto caía en Rojo 750
+    if "FERIADO" in p and "GRANEL" in p: return "feriado_barril_20"
+
     # Barriles (Feriado) — detectar por envase primero, distinguir tamaño
     if "BARRIL" in e:
         if "50" in e or "50" in p: return "feriado_barril_50"
@@ -213,7 +217,7 @@ def classify_familia(producto, envase):
     if "LATA" in e:
         if "WOLF IPA" in p and "0%" in p:           return "lata_wolf0"
         if "WOLF IPA" in p:                          return "lata_wolf"
-        if "SCOTTISH" in p:                          return "lata_scottish"
+        if "SCOTTISH" in p or "SCOTISH" in p:        return "lata_scottish"  # Contabilium tiene "SCOTISH" (typo)
         if "GOLDEN" in p or "INDIE" in p:            return "lata_golden"
         if "APA" in p or "IPL" in p or "IPA" in p:  return "lata_otras"
         return "lata_otras"
@@ -1112,16 +1116,23 @@ def main():
         raise RuntimeError(f"BQ devolvió solo {len(raw)} filas — posible error de datos, abortando")
 
     # Construir array compacto para el frontend
+    # Envases/objetos de merch traen la capacidad en "litros" (BARRICA 225 LTS, COPA 490 ML…)
+    # pero no son bebida vendida — no deben sumar al Total Litros.
+    _MERCH_SIN_LITROS = ("BARRICA", "COPA", "VASO", "CAJA")
     data = []
     for r in raw:
+        fa = classify_familia(r.pr, r.en)
+        li = float(r.li)
+        if fa == "merch" and any(k in str(r.pr or "").upper() for k in _MERCH_SIN_LITROS):
+            li = 0.0
         data.append({
             "f":  r.f,
             "cl": r.cl,
             "nd": _CLIENT_NAME_ALIAS_MAP.get(r.nd, r.nd),
-            "fa": classify_familia(r.pr, r.en),
+            "fa": fa,
             "ti": r.ti,
             "ce": int(r.ce),
-            "li": float(r.li),
+            "li": li,
             "to": float(r.to_),
         })
 
