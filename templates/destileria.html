@@ -355,6 +355,7 @@ __STALE_BANNER__
     </div>
 
     <button class="tab-btn" data-tab="cerveza" onclick="switchTab('cerveza')">Cerveza · Latas</button>
+    <button class="tab-btn" data-tab="cierres" onclick="switchTab('cierres')">Cierres</button>
   </div>
 
   <!-- Header -->
@@ -994,6 +995,22 @@ __STALE_BANNER__
       </div>
     </div>
   </div><!-- /view-bosque-precio -->
+
+  <!-- ═══ VISTA CIERRES (foto del día 1 vs. hoy) ═════════════════ -->
+  <div id="view-cierres" style="display:none">
+    <div class="bos-pivot-hdr">
+      <div class="bos-pivot-title">CIERRES DE MES</div>
+      <div class="bos-pivot-sub">/ Foto del día 1 vs. hoy &nbsp;·&nbsp;
+        <select id="cierres-mes" onchange="renderCierres()" style="background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:3px 8px;font-size:12px"></select>
+      </div>
+    </div>
+    <div class="chart-card" style="margin-bottom:14px;font-size:12px;color:#8b949e;line-height:1.5">
+      Los datos del tablero siguen vivos: las ventas cargadas después del cierre con fecha del mes
+      (por ejemplo la liquidación de Travel Retail) se suman. Esta pestaña muestra qué cambió respecto
+      de lo que se reportó el día 1.
+    </div>
+    <div id="cierres-body"></div>
+  </div><!-- /view-cierres -->
 
   <!-- ═══ VISTA CERVEZA LATAS ════════════════════════════════════ -->
   <div id="view-cerveza" style="display:none">
@@ -1883,6 +1900,8 @@ function switchTab(tab) {
   document.getElementById('view-feriado-sellinout').style.display = tab === 'feriado-sellinout' ? 'block' : 'none';
   document.getElementById('view-feriado-precio').style.display    = tab === 'feriado-precio'    ? 'block' : 'none';
   document.getElementById('view-cerveza').style.display           = tab === 'cerveza'            ? 'block' : 'none';
+  document.getElementById('view-cierres').style.display           = tab === 'cierres'            ? 'block' : 'none';
+  if (tab === 'cierres') renderCierres();
   const bosqueTab = tab === 'bosque-tabla' || tab === 'bosque-semanas' || tab === 'bosque-precio' || tab === 'bosque-sellinout'
                  || tab === 'feriado' || tab === 'feriado-tabla' || tab === 'feriado-semanas' || tab === 'feriado-precio' || tab === 'feriado-sellinout';
   document.getElementById('bos-prod-fg').style.display = bosqueTab ? 'flex' : 'none';
@@ -1898,6 +1917,96 @@ function switchTab(tab) {
     grp.classList.toggle('active-grp', childActive);
   });
   applyFilters();
+}
+
+// ============================================================
+// CIERRES — foto del día 1 vs. hoy (ver destileria_cierres.py)
+// ============================================================
+// null = acceso total (incluye merch); si no, solo las marcas habilitadas
+function cierresMarcasPermitidas() {
+  var perms = window.__USER_PERMISSIONS__;
+  if (!perms || !perms.brands || perms.brands.indexOf('*') !== -1) return null;
+  return perms.brands.slice();
+}
+
+function renderCierres() {
+  var body = document.getElementById('cierres-body');
+  var sel  = document.getElementById('cierres-mes');
+  var MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var NOMBRE = {bosque: 'Bosque', feriado: 'Feriado', cerveza: 'Cerveza', merch: 'Merch / otros'};
+  var TIPO = {alta: 'Alta posterior', baja: 'Baja', modificado: 'Modificado'};
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function(c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function ddmm(s) { s = String(s || ''); return s.slice(8, 10) + '/' + s.slice(5, 7); }
+  function lit(v, signo) { var t = Number(v || 0).toLocaleString('es-AR', {maximumFractionDigits: 1}) + ' L'; return (signo && v > 0 ? '+' : '') + t; }
+  function pes(v, signo) { var a = Math.round(Number(v || 0)); return (a < 0 ? '-' : (signo && a > 0 ? '+' : '')) + '$' + Math.abs(a).toLocaleString('es-AR'); }
+  function delta(li, to) {
+    var cls = li > 0.01 || (Math.abs(li) <= 0.01 && to > 0) ? 'pct-up' : (li < -0.01 || to < 0 ? 'pct-dn' : 'pct-na');
+    return '<span class="' + cls + '">' + lit(li, true) + '</span><br><span style="color:#6e7681">' + pes(to, true) + '</span>';
+  }
+
+  if (!CIERRES || !CIERRES.length) {
+    sel.innerHTML = '';
+    body.innerHTML = '<div class="chart-card" style="color:#8b949e">Todavía no hay fotos de cierre. La primera se toma el día 1 del mes próximo.</div>';
+    return;
+  }
+
+  var idx = parseInt(sel.value, 10);
+  if (isNaN(idx) || idx < 0 || idx >= CIERRES.length) idx = 0;
+  sel.innerHTML = CIERRES.map(function(c, i) {
+    var p = c.mes.split('-');
+    var txt = MESES[parseInt(p[1], 10) - 1] + ' ' + p[0] + (c.tardia ? ' · foto tomada el ' + ddmm(c.tomada) : '');
+    return '<option value="' + i + '"' + (i === idx ? ' selected' : '') + '>' + esc(txt) + '</option>';
+  }).join('');
+  sel.value = String(idx);
+
+  var c = CIERRES[idx];
+  var permitidas = cierresMarcasPermitidas();
+  var ver = function(m) { return permitidas === null || permitidas.indexOf(m) !== -1; };
+  var marcas = ['bosque', 'feriado', 'cerveza', 'merch'].filter(function(m) { return c.resumen[m] && ver(m); });
+
+  var filtroEl = document.getElementById('cierres-marca');
+  var filtro = filtroEl && marcas.indexOf(filtroEl.value) !== -1 ? filtroEl.value : '';
+  var movs = (c.movs || []).filter(function(m) { return ver(m.marca) && (!filtro || m.marca === filtro); });
+
+  var th = 'style="text-align:right"';
+  var h = '<div class="chart-card" style="margin-bottom:14px;overflow-x:auto"><h3>Resumen por marca</h3>'
+        + '<table class="bos-pivot-tbl"><thead><tr><th style="text-align:left">Marca</th><th ' + th + '>Al cierre</th>'
+        + '<th ' + th + '>Altas posteriores</th><th ' + th + '>Bajas y modificaciones</th><th ' + th + '>Hoy</th></tr></thead><tbody>';
+  marcas.forEach(function(m) {
+    var r = c.resumen[m];
+    h += '<tr><td style="padding:7px 10px;font-weight:700;text-align:left">' + NOMBRE[m] + '</td>'
+       + '<td style="padding:7px 10px;text-align:right">' + lit(r.cierre.li) + '<br><span style="color:#6e7681">' + pes(r.cierre.to) + '</span></td>'
+       + '<td style="padding:7px 10px;text-align:right">' + delta(r.altas.li, r.altas.to) + '</td>'
+       + '<td style="padding:7px 10px;text-align:right">' + delta(r.bajas.li, r.bajas.to) + '</td>'
+       + '<td style="padding:7px 10px;text-align:right;font-weight:700">' + lit(r.hoy.li) + '<br><span style="color:#6e7681">' + pes(r.hoy.to) + '</span></td></tr>';
+  });
+  h += '</tbody></table></div>';
+
+  if (!(c.movs || []).some(function(m) { return ver(m.marca); })) {
+    body.innerHTML = h + '<div class="chart-card" style="color:#8b949e">Sin cambios desde el cierre.</div>';
+    return;
+  }
+
+  h += '<div class="chart-card" style="overflow-x:auto"><h3>Movimientos posteriores al cierre &nbsp;'
+     + '<select id="cierres-marca" onchange="renderCierres()" style="background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:2px 6px;font-size:11px">'
+     + '<option value="">Todas las marcas</option>'
+     + marcas.map(function(m) { return '<option value="' + m + '"' + (m === filtro ? ' selected' : '') + '>' + NOMBRE[m] + '</option>'; }).join('')
+     + '</select></h3><table class="bos-pivot-tbl"><thead><tr><th style="text-align:left">Tipo</th><th style="text-align:left">Fecha</th>'
+     + '<th style="text-align:left">Cliente</th><th style="text-align:left">Comprobante</th><th style="text-align:left">Marca</th>'
+     + '<th ' + th + '>Δ Litros</th><th ' + th + '>Δ $</th></tr></thead><tbody>';
+  movs.forEach(function(m) {
+    var cls = m.tipo === 'alta' ? 'pct-up' : 'pct-dn';
+    var etq = m.etiqueta ? ' <span style="background:#3d2f0a;color:#e8d5a3;border-radius:4px;padding:1px 5px;font-size:10px">' + esc(m.etiqueta) + '</span>' : '';
+    h += '<tr><td style="padding:6px 10px;text-align:left"><span class="' + cls + '">' + TIPO[m.tipo] + '</span>' + etq + '</td>'
+       + '<td style="padding:6px 10px;text-align:left">' + ddmm(m.f) + '</td>'
+       + '<td style="padding:6px 10px;text-align:left">' + esc(m.nd) + '</td>'
+       + '<td style="padding:6px 10px;text-align:left">' + esc(m.ti) + ' ' + esc(m.nu) + '</td>'
+       + '<td style="padding:6px 10px;text-align:left">' + NOMBRE[m.marca] + '</td>'
+       + '<td style="padding:6px 10px;text-align:right" class="' + cls + '">' + lit(m.dli, true) + '</td>'
+       + '<td style="padding:6px 10px;text-align:right">' + pes(m.dto, true) + '</td></tr>';
+  });
+  h += '</tbody></table></div>';
+  body.innerHTML = h;
 }
 
 function toggleTabGroup(id) {
