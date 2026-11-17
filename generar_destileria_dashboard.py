@@ -20,7 +20,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import date, datetime
 import google.auth
 from google.cloud import bigquery
 
@@ -722,10 +722,14 @@ def fetch_rows_contabilium(creds):
                   ELSE COALESCE(ci.litros, 0.0)
                 END, 3), 0.0)                                                   AS li,
         (CASE WHEN ci.tipo_fc LIKE 'NC%' THEN -1 ELSE 1 END)
-            * IF(pc.cot_id IS NULL, ROUND(COALESCE(ci.neto_linea, 0.0), 0), 0.0) AS to_
+            * IF(pc.cot_id IS NULL, ROUND(COALESCE(ci.neto_linea, 0.0), 0), 0.0) AS to_,
+        ci.id_comprobante                                                       AS ic,
+        COALESCE(NULLIF(TRIM(co.numero), ''), CAST(ci.id_comprobante AS STRING)) AS nu
     FROM `temple-bar-439715.Destileria_Contabilium.comprobantes_items` ci
     LEFT JOIN `temple-bar-439715.Destileria_Contabilium.clientes` cl
         ON ci.id_cliente = cl.id_cliente
+    LEFT JOIN `temple-bar-439715.Destileria_Contabilium.comprobantes` co   -- nro para la foto de cierre
+        ON co.id_comprobante = ci.id_comprobante
     LEFT JOIN cluster_map cm
         ON TRIM(cl.nombre_fantasia) = cm.NombreDeFantasia
     LEFT JOIN cot_fc_pares pc ON pc.cot_id = ci.id_comprobante   -- COT ya facturada: sin $
@@ -746,7 +750,8 @@ def fetch_rows_contabilium(creds):
         result.append(types.SimpleNamespace(
             f=r.f, cl=cl, nd=nd, gc=r.gc,
             pr=r.pr, en=r.en, ti=r.ti,
-            ce=r.ce, li=r.li, to_=r.to_
+            ce=r.ce, li=r.li, to_=r.to_,
+            ic=r.ic, nu=r.nu,
         ))
     return result
 
@@ -1090,6 +1095,9 @@ def main():
     else:
         print(f"[{ts()}] Integridad Contabilium OK")
 
+    # La foto de cierre solo se toma con datos sanos (nunca fotografiar un estado roto)
+    integridad_ok = bool(raw_cbl) and _dup_count == 0 and not _cbl_errors and not args.force_publish
+
     raw = raw + raw_cbl
 
     # Alerta de datos desactualizados: si la última fecha sincronizada de
@@ -1120,12 +1128,13 @@ def main():
     # pero no son bebida vendida — no deben sumar al Total Litros.
     _MERCH_SIN_LITROS = ("BARRICA", "COPA", "VASO", "CAJA")
     data = []
+    filas_cbl = []   # mismas filas de Contabilium + comprobante, para la foto de cierre
     for r in raw:
         fa = classify_familia(r.pr, r.en)
         li = float(r.li)
         if fa == "merch" and any(k in str(r.pr or "").upper() for k in _MERCH_SIN_LITROS):
             li = 0.0
-        data.append({
+        fila = {
             "f":  r.f,
             "cl": r.cl,
             "nd": _CLIENT_NAME_ALIAS_MAP.get(r.nd, r.nd),
@@ -1134,7 +1143,35 @@ def main():
             "ce": int(r.ce),
             "li": li,
             "to": float(r.to_),
-        })
+        }
+        data.append(fila)
+        if hasattr(r, "ic"):
+            filas_cbl.append({"f": fila["f"], "nd": fila["nd"], "fa": fa, "ti": fila["ti"],
+                              "ce": fila["ce"], "li": li, "to": fila["to"], "ic": r.ic, "nu": r.nu})
+
+    # ── Foto de cierre mensual (ver destileria_cierres.py) ──────────────────
+    # Nunca debe tumbar la publicación: cualquier error deja CIERRES vacío.
+    cierres = []
+    if args.gcs_bucket:
+        try:
+            from google.cloud import storage as _storage_c
+            from destileria_cierres import (armar_lineas, mes_a_fotografiar, filtrar_mes,
+                                            listar_fotos, guardar_foto, cargar_fotos, armar_cierres)
+            _bkt = _storage_c.Client().bucket(args.gcs_bucket)
+            lineas_cbl = armar_lineas(filas_cbl)
+            if integridad_ok:
+                _mes_foto = mes_a_fotografiar(date.today(), listar_fotos(_bkt))
+                if _mes_foto:
+                    _lin_mes = filtrar_mes(lineas_cbl, _mes_foto)
+                    if guardar_foto(_bkt, _mes_foto, _lin_mes, datetime.now()):
+                        print(f"[{ts()}] ✓ Foto de cierre {_mes_foto} guardada ({len(_lin_mes)} líneas)")
+            else:
+                print(f"[{ts()}] Foto de cierre salteada: integridad Contabilium no confirmada en esta corrida")
+            cierres = armar_cierres(cargar_fotos(_bkt), lineas_cbl)
+            print(f"[{ts()}] Fotos de cierre cargadas: {len(cierres)}")
+        except Exception as _e_c:
+            print(f"[{ts()}] WARN: foto de cierre no disponible — {_e_c}", file=sys.stderr)
+            cierres = []
 
     now_str   = datetime.now().strftime("%d/%m/%Y %H:%M")
     rows_json = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
@@ -1223,6 +1260,10 @@ def main():
         (
             '__SELLINOUT_FER_PAT_LOCAL_MO_JSON__',
             "Placeholder sell-in/out Feriado Patagonia local × mes (__SELLINOUT_FER_PAT_LOCAL_MO_JSON__)",
+        ),
+        (
+            '__CIERRES_JSON__',
+            "Placeholder fotos de cierre (__CIERRES_JSON__)",
         ),
         (
             '__PERMISSIONS_INJECT__',
@@ -1407,6 +1448,7 @@ def main():
     html = html.replace("__UPDATED_AT__",      now_str)
     html = html.replace("__RECORD_COUNT__",    f"{len(data):,}")
     html = html.replace("__STALE_BANNER__",    stale_banner)
+    html = html.replace("__CIERRES_JSON__",    json.dumps(cierres, ensure_ascii=False, separators=(",", ":")))
 
     # ── Sell-in / Sell-out Bosque Nativo ────────────────────────────────────
     try:
