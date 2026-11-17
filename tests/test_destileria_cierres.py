@@ -5,7 +5,8 @@ from google.api_core.exceptions import PreconditionFailed
 
 from destileria_cierres import (marca_de_familia, armar_lineas, mes_a_fotografiar,
                                 filtrar_mes, diferencia, resumen,
-                                listar_fotos, guardar_foto, cargar_fotos, armar_cierres)
+                                listar_fotos, guardar_foto, cargar_fotos, armar_cierres,
+                                sync_ok_para_foto)
 
 
 def L(ic, fa="bosque_nativo", nd="CLI", ti="FCB", f="2026-10-12", ce=1, li=0.5, to=1000, nu=None):
@@ -70,6 +71,39 @@ def test_resumen_por_marca():
     assert r["bosque"]["cierre"] == {"li": 2.0, "to": 100} and r["bosque"]["hoy"] == {"li": 7.0, "to": 400}
     assert r["bosque"]["altas"]["li"] == 5.0
     assert r["feriado"]["bajas"] == {"li": -1.0, "to": -50}
+
+
+def test_cot_pareada_queda_en_cero_pesos_se_etiqueta():
+    # El pipeline no borra la COT facturada: le pone $0 y su factura entra con 0 L / 0 unidades
+    foto = [L(20, nd="CM", ti="COT", ce=10, li=5.0, to=80000)]
+    hoy  = [L(20, nd="CM", ti="COT", ce=10, li=5.0, to=0), L(21, nd="CM", ti="FCA", ce=0, li=0.0, to=80000)]
+    movs = {m["tipo"]: m for m in diferencia(foto, hoy)}
+    assert movs["modificado"]["etiqueta"] == "COT convertida" and movs["modificado"]["dto"] == -80000
+    assert movs["alta"]["etiqueta"] == "COT convertida"
+
+
+def test_par_deshecho_tambien_se_etiqueta():
+    foto = [L(20, nd="CM", ti="COT", ce=10, li=5.0, to=0)]
+    hoy  = [L(20, nd="CM", ti="COT", ce=10, li=5.0, to=80000)]
+    assert diferencia(foto, hoy)[0]["etiqueta"] == "COT convertida"
+
+
+def test_nota_credito_tardia_es_baja():
+    hoy = [L(30, nd="BAR", ti="NCB", ce=-2, li=-1.5, to=-30000)]
+    m = diferencia([], hoy)[0]
+    assert m["tipo"] == "baja" and m["etiqueta"] == "Nota de crédito"
+    r = resumen([], hoy, diferencia([], hoy))
+    assert r["bosque"]["bajas"]["to"] == -30000 and r["bosque"]["altas"]["to"] == 0
+
+
+def test_sync_ok_para_foto():
+    assert sync_ok_para_foto("OK", "2026-11-01", 3.0, "2026-10") is True
+    assert sync_ok_para_foto("CORTE_TIEMPO", "2026-11-01", 3.0, "2026-10") is False
+    assert sync_ok_para_foto("PARTIAL", "2026-11-01", 3.0, "2026-10") is False
+    assert sync_ok_para_foto("OK", "2026-10-30", 3.0, "2026-10") is False     # no cubrió el 31
+    assert sync_ok_para_foto("OK", "2026-11-01", 30.0, "2026-10") is False    # log viejo
+    assert sync_ok_para_foto(None, None, None, "2026-10") is False
+    assert sync_ok_para_foto("OK", "2027-01-01", 1.0, "2026-12") is True
 
 
 # ── GCS (Tarea 2) ─────────────────────────────────────────────────────────────

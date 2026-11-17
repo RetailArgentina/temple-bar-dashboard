@@ -6,6 +6,7 @@ qué cambió después del cierre: altas posteriores (ventas cargadas tarde, ej.
 liquidación Travel Retail) vs. bajas/modificaciones (comprobantes anulados,
 editados o COT convertidas en factura).
 """
+import calendar
 import json
 from collections import defaultdict
 from datetime import date, datetime
@@ -57,6 +58,16 @@ def mes_a_fotografiar(hoy: date, existentes: set, primer_mes: str = PRIMER_MES):
     return m
 
 
+def sync_ok_para_foto(estado, fecha_hasta, horas, mes: str) -> bool:
+    """La foto es permanente: solo con el último sync Contabilium completo (estado OK),
+    reciente (<= 24 h) y que haya cubierto hasta el último día del mes a fotografiar."""
+    if estado != "OK" or not fecha_hasta or horas is None or horas > 24:
+        return False
+    anio, m = (int(x) for x in mes.split("-"))
+    ultimo = f"{mes}-{calendar.monthrange(anio, m)[1]:02d}"
+    return str(fecha_hasta)[:10] >= ultimo
+
+
 def filtrar_mes(lineas: list, mes: str) -> list:
     return [l for l in lineas if str(l.get("f", "")).startswith(mes)]
 
@@ -73,7 +84,13 @@ def diferencia(foto: list, hoy: list) -> list:
     movs = []
     for k, l in ahora.items():
         if k not in antes:
-            movs.append(_mov("alta", l, l["ce"], l["li"], l["to"]))
+            # Nota de crédito cargada tarde = anulación (a revisar), no venta nueva
+            if str(l["ti"]).startswith("NC") or l["to"] < 0:
+                m = _mov("baja", l, l["ce"], l["li"], l["to"])
+                m["etiqueta"] = "Nota de crédito"
+                movs.append(m)
+            else:
+                movs.append(_mov("alta", l, l["ce"], l["li"], l["to"]))
     for k, l in antes.items():
         if k not in ahora:
             movs.append(_mov("baja", l, -l["ce"], -l["li"], -l["to"]))
@@ -88,8 +105,17 @@ def diferencia(foto: list, hoy: list) -> list:
     fc_altas = {m["nd"] for m in movs if m["tipo"] == "alta" and m["ti"] != "COT"}
     convertidos = cot_bajas & fc_altas
     for m in movs:
+        if m["etiqueta"]:
+            continue
+        sin_unidades = m["dce"] == 0 and abs(m["dli"]) <= _UMBRAL_LI
         if m["nd"] in convertidos and (
                 (m["tipo"] == "baja" and m["ti"] == "COT") or (m["tipo"] == "alta" and m["ti"] != "COT")):
+            m["etiqueta"] = "COT convertida"
+        # El generador no borra la COT facturada: le pone $0 (o se lo devuelve si el par
+        # COT↔factura se deshace) y su factura entra sin unidades ni litros.
+        elif m["tipo"] == "modificado" and m["ti"] == "COT" and sin_unidades:
+            m["etiqueta"] = "COT convertida"
+        elif m["tipo"] == "alta" and m["ti"] != "COT" and sin_unidades and m["dto"] > 0:
             m["etiqueta"] = "COT convertida"
 
     movs.sort(key=lambda m: (m["tipo"] == "alta", -abs(m["dli"])))

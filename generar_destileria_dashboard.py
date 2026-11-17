@@ -20,7 +20,7 @@ import os
 import re
 import sys
 import time
-from datetime import date, datetime
+from datetime import datetime, timedelta, timezone
 import google.auth
 from google.cloud import bigquery
 
@@ -728,8 +728,11 @@ def fetch_rows_contabilium(creds):
     FROM `temple-bar-439715.Destileria_Contabilium.comprobantes_items` ci
     LEFT JOIN `temple-bar-439715.Destileria_Contabilium.clientes` cl
         ON ci.id_cliente = cl.id_cliente
-    LEFT JOIN `temple-bar-439715.Destileria_Contabilium.comprobantes` co   -- nro para la foto de cierre
-        ON co.id_comprobante = ci.id_comprobante
+    LEFT JOIN (  -- nro para la foto de cierre; agrupado para que un duplicado no multiplique filas
+        SELECT id_comprobante, ANY_VALUE(numero) AS numero
+        FROM `temple-bar-439715.Destileria_Contabilium.comprobantes`
+        GROUP BY id_comprobante
+    ) co ON co.id_comprobante = ci.id_comprobante
     LEFT JOIN cluster_map cm
         ON TRIM(cl.nombre_fantasia) = cm.NombreDeFantasia
     LEFT JOIN cot_fc_pares pc ON pc.cot_id = ci.id_comprobante   -- COT ya facturada: sin $
@@ -1156,15 +1159,28 @@ def main():
         try:
             from google.cloud import storage as _storage_c
             from destileria_cierres import (armar_lineas, mes_a_fotografiar, filtrar_mes,
-                                            listar_fotos, guardar_foto, cargar_fotos, armar_cierres)
+                                            listar_fotos, guardar_foto, cargar_fotos, armar_cierres,
+                                            sync_ok_para_foto)
             _bkt = _storage_c.Client().bucket(args.gcs_bucket)
             lineas_cbl = armar_lineas(filas_cbl)
+            # Hora argentina (UTC-3, sin horario de verano): Actions corre en UTC
+            _ahora_ar = (datetime.now(timezone.utc) - timedelta(hours=3)).replace(tzinfo=None)
             if integridad_ok:
-                _mes_foto = mes_a_fotografiar(date.today(), listar_fotos(_bkt))
+                _mes_foto = mes_a_fotografiar(_ahora_ar.date(), listar_fotos(_bkt))
                 if _mes_foto:
-                    _lin_mes = filtrar_mes(lineas_cbl, _mes_foto)
-                    if guardar_foto(_bkt, _mes_foto, _lin_mes, datetime.now()):
-                        print(f"[{ts()}] ✓ Foto de cierre {_mes_foto} guardada ({len(_lin_mes)} líneas)")
+                    _log = list(_cbl_client.query("""
+                        SELECT estado, CAST(fecha_hasta AS STRING) AS fh,
+                               TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), CAST(created_at AS TIMESTAMP), MINUTE) / 60.0 AS horas
+                        FROM `temple-bar-439715.Destileria_Contabilium.sync_log`
+                        ORDER BY CAST(created_at AS TIMESTAMP) DESC LIMIT 1""").result(timeout=60))
+                    _l = dict(_log[0]) if _log else {}
+                    if not sync_ok_para_foto(_l.get("estado"), _l.get("fh"), _l.get("horas"), _mes_foto):
+                        print(f"[{ts()}] Foto de cierre {_mes_foto} postergada: último sync Contabilium no confirma "
+                              f"el mes completo ({_l or 'sin registro'}) — se reintenta en la próxima corrida")
+                    else:
+                        _lin_mes = filtrar_mes(lineas_cbl, _mes_foto)
+                        if guardar_foto(_bkt, _mes_foto, _lin_mes, _ahora_ar):
+                            print(f"[{ts()}] ✓ Foto de cierre {_mes_foto} guardada ({len(_lin_mes)} líneas)")
             else:
                 print(f"[{ts()}] Foto de cierre salteada: integridad Contabilium no confirmada en esta corrida")
             cierres = armar_cierres(cargar_fotos(_bkt), lineas_cbl)
